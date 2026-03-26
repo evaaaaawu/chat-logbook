@@ -1,0 +1,9 @@
+{"type":"file-history-snapshot","messageId":"msg-1","snapshot":{"trackedFileBackups":{},"timestamp":"2024-01-01T00:00:00Z"}}
+{"type":"user","message":{"role":"user","content":"<local-command-caveat>system message</local-command-caveat>"},"isMeta":true,"uuid":"msg-meta","timestamp":"2024-01-01T00:00:01Z","sessionId":"session-1","isSidechain":false}
+{"type":"user","message":{"role":"user","content":"Build a login page"},"isMeta":false,"uuid":"msg-2","timestamp":"2024-01-01T00:00:02Z","sessionId":"session-1","isSidechain":false}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Sure, I'll build a login page for you."}]},"uuid":"msg-3","timestamp":"2024-01-01T00:00:03Z","sessionId":"session-1","isSidechain":false}
+{"type":"progress","data":{"type":"agent_progress","prompt":"searching..."},"uuid":"msg-4","timestamp":"2024-01-01T00:00:04Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Let me think about this..."},{"type":"text","text":"Here's the implementation."}]},"uuid":"msg-5","timestamp":"2024-01-01T00:00:05Z","sessionId":"session-1","isSidechain":false}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool-1","name":"Read","input":{"file_path":"src/index.ts"}}]},"uuid":"msg-6","timestamp":"2024-01-01T00:00:06Z","sessionId":"session-1","isSidechain":false}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-1","content":"file contents here"}]},"uuid":"msg-7","timestamp":"2024-01-01T00:00:07Z","sessionId":"session-1","isSidechain":false}
+{"type":"system","subtype":"turn_duration","durationMs":5000,"uuid":"msg-8","timestamp":"2024-01-01T00:00:08Z"}
