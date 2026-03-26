@@ -1,13 +1,15 @@
 {
   "name": "chat-logbook",
   "version": "0.1.0",
+  "private": true,
   "description": "A local-first conversation manager for Claude Code",
   "license": "MIT",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "pnpm -r run dev",
+    "test": "pnpm -r run test",
+    "typecheck": "pnpm -r run typecheck",
     "prepare": "husky"
   },
-  "keywords": [],
   "packageManager": "pnpm@10.32.1",
   "devDependencies": {
     "husky": "^9.1.7",
