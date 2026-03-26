@@ -14,6 +14,7 @@ Key design principles:
 
 ## Architecture
 
+- **Monorepo**: pnpm workspaces with `api/` (Hono backend) and `web/` (React frontend)
 - **Data source**: JSONL files from `~/.claude/` (read-only)
 - **User metadata**: SQLite database at `~/.chat-logbook/data.db`
 - **UI**: Three-column layout (filters | session list | conversation content) with dark theme
@@ -21,9 +22,29 @@ Key design principles:
 - **Runtime**: Node.js >= 18
 - **Distribution**: npm package, runnable via `npx chat-logbook` or global install (`chat-log` command)
 
+## Project Structure
+
+```
+api/                  # Hono backend
+  src/
+    app.ts            # Hono app factory (accepts claudeDir for testability)
+    parser.ts         # Claude Data Parser (reads ~/.claude/ JSONL files)
+    index.ts          # Production entry point with @hono/node-server
+web/                  # React frontend (not yet implemented)
+```
+
+## Development
+
+```bash
+pnpm install          # Install all dependencies
+pnpm run test         # Run all tests (delegates to each workspace)
+pnpm run typecheck    # Type-check all workspaces
+pnpm run dev          # Start dev servers for all workspaces
+```
+
 ## Status
 
-This project is in early development. The README describes planned features; implementation has not yet begun.
+Backend API is implemented (session listing, conversation reading). Frontend is in progress.
 
 ## Branch Strategy
 
