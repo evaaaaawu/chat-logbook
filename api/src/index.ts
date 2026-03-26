@@ -7,6 +7,6 @@ const claudeDir = path.join(os.homedir(), ".claude");
 const app = createApp(claudeDir);
 const port = 3000;
 
-serve({ fetch: app.fetch, port }, (info) => {
+serve({ fetch: app.fetch, port }, (info: { port: number }) => {
   console.log(`chat-logbook listening on http://localhost:${info.port}`);
 });
