@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@hono/node-server": "^1.19.11",
     "hono": "^4.7.0"
   },
   "devDependencies": {
