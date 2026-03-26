@@ -1,0 +1,17 @@
+{
+  "name": "chat-logbook",
+  "version": "0.1.0",
+  "description": "A local-first conversation manager for Claude Code",
+  "license": "MIT",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "husky"
+  },
+  "keywords": [],
+  "packageManager": "pnpm@10.32.1",
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.8.1"
+  }
+}
