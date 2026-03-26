@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "composite": true
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}
