@@ -11,6 +11,16 @@ describe("Session list", () => {
     expect(screen.getByText("Fix database migration")).toBeInTheDocument();
   });
 
+  it("displays project name and relative time for each session", async () => {
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+
+    // Project name: last segment of path
+    expect(screen.getByText("my-web-app")).toBeInTheDocument();
+    expect(screen.getByText("backend-api")).toBeInTheDocument();
+  });
+
   it("sorts sessions by updatedAt descending (most recent first)", async () => {
     render(<App />);
 
@@ -23,6 +33,18 @@ describe("Session list", () => {
     // session-1 has updatedAt 1700000200000 (older)
     expect(titles[0]).toContain("Fix database migration");
     expect(titles[1]).toContain("Build a login page");
+  });
+});
+
+describe("Three-column layout", () => {
+  it("renders filter panel, session list, and conversation panel", async () => {
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+
+    expect(screen.getByTestId("filter-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("session-list")).toBeInTheDocument();
+    expect(screen.getByTestId("conversation-panel")).toBeInTheDocument();
   });
 });
 
