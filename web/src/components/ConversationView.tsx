@@ -1,13 +1,19 @@
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { Message, ContentBlock } from "@/types";
 
 interface ConversationViewProps {
   messages: Message[];
 }
 
+function MarkdownText({ children }: { children: string }) {
+  return <Markdown remarkPlugins={[remarkGfm]}>{children}</Markdown>;
+}
+
 function renderContentBlock(block: ContentBlock, index: number) {
   switch (block.type) {
     case "text":
-      return <span key={index}>{block.text}</span>;
+      return <MarkdownText key={index}>{block.text}</MarkdownText>;
     case "thinking":
       return (
         <em key={index} className="text-sm text-muted-foreground">
@@ -30,7 +36,7 @@ function renderContentBlock(block: ContentBlock, index: number) {
 
 function renderContent(content: Message["content"]) {
   if (typeof content === "string") {
-    return <span>{content}</span>;
+    return <MarkdownText>{content}</MarkdownText>;
   }
   return content.map((block, i) => renderContentBlock(block, i));
 }

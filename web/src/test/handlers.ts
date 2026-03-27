@@ -30,6 +30,23 @@ export const fakeMessages = {
       timestamp: "2024-01-01T00:00:03Z",
     },
   ],
+  "session-2": [
+    {
+      role: "user",
+      content: "Show me a **bold** example with a [link](https://example.com)",
+      timestamp: "2024-01-01T00:00:04Z",
+    },
+    {
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "Here is a code block:\n\n```js\nconsole.log('hello')\n```",
+        },
+      ],
+      timestamp: "2024-01-01T00:00:05Z",
+    },
+  ],
 };
 
 export const handlers = [

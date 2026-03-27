@@ -81,4 +81,22 @@ describe("Conversation view", () => {
     expect(userMessage).toHaveAttribute("data-role", "user");
     expect(assistantMessage).toHaveAttribute("data-role", "assistant");
   });
+
+  it("renders markdown formatting in message content", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Fix database migration"));
+
+    // User message has bold text and a link
+    const boldEl = await screen.findByText("bold");
+    expect(boldEl.tagName).toBe("STRONG");
+
+    const linkEl = screen.getByText("link");
+    expect(linkEl.tagName).toBe("A");
+    expect(linkEl).toHaveAttribute("href", "https://example.com");
+
+    // Assistant message has a code block
+    expect(screen.getByText("console.log('hello')")).toBeInTheDocument();
+  });
 });
