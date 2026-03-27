@@ -1,0 +1,144 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: "Geist Variable", sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* Solarized Dark — always-dark theme.
+   Light theme (:root without .dark) intentionally uses the same values
+   so the app looks correct before JS adds the .dark class. */
+
+:root {
+  /* Solarized base03 */
+  --background: #002b36;
+  /* Solarized base0 */
+  --foreground: #839496;
+  /* Solarized base02 */
+  --card: #073642;
+  /* Solarized base1 */
+  --card-foreground: #93a1a1;
+  --popover: #073642;
+  --popover-foreground: #93a1a1;
+  /* Solarized cyan */
+  --primary: #2aa198;
+  --primary-foreground: #002b36;
+  /* Solarized base02 */
+  --secondary: #073642;
+  --secondary-foreground: #839496;
+  --muted: #073642;
+  /* Solarized base01 */
+  --muted-foreground: #586e75;
+  --accent: #073642;
+  --accent-foreground: #93a1a1;
+  /* Solarized red */
+  --destructive: #dc322f;
+  --border: #073642;
+  --input: #073642;
+  /* Solarized cyan */
+  --ring: #2aa198;
+  /* Solarized accent colors for charts */
+  --chart-1: #2aa198;
+  --chart-2: #268bd2;
+  --chart-3: #6c71c4;
+  --chart-4: #b58900;
+  --chart-5: #859900;
+  --radius: 0.625rem;
+  --sidebar: #002b36;
+  --sidebar-foreground: #839496;
+  --sidebar-primary: #2aa198;
+  --sidebar-primary-foreground: #002b36;
+  --sidebar-accent: #073642;
+  --sidebar-accent-foreground: #93a1a1;
+  --sidebar-border: #073642;
+  --sidebar-ring: #2aa198;
+}
+
+.dark {
+  --background: #002b36;
+  --foreground: #839496;
+  --card: #073642;
+  --card-foreground: #93a1a1;
+  --popover: #073642;
+  --popover-foreground: #93a1a1;
+  --primary: #2aa198;
+  --primary-foreground: #002b36;
+  --secondary: #073642;
+  --secondary-foreground: #839496;
+  --muted: #073642;
+  --muted-foreground: #586e75;
+  --accent: #073642;
+  --accent-foreground: #93a1a1;
+  --destructive: #dc322f;
+  --border: #073642;
+  --input: #073642;
+  --ring: #2aa198;
+  --chart-1: #2aa198;
+  --chart-2: #268bd2;
+  --chart-3: #6c71c4;
+  --chart-4: #b58900;
+  --chart-5: #859900;
+  --sidebar: #002b36;
+  --sidebar-foreground: #839496;
+  --sidebar-primary: #2aa198;
+  --sidebar-primary-foreground: #002b36;
+  --sidebar-accent: #073642;
+  --sidebar-accent-foreground: #93a1a1;
+  --sidebar-border: #073642;
+  --sidebar-ring: #2aa198;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
