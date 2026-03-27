@@ -17,7 +17,11 @@ Key design principles:
 - **Monorepo**: pnpm workspaces with `api/` (Hono backend) and `web/` (React frontend)
 - **Data source**: JSONL files from `~/.claude/` (read-only)
 - **User metadata**: SQLite database at `~/.chat-logbook/data.db`
-- **UI**: Three-column layout (filters | session list | conversation content) with dark theme
+- **UI**: Three-column resizable layout (filters | session list | conversation content) with Solarized Dark theme
+- **Frontend stack**: React + TypeScript + Vite + Tailwind CSS + shadcn/ui (Radix UI primitives)
+- **Frontend testing**: Vitest + React Testing Library + MSW (Mock Service Worker)
+- **Frontend state**: React useState + custom hooks (no external state management library)
+- **Dev proxy**: Vite forwards `/api` requests to Hono backend (`http://localhost:3000`)
 - **Real-time updates**: SSE for streaming active conversations
 - **Runtime**: Node.js >= 18
 - **Distribution**: npm package, runnable via `npx chat-logbook` or global install (`chat-log` command)
@@ -30,7 +34,7 @@ api/                  # Hono backend
     app.ts            # Hono app factory (accepts claudeDir for testability)
     parser.ts         # Claude Data Parser (reads ~/.claude/ JSONL files)
     index.ts          # Production entry point with @hono/node-server
-web/                  # React frontend (not yet implemented)
+web/                  # React frontend (Vite + shadcn/ui + Solarized Dark)
 ```
 
 ## Development
