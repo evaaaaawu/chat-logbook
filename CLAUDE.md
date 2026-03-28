@@ -35,6 +35,23 @@ api/                  # Hono backend
     parser.ts         # Claude Data Parser (reads ~/.claude/ JSONL files)
     index.ts          # Production entry point with @hono/node-server
 web/                  # React frontend (Vite + shadcn/ui + Solarized Dark)
+  src/
+    App.tsx           # Root component with three-column resizable layout
+    App.test.tsx      # Integration tests (RTL + MSW)
+    components/
+      FilterPanel.tsx       # Left sidebar (placeholder for filters)
+      SessionList.tsx       # Middle panel (session list sorted by updatedAt)
+      ConversationView.tsx  # Right panel (messages with markdown rendering)
+      ui/                   # shadcn/ui primitives (button, resizable, etc.)
+    hooks/
+      useSessions.ts  # Fetches and sorts sessions from /api/sessions
+      useMessages.ts  # Fetches messages for a selected session
+    test/
+      handlers.ts     # MSW request handlers with fake data
+      server.ts       # MSW server instance
+      setup.ts        # Vitest setup (jest-dom, MSW, ResizeObserver mock)
+    types.ts          # Shared types (Session, Message, ContentBlock)
+    index.css         # Solarized Dark theme via CSS variable overrides
 ```
 
 ## Development
@@ -48,7 +65,7 @@ pnpm run dev          # Start dev servers for all workspaces
 
 ## Status
 
-Backend API is implemented (session listing, conversation reading). Frontend is in progress.
+Backend API and frontend session browsing are implemented. The app supports listing sessions, viewing conversations with markdown rendering, and a three-column resizable layout with Solarized Dark theme.
 
 ## Branch Strategy
 
