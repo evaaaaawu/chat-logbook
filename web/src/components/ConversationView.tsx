@@ -4,6 +4,7 @@ import type { Message, ContentBlock } from "@/types";
 
 interface ConversationViewProps {
   messages: Message[];
+  error?: string | null;
 }
 
 function MarkdownText({ children }: { children: string }) {
@@ -41,7 +42,18 @@ function renderContent(content: Message["content"]) {
   return content.map((block, i) => renderContentBlock(block, i));
 }
 
-export function ConversationView({ messages }: ConversationViewProps) {
+export function ConversationView({ messages, error }: ConversationViewProps) {
+  if (error) {
+    return (
+      <div
+        data-testid="conversation-panel"
+        className="flex h-full items-center justify-center text-sm text-destructive"
+      >
+        {error}
+      </div>
+    );
+  }
+
   if (messages.length === 0) {
     return (
       <div

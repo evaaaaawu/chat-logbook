@@ -48,6 +48,21 @@ describe("Three-column layout", () => {
   });
 });
 
+describe("Error handling", () => {
+  it("shows error message instead of crashing when session has no conversation file", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const sessionButton = await screen.findByText("Untitled");
+    await user.click(sessionButton);
+
+    expect(await screen.findByText(/session not found/i)).toBeInTheDocument();
+
+    // App should still be functional — no white screen
+    expect(screen.getByTestId("session-list")).toBeInTheDocument();
+  });
+});
+
 describe("Conversation view", () => {
   it("displays messages after clicking a session", async () => {
     const user = userEvent.setup();

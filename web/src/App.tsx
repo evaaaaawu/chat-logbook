@@ -13,7 +13,7 @@ import {
 function App() {
   const { sessions } = useSessions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { messages } = useMessages(selectedId);
+  const { messages, error } = useMessages(selectedId);
 
   return (
     <div className="h-screen bg-background text-foreground">
@@ -31,7 +31,7 @@ function App() {
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel defaultSize={60} minSize={30}>
-          <ConversationView messages={messages} />
+          <ConversationView messages={messages} error={error} />
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>

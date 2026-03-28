@@ -15,6 +15,13 @@ export const fakeSessions = [
     createdAt: 1700000100000,
     updatedAt: 1700000300000,
   },
+  {
+    id: "session-missing",
+    title: "Untitled",
+    project: "/Users/test/some-project",
+    createdAt: 1699999900000,
+    updatedAt: 1699999900000,
+  },
 ];
 
 export const fakeMessages = {
