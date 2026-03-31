@@ -5,7 +5,9 @@ export function createApp(claudeDir: string) {
   const app = new Hono();
 
   app.get("/api/sessions", (c) => {
-    const sessions = listSessions(claudeDir);
+    const sessions = listSessions(claudeDir).filter(
+      (session) => findSessionFile(claudeDir, session.id) !== null
+    );
     return c.json({ sessions });
   });
 

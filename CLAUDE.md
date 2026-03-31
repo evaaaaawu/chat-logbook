@@ -14,16 +14,58 @@ Key design principles:
 
 ## Architecture
 
+- **Monorepo**: pnpm workspaces with `api/` (Hono backend) and `web/` (React frontend)
 - **Data source**: JSONL files from `~/.claude/` (read-only)
 - **User metadata**: SQLite database at `~/.chat-logbook/data.db`
-- **UI**: Three-column layout (filters | session list | conversation content) with dark theme
+- **UI**: Three-column resizable layout (filters | session list | conversation content) with Solarized Dark theme
+- **Frontend stack**: React + TypeScript + Vite + Tailwind CSS + shadcn/ui (Radix UI primitives)
+- **Frontend testing**: Vitest + React Testing Library + MSW (Mock Service Worker)
+- **Frontend state**: React useState + custom hooks (no external state management library)
+- **Dev proxy**: Vite forwards `/api` requests to Hono backend (`http://localhost:3000`)
 - **Real-time updates**: SSE for streaming active conversations
 - **Runtime**: Node.js >= 18
 - **Distribution**: npm package, runnable via `npx chat-logbook` or global install (`chat-log` command)
 
+## Project Structure
+
+```
+api/                  # Hono backend
+  src/
+    app.ts            # Hono app factory (accepts claudeDir for testability)
+    parser.ts         # Claude Data Parser (reads ~/.claude/ JSONL files)
+    index.ts          # Production entry point with @hono/node-server
+web/                  # React frontend (Vite + shadcn/ui + Solarized Dark)
+  src/
+    App.tsx           # Root component with three-column resizable layout
+    App.test.tsx      # Integration tests (RTL + MSW)
+    components/
+      FilterPanel.tsx       # Left sidebar (placeholder for filters)
+      SessionList.tsx       # Middle panel (session list sorted by updatedAt)
+      ConversationView.tsx  # Right panel (messages with markdown rendering)
+      ui/                   # shadcn/ui primitives (button, resizable, etc.)
+    hooks/
+      useSessions.ts  # Fetches and sorts sessions from /api/sessions
+      useMessages.ts  # Fetches messages for a selected session
+    test/
+      handlers.ts     # MSW request handlers with fake data
+      server.ts       # MSW server instance
+      setup.ts        # Vitest setup (jest-dom, MSW, ResizeObserver mock)
+    types.ts          # Shared types (Session, Message, ContentBlock)
+    index.css         # Solarized Dark theme via CSS variable overrides
+```
+
+## Development
+
+```bash
+pnpm install          # Install all dependencies
+pnpm run test         # Run all tests (delegates to each workspace)
+pnpm run typecheck    # Type-check all workspaces
+pnpm run dev          # Start dev servers for all workspaces
+```
+
 ## Status
 
-This project is in early development. The README describes planned features; implementation has not yet begun.
+Backend API and frontend session browsing are implemented. The app supports listing sessions, viewing conversations with markdown rendering, and a three-column resizable layout with Solarized Dark theme.
 
 ## Branch Strategy
 

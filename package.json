@@ -11,6 +11,12 @@
     "prepare": "husky"
   },
   "packageManager": "pnpm@10.32.1",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "msw"
+    ]
+  },
   "devDependencies": {
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
