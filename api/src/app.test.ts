@@ -7,7 +7,7 @@ const fixturesDir = path.join(import.meta.dirname, "__fixtures__");
 
 describe("GET /api/sessions", () => {
   it("returns a list of sessions", async () => {
-    const app = createApp(fixturesDir);
+    const app = createApp({ claudeDir: fixturesDir });
     const res = await app.request("/api/sessions");
 
     expect(res.status).toBe(200);
@@ -22,7 +22,7 @@ describe("GET /api/sessions", () => {
   });
 
   it("excludes sessions that have no conversation file", async () => {
-    const app = createApp(fixturesDir);
+    const app = createApp({ claudeDir: fixturesDir });
     const res = await app.request("/api/sessions");
     const body = (await res.json()) as { sessions: Session[] };
 
@@ -36,7 +36,7 @@ describe("GET /api/sessions", () => {
 
 describe("GET /api/sessions/:id", () => {
   it("returns messages for an existing session", async () => {
-    const app = createApp(fixturesDir);
+    const app = createApp({ claudeDir: fixturesDir });
     const res = await app.request("/api/sessions/session-1");
 
     expect(res.status).toBe(200);
@@ -51,7 +51,7 @@ describe("GET /api/sessions/:id", () => {
   });
 
   it("returns 404 for a nonexistent session", async () => {
-    const app = createApp(fixturesDir);
+    const app = createApp({ claudeDir: fixturesDir });
     const res = await app.request("/api/sessions/nonexistent");
 
     expect(res.status).toBe(404);
