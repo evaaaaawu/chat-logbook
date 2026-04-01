@@ -1,11 +1,21 @@
 {
   "name": "chat-logbook",
   "version": "0.1.0",
-  "private": true,
   "description": "A local-first conversation manager for Claude Code",
   "license": "MIT",
+  "type": "module",
+  "bin": {
+    "chat-logbook": "./bin/cli.js",
+    "chat-log": "./bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "api/dist/",
+    "web/dist/"
+  ],
   "scripts": {
     "dev": "pnpm -r run dev",
+    "build": "pnpm --filter web run build && pnpm --filter @chat-logbook/api run build",
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",
     "prepare": "husky"

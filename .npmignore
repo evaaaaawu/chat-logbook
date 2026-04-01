@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+.zed/
+.claude/
+wireframe.html
+*.tsbuildinfo
+api/src/
+web/src/
