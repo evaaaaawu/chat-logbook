@@ -1,7 +1,13 @@
 import { Hono } from "hono";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { listSessions, findSessionFile, getSessionMessages } from "./parser.js";
 
-export function createApp(claudeDir: string) {
+interface AppOptions {
+  claudeDir: string;
+  webDistDir?: string;
+}
+
+export function createApp({ claudeDir, webDistDir }: AppOptions) {
   const app = new Hono();
 
   app.get("/api/sessions", (c) => {
@@ -22,6 +28,11 @@ export function createApp(claudeDir: string) {
     const messages = getSessionMessages(sessionPath);
     return c.json({ messages });
   });
+
+  if (webDistDir) {
+    app.use("*", serveStatic({ root: webDistDir }));
+    app.use("*", serveStatic({ root: webDistDir, path: "index.html" }));
+  }
 
   return app;
 }

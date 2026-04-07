@@ -1,7 +1,8 @@
-.DS_Store
 node_modules/
-dist/
-*.tsbuildinfo
+.DS_Store
 .zed/
 .claude/
 wireframe.html
+*.tsbuildinfo
+api/src/
+web/src/
