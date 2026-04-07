@@ -27,6 +27,9 @@
       "msw"
     ]
   },
+  "dependencies": {
+    "update-notifier": "^7.3.1"
+  },
   "devDependencies": {
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
