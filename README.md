@@ -45,7 +45,7 @@ Then open the URL shown in your terminal.
 Make sure you have Claude Code conversation history at `~/.claude/`. chat-logbook reads from this directory automatically.
 
 **Port already in use**
-By default, chat-logbook runs on port 3000. If that port is occupied, it will automatically try the next available port.
+By default, chat-logbook runs on port 3100. Use `PORT=8080 chat-log` to specify a different port.
 
 ## How It Works
 

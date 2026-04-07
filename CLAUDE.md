@@ -21,7 +21,7 @@ Key design principles:
 - **Frontend stack**: React + TypeScript + Vite + Tailwind CSS + shadcn/ui (Radix UI primitives)
 - **Frontend testing**: Vitest + React Testing Library + MSW (Mock Service Worker)
 - **Frontend state**: React useState + custom hooks (no external state management library)
-- **Dev proxy**: Vite forwards `/api` requests to Hono backend (`http://localhost:3000`)
+- **Dev proxy**: Vite forwards `/api` requests to Hono backend (`http://localhost:3100`)
 - **Real-time updates**: SSE for streaming active conversations
 - **Runtime**: Node.js >= 18
 - **Distribution**: npm package, runnable via `npx chat-logbook` or global install (`chat-log` command)
