@@ -4,6 +4,9 @@
   "description": "A local-first conversation manager for Claude Code",
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "bin": {
     "chat-logbook": "./bin/cli.js",
     "chat-log": "./bin/cli.js"

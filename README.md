@@ -20,24 +20,30 @@ Browse, tag, annotate, and organize your Claude Code conversation history — al
 
 ### Prerequisites
 
-- Node.js >= 18
+- Node.js >= 20
 
 ### Usage
 
-Run directly with npx:
-
-```bash
-npx chat-logbook
-```
-
-Or install globally for a shorter command:
+Install globally for a shorter command:
 
 ```bash
 npm install -g chat-logbook
 chat-log
 ```
 
-Then open the URL shown in your terminal.
+Or try without installing:
+
+```bash
+npx chat-logbook@latest
+```
+
+You should see:
+
+```
+chat-logbook is running at http://localhost:3100
+```
+
+Your browser will open automatically, showing a list of your Claude Code sessions on the left and conversation content on the right.
 
 ### Troubleshooting
 
@@ -46,6 +52,9 @@ Make sure you have Claude Code conversation history at `~/.claude/`. chat-logboo
 
 **Port already in use**
 By default, chat-logbook runs on port 3100. Use `PORT=8080 chat-log` to specify a different port.
+
+**Updating to the latest version**
+Run `npm install -g chat-logbook@latest` to update. If you use npx, the `@latest` tag ensures you always run the newest version.
 
 ## How It Works
 
