@@ -4,4 +4,5 @@ dist/
 *.tsbuildinfo
 .zed/
 .claude/
+.playwright-mcp/
 wireframe.html
