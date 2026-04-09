@@ -5,4 +5,6 @@ dist/
 .zed/
 .claude/
 .playwright-mcp/
+test-results/
+playwright-report/
 wireframe.html
