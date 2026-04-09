@@ -1,6 +1,9 @@
 import Markdown from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { Message, ContentBlock } from "@/types";
+import { CollapsibleThinking } from "./CollapsibleThinking";
+import { CollapsibleToolCall } from "./CollapsibleToolCall";
 
 interface ConversationViewProps {
   messages: Message[];
@@ -8,7 +11,11 @@ interface ConversationViewProps {
 }
 
 function MarkdownText({ children }: { children: string }) {
-  return <Markdown remarkPlugins={[remarkGfm]}>{children}</Markdown>;
+  return (
+    <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+      {children}
+    </Markdown>
+  );
 }
 
 function renderContentBlock(block: ContentBlock, index: number) {
@@ -16,20 +23,10 @@ function renderContentBlock(block: ContentBlock, index: number) {
     case "text":
       return <MarkdownText key={index}>{block.text}</MarkdownText>;
     case "thinking":
-      return (
-        <em key={index} className="text-sm text-muted-foreground">
-          {block.thinking}
-        </em>
-      );
+      if (!block.thinking) return null;
+      return <CollapsibleThinking key={index} thinking={block.thinking} />;
     case "tool_use":
-      return (
-        <span
-          key={index}
-          className="inline-block rounded bg-card px-2 py-1 font-mono text-xs text-chart-3"
-        >
-          Tool: {block.name}
-        </span>
-      );
+      return <CollapsibleToolCall key={index} block={block} />;
     case "tool_result":
       return null;
   }

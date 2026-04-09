@@ -17,7 +17,7 @@ describe("Session list", () => {
     await screen.findByText("Build a login page");
 
     // Project name: last segment of path
-    expect(screen.getByText("my-web-app")).toBeInTheDocument();
+    expect(screen.getAllByText("my-web-app").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("backend-api")).toBeInTheDocument();
   });
 
@@ -111,7 +111,131 @@ describe("Conversation view", () => {
     expect(linkEl.tagName).toBe("A");
     expect(linkEl).toHaveAttribute("href", "https://example.com");
 
-    // Assistant message has a code block
-    expect(screen.getByText("console.log('hello')")).toBeInTheDocument();
+    // Assistant message has a syntax-highlighted code block
+    // rehype-highlight splits tokens into spans, so use a function matcher
+    const codeBlock = screen.getByText((_content, element) => {
+      return (
+        element?.tagName === "CODE" &&
+        element.textContent?.includes("console.log('hello')") === true
+      );
+    });
+    expect(codeBlock.className).toMatch(/hljs/);
+  });
+});
+
+describe("Tool call rendering", () => {
+  it("shows a collapsed summary for tool_use blocks", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Refactor utils"));
+
+    // Tool call summary should be visible
+    expect(await screen.findByText("Read: src/utils.ts")).toBeInTheDocument();
+
+    // Full tool input should NOT be visible when collapsed
+    expect(screen.queryByText(/"file_path"/)).not.toBeInTheDocument();
+  });
+
+  it("expands tool call to show full input when clicked", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Refactor utils"));
+    const summary = await screen.findByText("Read: src/utils.ts");
+
+    // Click to expand
+    await user.click(summary);
+
+    // Should show the tool input details
+    expect(screen.getByText(/"file_path"/)).toBeInTheDocument();
+  });
+
+  it("collapses tool call back when clicked again", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Refactor utils"));
+    const summary = await screen.findByText("Read: src/utils.ts");
+
+    // Expand then collapse
+    await user.click(summary);
+    expect(screen.getByText(/"file_path"/)).toBeInTheDocument();
+
+    await user.click(summary);
+    expect(screen.queryByText(/"file_path"/)).not.toBeInTheDocument();
+  });
+});
+
+describe("Thinking block rendering", () => {
+  it("does not render thinking blocks with empty content", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Refactor utils"));
+    await screen.findByText("Read: src/utils.ts");
+
+    // session-3 has one empty thinking and one with content
+    // Only one "Thinking..." button should appear
+    const thinkingButtons = screen.getAllByText("Thinking...");
+    expect(thinkingButtons).toHaveLength(1);
+  });
+
+  it("shows a collapsed 'Thinking...' label by default", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Refactor utils"));
+
+    // Should show collapsed thinking label
+    expect(await screen.findByText("Thinking...")).toBeInTheDocument();
+
+    // Full thinking content should NOT be visible when collapsed
+    expect(
+      screen.queryByText(/read the current utils file/)
+    ).not.toBeInTheDocument();
+  });
+
+  it("expands thinking block to show full content when clicked", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Refactor utils"));
+    const thinkingLabel = await screen.findByText("Thinking...");
+
+    await user.click(thinkingLabel);
+
+    expect(screen.getByText(/read the current utils file/)).toBeInTheDocument();
+  });
+
+  it("collapses thinking block back when clicked again", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Refactor utils"));
+    const thinkingLabel = await screen.findByText("Thinking...");
+
+    await user.click(thinkingLabel);
+    expect(screen.getByText(/read the current utils file/)).toBeInTheDocument();
+
+    await user.click(thinkingLabel);
+    expect(
+      screen.queryByText(/read the current utils file/)
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("Tool call rendering (continued)", () => {
+  it("does not render tool_result blocks", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Refactor utils"));
+    await screen.findByText("Read: src/utils.ts");
+
+    // tool_result content should not appear
+    expect(
+      screen.queryByText("export function add(a, b) { return a + b; }")
+    ).not.toBeInTheDocument();
   });
 });

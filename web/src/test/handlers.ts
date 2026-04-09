@@ -16,6 +16,13 @@ export const fakeSessions = [
     updatedAt: 1700000300000,
   },
   {
+    id: "session-3",
+    title: "Refactor utils",
+    project: "/Users/test/my-web-app",
+    createdAt: 1700000050000,
+    updatedAt: 1700000150000,
+  },
+  {
     id: "session-missing",
     title: "Untitled",
     project: "/Users/test/some-project",
@@ -52,6 +59,40 @@ export const fakeMessages = {
         },
       ],
       timestamp: "2024-01-01T00:00:05Z",
+    },
+  ],
+  "session-3": [
+    {
+      role: "user",
+      content: "Refactor the utils module",
+      timestamp: "2024-01-01T00:00:06Z",
+    },
+    {
+      role: "assistant",
+      content: [
+        {
+          type: "thinking",
+          thinking: "",
+        },
+        {
+          type: "thinking",
+          thinking:
+            "I should read the current utils file first to understand the structure.",
+        },
+        {
+          type: "tool_use",
+          id: "tool-1",
+          name: "Read",
+          input: { file_path: "src/utils.ts" },
+        },
+        {
+          type: "tool_result",
+          tool_use_id: "tool-1",
+          content: "export function add(a, b) { return a + b; }",
+        },
+        { type: "text", text: "I've read the file and will refactor it now." },
+      ],
+      timestamp: "2024-01-01T00:00:07Z",
     },
   ],
 };
