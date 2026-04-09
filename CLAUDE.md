@@ -18,12 +18,15 @@ Key design principles:
 - **Data source**: JSONL files from `~/.claude/` (read-only)
 - **User metadata**: SQLite database at `~/.chat-logbook/data.db`
 - **UI**: Three-column resizable layout (filters | session list | conversation content) with Solarized Dark theme
-- **Frontend stack**: React + TypeScript + Vite + Tailwind CSS + shadcn/ui (Radix UI primitives)
+- **Frontend stack**: React + TypeScript + Vite + Tailwind CSS + shadcn/ui (Base UI primitives)
 - **Frontend testing**: Vitest + React Testing Library + MSW (Mock Service Worker)
+- **E2E testing**: Playwright (Chromium)
 - **Frontend state**: React useState + custom hooks (no external state management library)
 - **Dev proxy**: Vite forwards `/api` requests to Hono backend (`http://localhost:3100`)
 - **Real-time updates**: SSE for streaming active conversations
-- **Runtime**: Node.js >= 18
+- **CI**: GitHub Actions — typecheck, unit tests, and Playwright E2E on every PR
+- **Pre-commit hooks**: Husky + lint-staged (Prettier), typecheck, and tests
+- **Runtime**: Node.js >= 20
 - **Distribution**: npm package, runnable via `npx chat-logbook` or global install (`chat-log` command)
 
 ## Project Structure
@@ -39,19 +42,28 @@ web/                  # React frontend (Vite + shadcn/ui + Solarized Dark)
     App.tsx           # Root component with three-column resizable layout
     App.test.tsx      # Integration tests (RTL + MSW)
     components/
-      FilterPanel.tsx       # Left sidebar (placeholder for filters)
-      SessionList.tsx       # Middle panel (session list sorted by updatedAt)
-      ConversationView.tsx  # Right panel (messages with markdown rendering)
-      ui/                   # shadcn/ui primitives (button, resizable, etc.)
+      FilterPanel.tsx           # Left sidebar (placeholder for filters)
+      SessionList.tsx           # Middle panel (session list sorted by updatedAt)
+      ConversationView.tsx      # Right panel (messages with virtual scrolling)
+      CollapsibleToolCall.tsx   # Expandable tool call block with summary
+      CollapsibleThinking.tsx   # Expandable thinking/reasoning block
+      ui/                       # shadcn/ui primitives (button, resizable, etc.)
     hooks/
       useSessions.ts  # Fetches and sorts sessions from /api/sessions
       useMessages.ts  # Fetches messages for a selected session
+    lib/
+      generateToolSummary.ts  # Generates human-readable tool call summaries
     test/
       handlers.ts     # MSW request handlers with fake data
       server.ts       # MSW server instance
       setup.ts        # Vitest setup (jest-dom, MSW, ResizeObserver mock)
     types.ts          # Shared types (Session, Message, ContentBlock)
     index.css         # Solarized Dark theme via CSS variable overrides
+  e2e/
+    virtual-scrolling.spec.ts   # Playwright E2E test for virtual scrolling
+.github/
+  workflows/
+    ci.yml            # GitHub Actions CI pipeline for PR checks
 ```
 
 ## Development
@@ -65,7 +77,7 @@ pnpm run dev          # Start dev servers for all workspaces
 
 ## Status
 
-Backend API and frontend session browsing are implemented. The app supports listing sessions, viewing conversations with markdown rendering, and a three-column resizable layout with Solarized Dark theme.
+The app supports listing sessions, viewing conversations with rich content rendering (markdown, syntax-highlighted code blocks, collapsible tool calls and thinking blocks), virtual scrolling for long conversations, and a three-column resizable layout with Solarized Dark theme.
 
 ## Branch Strategy
 
