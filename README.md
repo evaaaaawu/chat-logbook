@@ -66,12 +66,6 @@ Because chat-logbook relies on what Claude Code persists to disk, **only convers
 
 ## FAQ
 
-### Why can't I see my `/btw` conversations?
-
-The `/btw` feature in Claude Code is designed to be ephemeral — questions and answers appear in a temporary overlay and are never written to conversation history files. Since chat-logbook reads from these files, `/btw` exchanges are not available.
-
-This is by design: `/btw` is intended for quick, throwaway questions. If you want a conversation to be preserved and visible in chat-logbook, use a regular message instead of `/btw`.
-
 ### Is my data safe?
 
 Yes. chat-logbook is fully local — no data ever leaves your machine. It only **reads** from `~/.claude/` and never modifies your original conversation files. The SQLite database it creates for your tags, annotations, and other metadata is stored separately at `~/.chat-logbook/`.
@@ -79,6 +73,12 @@ Yes. chat-logbook is fully local — no data ever leaves your machine. It only *
 ### Does chat-logbook work with Claude Code on the web?
 
 No. chat-logbook reads from local `~/.claude/` files, which are only created by the Claude Code CLI running on your machine. Conversations run via Claude Code on the web (cloud VMs) are not stored locally and are not accessible to chat-logbook.
+
+### Why can't I see my `/btw` conversations?
+
+The `/btw` feature in Claude Code is designed to be ephemeral — questions and answers appear in a temporary overlay and are never written to conversation history files. Since chat-logbook reads from these files, `/btw` exchanges are not available.
+
+This is by design: `/btw` is intended for quick, throwaway questions. If you want a conversation to be preserved and visible in chat-logbook, use a regular message instead of `/btw`.
 
 ## Roadmap
 
