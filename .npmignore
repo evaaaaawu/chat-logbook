@@ -1,8 +1,15 @@
-node_modules/
-.DS_Store
-.zed/
-.claude/
-wireframe.html
-*.tsbuildinfo
+# Source code (only ship built artifacts)
 api/src/
 web/src/
+
+# Dev / build metadata
+*.tsbuildinfo
+
+# OS files
+.DS_Store
+
+# Editor / IDE
+.zed/
+
+# AI tools
+.claude/
