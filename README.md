@@ -2,7 +2,7 @@
 
 A local-first conversation browser for Claude Code.
 
-> **Status:** Early release (v0.2.0). Core browsing and rendering work well.
+> **Status:** Early release (v0.2.1). Core browsing and rendering work well.
 > Search, filtering, tagging, and annotations are on the roadmap but not yet
 > implemented. See [Roadmap](#roadmap) for what's planned.
 

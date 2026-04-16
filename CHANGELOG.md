@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-04-16
+
+### Changed
+
+- License changed from MIT to AGPL-3.0-only to support planned open core model
+- README rewritten to accurately reflect current project state — removed unimplemented features from feature list, added status block, architecture overview, and development guide
+- Organized .gitignore and .npmignore files
+
 ## [0.2.0] - 2026-04-09
 
 ### Added
