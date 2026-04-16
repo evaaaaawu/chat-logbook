@@ -89,4 +89,8 @@ This is by design: `/btw` is intended for quick, throwaway questions. If you wan
 
 ## License
 
-[MIT](LICENSE)
+This project is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only).
+
+You are free to use, modify, and distribute this software under the terms of the AGPL-3.0. If you modify the program and make it available over a network, you must release your modified source code under the same license.
+
+For commercial licensing inquiries, please contact the author.
