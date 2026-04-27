@@ -18,6 +18,9 @@ Design principles:
 - **Read-only access to `~/.claude/`** — never modify original conversation files.
 - **Local-only** — no data leaves your machine.
 - **Zero configuration** — install and run, nothing else required.
+- **Keyboard-first** — the product is evolving into a Spotlight-style finder
+  (think Telescope / Raycast / `⌘K`) over your conversation history. Mouse
+  works, but every primary action will have a keyboard binding.
 
 The full problem statement, user stories, and implementation decisions live in
 the PRD: [issue #1](https://github.com/evaaaaawu/chat-logbook/issues/1).
@@ -123,15 +126,40 @@ No. chat-logbook reads from local `~/.claude/` files, which are only created by 
 
 ## Roadmap
 
-- **Full-text search** — Find conversations by keywords across all projects
-- **Project filtering** — Focus on conversations within a specific project
-- **Real-time streaming** — Watch active conversations update live via SSE
-- **Keyboard shortcuts** — `↑↓` to switch sessions, `/` to search, `Esc` to go back
-- **Soft delete & restore** — Hide sessions you don't need; restore them anytime
-- **Title editing** — Customize session titles for easier identification
-- **Tag system** — Add color-coded tags to sessions, filter by multiple tags
-- **Annotations** — Add notes next to any message in a conversation
-- **Highlights** — Mark important text within conversations
+The headline feature on the way is **Spotlight Search** — a `⌘K` / `/` overlay
+that searches across sessions, messages, tags, and projects with full keyboard
+navigation, full-text matching (SQLite FTS5 trigram), and message-level jump +
+highlight. It is tracked as the [Spotlight Search epic (#5)](https://github.com/evaaaaawu/chat-logbook/issues/5).
+
+Work is grouped into release milestones:
+
+### [v0.3.0 — Spotlight Alpha](https://github.com/evaaaaawu/chat-logbook/milestone/1)
+
+- **Spotlight overlay skeleton** — `⌘K` / `/` opens an overlay; sessions picker; `Enter` opens, `Esc` closes
+- **SQLite + soft delete & restore** — hide sessions you don't need; recover them anytime
+- **Full keyboard contract** — Browse + Spotlight bindings unified
+
+### [v0.4.0 — Spotlight v1](https://github.com/evaaaaawu/chat-logbook/milestone/2)
+
+- **FTS5 full-text messages search** — fast keyword search across all conversations, including CJK and file paths mentioned in tool calls
+- **Incremental reindex** — newly-arrived messages are searchable within seconds
+- **Message-level jump** — Spotlight matches scroll to the exact message and highlight the matched term, with a `n / m matches  ↑↓ Esc` navigator bar
+- **Tags & Projects pickers** — `Tab`-cycle picker scopes; tag/project selection applies the same filter pipeline as the navigation panel
+- **Tag system + tag filtering** — color-coded tags, multi-tag AND filtering
+- **Project filtering** — focus on conversations within a specific project
+- **Title editing** — customize session titles for easier identification
+
+### Later
+
+- **Real-time streaming** — watch active conversations update live via SSE
+- **Annotations** — add notes next to any message in a conversation
+- **Highlights** — mark important text within conversations
+- **`#tag` / `@project` prefix syntax** in Spotlight (fast-follow)
+- **Recent-sessions empty state + onboarding hint** in Spotlight (fast-follow)
+
+Explicit non-goals: semantic / vector search over conversation history, cloud
+sync, and any modification of `~/.claude/` files. See PRD #1 for the full
+out-of-scope list and rationale.
 
 ## License
 
