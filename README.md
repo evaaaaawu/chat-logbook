@@ -1,29 +1,37 @@
 # chat-logbook
 
-A local-first conversation browser for Claude Code.
+> _Where your AI conversations live._
 
-> **Status:** Early release (v0.2.1). Core browsing and rendering work well.
-> Search, filtering, tagging, and annotations are on the roadmap but not yet
-> implemented. See [Roadmap](#roadmap) for what's planned.
+chat-logbook is a local-first library for your AI conversations. It reads the
+files AI assistants write on your machine — starting with Claude Code, with
+more tools planned — and presents them as a single browsable, searchable,
+organizable history.
+
+> **Status:** Early release (v0.2.1). Browsing and rendering work well today.
+> Search, tags, and annotations are on the way. See [Roadmap](#roadmap).
 
 ## About
 
-Claude Code stores every conversation as JSONL files in `~/.claude/`, but
-provides no UI to browse or revisit them. chat-logbook fills that gap — it
-reads those files and presents them in a browser, so you can review past
-sessions without digging through raw JSON.
+You open chat-logbook from the command line, and a browser window opens onto
+your conversation history. You can browse it, find anything in it, tag what
+matters, and pick up where you left off.
+
+Nothing leaves your machine. There is no account to create. The original
+files written by your AI tools are never modified.
 
 Design principles:
 
-- **Read-only access to `~/.claude/`** — never modify original conversation files.
-- **Local-only** — no data leaves your machine.
-- **Zero configuration** — install and run, nothing else required.
-- **Keyboard-first** — the product is evolving into a Spotlight-style finder
-  (think Telescope / Raycast / `⌘K`) over your conversation history. Mouse
-  works, but every primary action will have a keyboard binding.
+- **Read-only access to source directories.** Original conversation files are
+  never modified. Today that means `~/.claude/`; the same rule applies to
+  every agent we add.
+- **Local-only.** No telemetry, no analytics, no third-party calls.
+- **Zero configuration.** Install and run.
+- **Drive everything from the keyboard.** A `/` or `⌘K` overlay finds any
+  past conversation in seconds. The mouse still works, but every primary
+  action has a binding.
 
-The full problem statement, user stories, and implementation decisions live in
-the PRD: [issue #1](https://github.com/evaaaaawu/chat-logbook/issues/1).
+The full problem statement, user stories, and direction live in the
+[PRD](docs/PRD.md).
 
 ## What works today
 
@@ -149,6 +157,15 @@ Work is grouped into release milestones:
 - **Project filtering** — focus on conversations within a specific project
 - **Title editing** — customize session titles for easier identification
 
+### [v0.5.0 — Cross-vendor foundation](https://github.com/evaaaaawu/chat-logbook/milestones)
+
+- **Parser plugin architecture** — one plugin per agent, behind a stable
+  interface, so adding a new tool is a contained change
+- **First additional agents** — Codex CLI and Aider plugins, alongside the
+  existing Claude Code reader
+- **`SyncProvider` interface stub** — a no-op default in the OSS core, leaving
+  the integration point open for an opt-in cloud product later
+
 ### Later
 
 - **Real-time streaming** — watch active conversations update live via SSE
@@ -157,9 +174,13 @@ Work is grouped into release milestones:
 - **`#tag` / `@project` prefix syntax** in Spotlight (fast-follow)
 - **Recent-sessions empty state + onboarding hint** in Spotlight (fast-follow)
 
-Explicit non-goals: semantic / vector search over conversation history, cloud
-sync, and any modification of `~/.claude/` files. See PRD #1 for the full
-out-of-scope list and rationale.
+Explicit non-goals: semantic / vector search, cloud sync inside the OSS core,
+and any modification of source directories like `~/.claude/`. See the
+[PRD](docs/PRD.md) for the full out-of-scope list.
+
+This project is **not affiliated with Anthropic, OpenAI, or any other AI
+provider.** It reads files those tools write on your machine; it does not
+talk to their servers and is not endorsed by them.
 
 ## License
 
