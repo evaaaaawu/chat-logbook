@@ -24,3 +24,4 @@ playwright-report/
 # AI tools
 .claude/
 .playwright-mcp/
+CLAUDE.local.md
