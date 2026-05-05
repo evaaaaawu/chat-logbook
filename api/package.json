@@ -11,12 +11,16 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.11",
+    "better-sqlite3": "^12.9.0",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.7.0",
     "update-notifier": "^7.3.1"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.0.0",
     "@types/update-notifier": "^6.0.8",
+    "drizzle-kit": "^0.31.10",
     "tsup": "^8.5.1",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
