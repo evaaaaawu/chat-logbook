@@ -1,12 +1,27 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import {
   drizzle,
   type BetterSQLite3Database,
 } from "drizzle-orm/better-sqlite3";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { sessionsMeta } from "./schema.js";
+
+function resolveMigrationsFolder(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.join(here, "../../drizzle"),
+    path.join(here, "./drizzle"),
+  ];
+  const found = candidates.find((p) => fs.existsSync(p));
+  if (!found) {
+    throw new Error("Could not locate drizzle migrations folder");
+  }
+  return found;
+}
 
 export interface MetadataRepository {
   softDelete(sessionId: string): void;
@@ -24,16 +39,8 @@ export function createMetadataRepository({
 }: RepositoryOptions): MetadataRepository {
   fs.mkdirSync(dataDir, { recursive: true });
   const sqlite = new Database(path.join(dataDir, "data.db"));
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS sessions_meta (
-      session_id TEXT PRIMARY KEY,
-      is_deleted INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-  `);
-
   const db: BetterSQLite3Database = drizzle(sqlite);
+  migrate(db, { migrationsFolder: resolveMigrationsFolder() });
 
   return {
     softDelete(sessionId) {
