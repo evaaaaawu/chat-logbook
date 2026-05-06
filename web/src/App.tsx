@@ -15,10 +15,12 @@ import {
 function App() {
   const { sessions, softDelete, restore } = useSessions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mode, setMode] = useState<"main" | "trash">("main");
   const { messages, error } = useMessages(selectedId);
   const { toast, showToast, dismissToast } = useToast();
   const mainSessions = sessions.filter((s) => !s.isDeleted);
   const deletedSessions = sessions.filter((s) => s.isDeleted);
+  const visibleSessions = mode === "trash" ? deletedSessions : mainSessions;
   const selectedSession = sessions.find((s) => s.id === selectedId) ?? null;
 
   useEffect(() => {
@@ -30,9 +32,19 @@ function App() {
         target?.isContentEditable === true;
       if (isEditable) return;
 
+      if (e.key === "Escape" && mode === "trash") {
+        e.preventDefault();
+        setMode("main");
+        return;
+      }
+
       if (e.key === "Backspace" && selectedId) {
         e.preventDefault();
-        handleDelete(selectedId);
+        if (mode === "trash") {
+          handleRestore(selectedId);
+        } else {
+          handleDelete(selectedId);
+        }
         return;
       }
 
@@ -45,6 +57,24 @@ function App() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   });
+
+  const handleRestore = (id: string) => {
+    if (id === selectedId) {
+      const idx = deletedSessions.findIndex((s) => s.id === id);
+      const remaining = deletedSessions.filter((_, i) => i !== idx);
+      const next = remaining[idx] ?? remaining[idx - 1] ?? null;
+      setSelectedId(next?.id ?? null);
+    }
+    void restore(id);
+    showToast({
+      message: "Session restored.",
+      actionLabel: "View",
+      onAction: () => {
+        setMode("main");
+        setSelectedId(id);
+      },
+    });
+  };
 
   const handleDelete = (id: string) => {
     if (id === selectedId) {
@@ -65,15 +95,23 @@ function App() {
     <div className="h-screen bg-background text-foreground">
       <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel defaultSize={15} minSize={10}>
-          <FilterPanel deletedCount={deletedSessions.length} />
+          <FilterPanel
+            deletedCount={deletedSessions.length}
+            onOpenTrash={() => setMode("trash")}
+          />
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel defaultSize={25} minSize={15}>
           <SessionList
-            sessions={mainSessions}
+            mode={mode}
+            sessions={visibleSessions}
             selectedId={selectedId}
             onSelect={setSelectedId}
             onDelete={handleDelete}
+            onRestore={handleRestore}
+            onBack={() => setMode("main")}
+            deletedCount={deletedSessions.length}
+            onOpenTrash={() => setMode("trash")}
           />
         </ResizablePanel>
         <ResizableHandle />
@@ -82,6 +120,7 @@ function App() {
             session={selectedSession}
             messages={messages}
             error={error}
+            onRestore={handleRestore}
           />
         </ResizablePanel>
       </ResizablePanelGroup>

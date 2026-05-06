@@ -2,9 +2,10 @@ import { Trash } from "lucide-react";
 
 interface FilterPanelProps {
   deletedCount: number;
+  onOpenTrash: () => void;
 }
 
-export function FilterPanel({ deletedCount }: FilterPanelProps) {
+export function FilterPanel({ deletedCount, onOpenTrash }: FilterPanelProps) {
   return (
     <div data-testid="filter-panel" className="flex h-full flex-col">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4 text-sm font-semibold text-foreground">
@@ -19,6 +20,7 @@ export function FilterPanel({ deletedCount }: FilterPanelProps) {
         <button
           type="button"
           data-testid="trash-link"
+          onClick={onOpenTrash}
           className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-card"
         >
           <span className="flex items-center gap-2">

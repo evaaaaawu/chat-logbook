@@ -84,6 +84,13 @@ export const fakeMessages = {
       timestamp: "2024-01-01T00:00:05Z",
     },
   ],
+  "session-deleted-1": [
+    {
+      role: "user",
+      content: "Quick prototype experiment",
+      timestamp: "2024-01-01T00:00:08Z",
+    },
+  ],
   "session-3": [
     {
       role: "user",

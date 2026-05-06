@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { RotateCcw } from "lucide-react";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -11,6 +12,32 @@ interface ConversationViewProps {
   session: Session | null;
   messages: Message[];
   error?: string | null;
+  onRestore?: (id: string) => void;
+}
+
+function DeletedBanner({
+  sessionId,
+  onRestore,
+}: {
+  sessionId: string;
+  onRestore: (id: string) => void;
+}) {
+  return (
+    <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-md border border-[#a13836] bg-[#3a1d23] px-4 py-2.5 text-sm">
+      <span className="text-foreground">
+        <strong className="text-destructive">This session is deleted.</strong>{" "}
+        It won't appear in your main list until restored.
+      </span>
+      <button
+        type="button"
+        onClick={() => onRestore(sessionId)}
+        className="flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+      >
+        <RotateCcw size={14} aria-hidden="true" />
+        Restore
+      </button>
+    </div>
+  );
 }
 
 function getProjectName(projectPath: string): string {
@@ -108,6 +135,7 @@ export function ConversationView({
   session,
   messages,
   error,
+  onRestore,
 }: ConversationViewProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -121,6 +149,9 @@ export function ConversationView({
   return (
     <div className="flex h-full flex-col">
       <ConversationHeader session={session} />
+      {session?.isDeleted && onRestore && (
+        <DeletedBanner sessionId={session.id} onRestore={onRestore} />
+      )}
       {error ? (
         <div
           data-testid="conversation-panel"
