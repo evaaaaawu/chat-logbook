@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect } from "vitest";
 import App from "./App";
@@ -27,8 +27,10 @@ describe("Session list", () => {
     await screen.findByText("Fix database migration");
 
     const list = screen.getByTestId("session-list");
-    const listItems = within(list).getAllByRole("button");
-    const titles = listItems.map((item) => item.textContent);
+    const rowButtons = within(list)
+      .getAllByRole("button")
+      .filter((el) => !el.getAttribute("aria-label")?.startsWith("Delete"));
+    const titles = rowButtons.map((item) => item.textContent);
 
     // session-2 has updatedAt 1700000300000 (newer)
     // session-1 has updatedAt 1700000200000 (older)
@@ -59,6 +61,123 @@ describe("Trash link in filter panel", () => {
     const trashLink = await screen.findByTestId("trash-link");
     expect(within(trashLink).getByText(/trash/i)).toBeInTheDocument();
     expect(within(trashLink).getByText("1")).toBeInTheDocument();
+  });
+});
+
+describe("Soft delete from session list", () => {
+  it("removes the session from the list and increments trash count", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Fix database migration");
+
+    // Find the session row by title, then its delete button
+    const row = screen.getByText("Fix database migration").closest("button");
+    if (!row) throw new Error("Session row not found");
+
+    const deleteButton = within(row.parentElement!).getByRole("button", {
+      name: /delete session: fix database migration/i,
+    });
+    await user.click(deleteButton);
+
+    // Session should disappear from main list
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Fix database migration")
+      ).not.toBeInTheDocument();
+    });
+
+    // Trash count: 1 → 2
+    const trashLink = screen.getByTestId("trash-link");
+    expect(within(trashLink).getByText("2")).toBeInTheDocument();
+  });
+});
+
+describe("Auto-select next after delete", () => {
+  it("auto-selects the next session after deleting the selected one", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Select "Build a login page" (2nd in sorted main list)
+    await user.click(await screen.findByText("Build a login page"));
+
+    const header = screen.getByTestId("conversation-header");
+    expect(within(header).getByText("Build a login page")).toBeInTheDocument();
+
+    // Delete it via hover button
+    const list = screen.getByTestId("session-list");
+    const deleteBtn = within(list).getByRole("button", {
+      name: /delete session: build a login page/i,
+    });
+    await user.click(deleteBtn);
+
+    // Next session ("Refactor utils") should be auto-selected
+    await waitFor(() => {
+      expect(within(header).getByText("Refactor utils")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("Undo toast on delete", () => {
+  it("shows Undo toast after delete; clicking Undo restores the session", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Fix database migration");
+
+    const list = screen.getByTestId("session-list");
+    const deleteBtn = within(list).getByRole("button", {
+      name: /delete session: fix database migration/i,
+    });
+    await user.click(deleteBtn);
+
+    const toast = await screen.findByTestId("toast");
+    expect(within(toast).getByText(/session deleted/i)).toBeInTheDocument();
+
+    await user.click(within(toast).getByRole("button", { name: /undo/i }));
+
+    await waitFor(() => {
+      expect(
+        within(list).getByText("Fix database migration")
+      ).toBeInTheDocument();
+    });
+
+    const trashLink = screen.getByTestId("trash-link");
+    expect(within(trashLink).getByText("1")).toBeInTheDocument();
+  });
+});
+
+describe("Keyboard shortcuts: delete and undo", () => {
+  it("deletes the selected session when Backspace is pressed", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+
+    await user.keyboard("{Backspace}");
+
+    const list = screen.getByTestId("session-list");
+    await waitFor(() => {
+      expect(
+        within(list).queryByText("Build a login page")
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("undoes the last delete when Cmd+Z is pressed", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+    await user.keyboard("{Backspace}");
+
+    await screen.findByTestId("toast");
+
+    await user.keyboard("{Meta>}z{/Meta}");
+
+    await waitFor(() => {
+      expect(screen.getByText("Build a login page")).toBeInTheDocument();
+    });
   });
 });
 

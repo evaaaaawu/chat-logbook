@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSessions } from "@/hooks/useSessions";
 import { useMessages } from "@/hooks/useMessages";
+import { useToast } from "@/hooks/useToast";
 import { FilterPanel } from "@/components/FilterPanel";
 import { SessionList } from "@/components/SessionList";
 import { ConversationView } from "@/components/ConversationView";
+import { Toast } from "@/components/Toast";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -11,12 +13,53 @@ import {
 } from "@/components/ui/resizable";
 
 function App() {
-  const { sessions } = useSessions();
+  const { sessions, softDelete, restore } = useSessions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { messages, error } = useMessages(selectedId);
+  const { toast, showToast, dismissToast } = useToast();
   const mainSessions = sessions.filter((s) => !s.isDeleted);
   const deletedSessions = sessions.filter((s) => s.isDeleted);
   const selectedSession = sessions.find((s) => s.id === selectedId) ?? null;
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isEditable =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable === true;
+      if (isEditable) return;
+
+      if (e.key === "Backspace" && selectedId) {
+        e.preventDefault();
+        handleDelete(selectedId);
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && e.key === "z" && toast?.onAction) {
+        e.preventDefault();
+        toast.onAction();
+        dismissToast();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  });
+
+  const handleDelete = (id: string) => {
+    if (id === selectedId) {
+      const idx = mainSessions.findIndex((s) => s.id === id);
+      const remaining = mainSessions.filter((_, i) => i !== idx);
+      const next = remaining[idx] ?? remaining[idx - 1] ?? null;
+      setSelectedId(next?.id ?? null);
+    }
+    void softDelete(id);
+    showToast({
+      message: "Session deleted.",
+      actionLabel: "Undo",
+      onAction: () => void restore(id),
+    });
+  };
 
   return (
     <div className="h-screen bg-background text-foreground">
@@ -30,6 +73,7 @@ function App() {
             sessions={mainSessions}
             selectedId={selectedId}
             onSelect={setSelectedId}
+            onDelete={handleDelete}
           />
         </ResizablePanel>
         <ResizableHandle />
@@ -41,6 +85,7 @@ function App() {
           />
         </ResizablePanel>
       </ResizablePanelGroup>
+      <Toast toast={toast} onDismiss={dismissToast} />
     </div>
   );
 }

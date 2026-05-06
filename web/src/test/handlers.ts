@@ -9,7 +9,7 @@ type FakeSession = {
   isDeleted?: boolean;
 };
 
-export const fakeSessions: FakeSession[] = [
+const initialFakeSessions: FakeSession[] = [
   {
     id: "session-1",
     title: "Build a login page",
@@ -47,6 +47,12 @@ export const fakeSessions: FakeSession[] = [
     isDeleted: true,
   },
 ];
+
+export let fakeSessions: FakeSession[] = structuredClone(initialFakeSessions);
+
+export function resetFakeSessions(): void {
+  fakeSessions = structuredClone(initialFakeSessions);
+}
 
 export const fakeMessages = {
   "session-1": [
@@ -130,5 +136,23 @@ export const handlers = [
       return HttpResponse.json({ error: "Session not found" }, { status: 404 });
     }
     return HttpResponse.json({ messages });
+  }),
+  http.delete("/api/sessions/:id", ({ params }) => {
+    const id = params.id as string;
+    const session = fakeSessions.find((s) => s.id === id);
+    if (!session) {
+      return HttpResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+    session.isDeleted = true;
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.post("/api/sessions/:id/restore", ({ params }) => {
+    const id = params.id as string;
+    const session = fakeSessions.find((s) => s.id === id);
+    if (!session) {
+      return HttpResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+    session.isDeleted = false;
+    return new HttpResponse(null, { status: 204 });
   }),
 ];
