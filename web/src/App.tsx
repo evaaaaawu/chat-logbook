@@ -14,24 +14,31 @@ function App() {
   const { sessions } = useSessions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { messages, error } = useMessages(selectedId);
+  const mainSessions = sessions.filter((s) => !s.isDeleted);
+  const deletedSessions = sessions.filter((s) => s.isDeleted);
+  const selectedSession = sessions.find((s) => s.id === selectedId) ?? null;
 
   return (
     <div className="h-screen bg-background text-foreground">
       <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel defaultSize={15} minSize={10}>
-          <FilterPanel />
+          <FilterPanel deletedCount={deletedSessions.length} />
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel defaultSize={25} minSize={15}>
           <SessionList
-            sessions={sessions}
+            sessions={mainSessions}
             selectedId={selectedId}
             onSelect={setSelectedId}
           />
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel defaultSize={60} minSize={30}>
-          <ConversationView messages={messages} error={error} />
+          <ConversationView
+            session={selectedSession}
+            messages={messages}
+            error={error}
+          />
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>

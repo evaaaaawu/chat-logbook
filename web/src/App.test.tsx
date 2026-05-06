@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect } from "vitest";
 import App from "./App";
@@ -26,13 +26,39 @@ describe("Session list", () => {
 
     await screen.findByText("Fix database migration");
 
-    const listItems = screen.getAllByRole("button");
+    const list = screen.getByTestId("session-list");
+    const listItems = within(list).getAllByRole("button");
     const titles = listItems.map((item) => item.textContent);
 
     // session-2 has updatedAt 1700000300000 (newer)
     // session-1 has updatedAt 1700000200000 (older)
     expect(titles[0]).toContain("Fix database migration");
     expect(titles[1]).toContain("Build a login page");
+  });
+});
+
+describe("Conversation header", () => {
+  it("shows the session title and project after selecting a session", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+
+    const header = await screen.findByTestId("conversation-header");
+    expect(within(header).getByText("Build a login page")).toBeInTheDocument();
+    expect(within(header).getByText(/my-web-app/)).toBeInTheDocument();
+  });
+});
+
+describe("Trash link in filter panel", () => {
+  it("shows the count of deleted sessions in a Trash link", async () => {
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+
+    const trashLink = await screen.findByTestId("trash-link");
+    expect(within(trashLink).getByText(/trash/i)).toBeInTheDocument();
+    expect(within(trashLink).getByText("1")).toBeInTheDocument();
   });
 });
 

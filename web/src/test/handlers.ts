@@ -1,6 +1,15 @@
 import { http, HttpResponse } from "msw";
 
-export const fakeSessions = [
+type FakeSession = {
+  id: string;
+  title: string;
+  project: string;
+  createdAt: number;
+  updatedAt: number;
+  isDeleted?: boolean;
+};
+
+export const fakeSessions: FakeSession[] = [
   {
     id: "session-1",
     title: "Build a login page",
@@ -28,6 +37,14 @@ export const fakeSessions = [
     project: "/Users/test/some-project",
     createdAt: 1699999900000,
     updatedAt: 1699999900000,
+  },
+  {
+    id: "session-deleted-1",
+    title: "Old prototype",
+    project: "/Users/test/my-web-app",
+    createdAt: 1699999000000,
+    updatedAt: 1699999500000,
+    isDeleted: true,
   },
 ];
 
@@ -98,8 +115,13 @@ export const fakeMessages = {
 };
 
 export const handlers = [
-  http.get("/api/sessions", () => {
-    return HttpResponse.json({ sessions: fakeSessions });
+  http.get("/api/sessions", ({ request }) => {
+    const url = new URL(request.url);
+    const includeDeleted = url.searchParams.get("includeDeleted") === "true";
+    const sessions = includeDeleted
+      ? fakeSessions
+      : fakeSessions.filter((s) => !s.isDeleted);
+    return HttpResponse.json({ sessions });
   }),
   http.get("/api/sessions/:id", ({ params }) => {
     const id = params.id as string;

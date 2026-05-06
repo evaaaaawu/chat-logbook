@@ -31,34 +31,36 @@ export function SessionList({
   onSelect,
 }: SessionListProps) {
   return (
-    <div
-      data-testid="session-list"
-      className="flex h-full flex-col overflow-y-auto"
-    >
-      <div className="border-b border-border px-4 py-3 text-sm font-medium text-muted-foreground">
-        {sessions.length} sessions
+    <div data-testid="session-list" className="flex h-full flex-col">
+      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border px-4 text-sm">
+        <span className="font-semibold text-accent-foreground">Sessions</span>
+        <span className="text-xs text-muted-foreground">{sessions.length}</span>
       </div>
-      {sessions.map((session) => (
-        <button
-          key={session.id}
-          onClick={() => onSelect(session.id)}
-          className={`flex flex-col gap-1 border-b border-border px-4 py-3 text-left transition-colors hover:bg-card ${
-            session.id === selectedId
-              ? "border-l-2 border-l-primary bg-card"
-              : "border-l-2 border-l-transparent"
-          }`}
-        >
-          <span className="truncate text-sm font-medium text-accent-foreground">
-            {session.title}
-          </span>
-          <span className="flex items-center justify-between text-xs text-muted-foreground">
-            <span className="truncate">{getProjectName(session.project)}</span>
-            <span className="ml-2 shrink-0">
-              {getRelativeTime(session.updatedAt)}
+      <div className="flex-1 overflow-y-auto">
+        {sessions.map((session) => (
+          <button
+            key={session.id}
+            onClick={() => onSelect(session.id)}
+            className={`flex w-full flex-col gap-1 border-b border-border px-4 py-3 text-left transition-colors hover:bg-card ${
+              session.id === selectedId
+                ? "border-l-2 border-l-primary bg-card"
+                : "border-l-2 border-l-transparent"
+            }`}
+          >
+            <span className="truncate text-sm font-medium text-accent-foreground">
+              {session.title}
             </span>
-          </span>
-        </button>
-      ))}
+            <span className="flex items-center justify-between text-xs text-muted-foreground">
+              <span className="truncate">
+                {getProjectName(session.project)}
+              </span>
+              <span className="ml-2 shrink-0">
+                {getRelativeTime(session.updatedAt)}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

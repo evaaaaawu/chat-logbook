@@ -6,7 +6,7 @@ export function useSessions(): { sessions: Session[]; loading: boolean } {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/sessions")
+    fetch("/api/sessions?includeDeleted=true")
       .then((res) => res.json())
       .then((data: { sessions: Session[] }) => {
         const sorted = [...data.sessions].sort(
