@@ -1,6 +1,15 @@
 import { http, HttpResponse } from "msw";
 
-export const fakeSessions = [
+type FakeSession = {
+  id: string;
+  title: string;
+  project: string;
+  createdAt: number;
+  updatedAt: number;
+  isDeleted?: boolean;
+};
+
+const initialFakeSessions: FakeSession[] = [
   {
     id: "session-1",
     title: "Build a login page",
@@ -29,7 +38,21 @@ export const fakeSessions = [
     createdAt: 1699999900000,
     updatedAt: 1699999900000,
   },
+  {
+    id: "session-deleted-1",
+    title: "Old prototype",
+    project: "/Users/test/my-web-app",
+    createdAt: 1699999000000,
+    updatedAt: 1699999500000,
+    isDeleted: true,
+  },
 ];
+
+export let fakeSessions: FakeSession[] = structuredClone(initialFakeSessions);
+
+export function resetFakeSessions(): void {
+  fakeSessions = structuredClone(initialFakeSessions);
+}
 
 export const fakeMessages = {
   "session-1": [
@@ -59,6 +82,13 @@ export const fakeMessages = {
         },
       ],
       timestamp: "2024-01-01T00:00:05Z",
+    },
+  ],
+  "session-deleted-1": [
+    {
+      role: "user",
+      content: "Quick prototype experiment",
+      timestamp: "2024-01-01T00:00:08Z",
     },
   ],
   "session-3": [
@@ -98,8 +128,13 @@ export const fakeMessages = {
 };
 
 export const handlers = [
-  http.get("/api/sessions", () => {
-    return HttpResponse.json({ sessions: fakeSessions });
+  http.get("/api/sessions", ({ request }) => {
+    const url = new URL(request.url);
+    const includeDeleted = url.searchParams.get("includeDeleted") === "true";
+    const sessions = includeDeleted
+      ? fakeSessions
+      : fakeSessions.filter((s) => !s.isDeleted);
+    return HttpResponse.json({ sessions });
   }),
   http.get("/api/sessions/:id", ({ params }) => {
     const id = params.id as string;
@@ -108,5 +143,23 @@ export const handlers = [
       return HttpResponse.json({ error: "Session not found" }, { status: 404 });
     }
     return HttpResponse.json({ messages });
+  }),
+  http.delete("/api/sessions/:id", ({ params }) => {
+    const id = params.id as string;
+    const session = fakeSessions.find((s) => s.id === id);
+    if (!session) {
+      return HttpResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+    session.isDeleted = true;
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.post("/api/sessions/:id/restore", ({ params }) => {
+    const id = params.id as string;
+    const session = fakeSessions.find((s) => s.id === id);
+    if (!session) {
+      return HttpResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+    session.isDeleted = false;
+    return new HttpResponse(null, { status: 204 });
   }),
 ];

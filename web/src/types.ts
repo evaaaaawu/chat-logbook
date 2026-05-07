@@ -4,6 +4,7 @@ export interface Session {
   project: string;
   createdAt: number;
   updatedAt: number;
+  isDeleted?: boolean;
 }
 
 export type ContentBlock =

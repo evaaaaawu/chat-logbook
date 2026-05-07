@@ -17,8 +17,9 @@ const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
 updateNotifier({ pkg }).notify();
 
 const claudeDir = path.join(os.homedir(), ".claude");
+const dataDir = path.join(os.homedir(), ".chat-logbook");
 const webDistDir = path.join(__dirname, "../../web/dist");
-const app = createApp({ claudeDir, webDistDir });
+const app = createApp({ claudeDir, dataDir, webDistDir });
 const port = Number(process.env.PORT) || 3100;
 
 function openBrowser(url: string): void {

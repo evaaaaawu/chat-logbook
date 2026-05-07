@@ -18,7 +18,7 @@ test.describe("Virtual scrolling", () => {
     page,
   }) => {
     // Intercept API calls with fake data
-    await page.route("**/api/sessions", (route) =>
+    await page.route(/\/api\/sessions(\?|$)/, (route) =>
       route.fulfill({
         json: {
           sessions: [
