@@ -7,8 +7,9 @@ files AI assistants write on your machine — starting with Claude Code, with
 more tools planned — and presents them as a single browsable, searchable,
 organizable history.
 
-> **Status:** Early release (v0.2.1). Browsing and rendering work well today.
-> Search, tags, and annotations are on the way. See [Roadmap](#roadmap).
+> **Status:** Early release (v0.3.0). Browsing, rendering, and
+> soft-delete with Trash are working today. Search, tags, and
+> annotations are on the way. See [Roadmap](#roadmap).
 
 ## About
 

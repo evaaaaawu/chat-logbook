@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-05-07
+
+### Added
+
+- SQLite-backed metadata store at `~/.chat-logbook/data.db` with Drizzle ORM and drizzle-kit migrations. Database file and schema are created automatically on first launch.
+- Repository pattern (`MetadataRepository`) wrapping all SQLite access; underpins this and future write features (titles, tags, annotations).
+- Soft delete and restore for sessions — endpoints `DELETE /api/sessions/:id`, `POST /api/sessions/:id/restore`, and `GET /api/sessions?includeDeleted=true` for listing deleted sessions. Original `~/.claude/` files are never touched. Endpoints follow GitHub/Stripe-style hybrid semantics: 404 when the session ID is unknown to the source, 204 when the operation is a no-op (idempotent on terminal states).
+- Equal-height (48px) headers across the three columns, plus a new conversation header showing the selected session's title and project.
+- Trash sidebar entry with deleted-count badge.
+- Hover-only delete chip on each row, right-click context menu with Delete / Restore items, and a top-center Undo / Restore toast (5s, single instance).
+- Keyboard shortcuts: Backspace deletes the selected session, Cmd+Z (or Ctrl+Z) undoes within the toast window, Esc exits Trash mode. Editable elements (input/textarea/contentEditable) are exempted.
+- Trash mode that replaces the middle column with deleted sessions, sorted by deleted time. Includes Back link, deleted-banner with Restore button in the conversation view, and empty-state copy for both modes.
+
+### Fixed
+
+- Playwright e2e route pattern updated to match `?includeDeleted=true` query string after `useSessions` started passing it.
+
 ## [0.2.1] - 2026-04-16
 
 ### Changed
