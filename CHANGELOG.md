@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-05-07
+
+### Fixed
+
+- Declare `better-sqlite3` as a runtime dependency in the root `package.json` so global `npm install -g chat-logbook` no longer fails at startup with `ERR_MODULE_NOT_FOUND`. The bundled API entry point imports it as an external module, but it was missing from the published package's dependencies in v0.3.0.
+
 ## [0.3.0] - 2026-05-07
 
 ### Added
