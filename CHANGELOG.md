@@ -2,89 +2,71 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/),
-and this project adheres to [Semantic Versioning](https://semver.org/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.3.1] - 2026-05-07
 
 ### Fixed
 
-- Declare `better-sqlite3` as a runtime dependency in the root `package.json` so global `npm install -g chat-logbook` no longer fails at startup with `ERR_MODULE_NOT_FOUND`. The bundled API entry point imports it as an external module, but it was missing from the published package's dependencies in v0.3.0.
+- `npm install -g chat-logbook` no longer fails to start with a missing-module error. (v0.3.0 was published without declaring `better-sqlite3` as a dependency.)
 
 ## [0.3.0] - 2026-05-07
 
+You can now delete sessions you don't want to see anymore, and get them back if you change your mind. Your original `~/.claude/` files are never touched.
+
 ### Added
 
-- SQLite-backed metadata store at `~/.chat-logbook/data.db` with Drizzle ORM and drizzle-kit migrations. Database file and schema are created automatically on first launch.
-- Repository pattern (`MetadataRepository`) wrapping all SQLite access; underpins this and future write features (titles, tags, annotations).
-- Soft delete and restore for sessions — endpoints `DELETE /api/sessions/:id`, `POST /api/sessions/:id/restore`, and `GET /api/sessions?includeDeleted=true` for listing deleted sessions. Original `~/.claude/` files are never touched. Endpoints follow GitHub/Stripe-style hybrid semantics: 404 when the session ID is unknown to the source, 204 when the operation is a no-op (idempotent on terminal states).
-- Equal-height (48px) headers across the three columns, plus a new conversation header showing the selected session's title and project.
-- Trash sidebar entry with deleted-count badge.
-- Hover-only delete chip on each row, right-click context menu with Delete / Restore items, and a top-center Undo / Restore toast (5s, single instance).
-- Keyboard shortcuts: Backspace deletes the selected session, Cmd+Z (or Ctrl+Z) undoes within the toast window, Esc exits Trash mode. Editable elements (input/textarea/contentEditable) are exempted.
-- Trash mode that replaces the middle column with deleted sessions, sorted by deleted time. Includes Back link, deleted-banner with Restore button in the conversation view, and empty-state copy for both modes.
-
-### Fixed
-
-- Playwright e2e route pattern updated to match `?includeDeleted=true` query string after `useSessions` started passing it.
+- Delete and restore sessions. Hover a row for the delete chip, or right-click for Delete / Restore. A toast at the top gives you 5 seconds to undo.
+- Trash view in the sidebar, with a count badge. Click it to see deleted sessions sorted by when you deleted them, and restore from there.
+- Keyboard shortcuts: `Backspace` deletes the selected session, `Cmd+Z` / `Ctrl+Z` undoes within the toast window, `Esc` exits Trash. Shortcuts are off while you're typing in an input.
+- The conversation header now shows the selected session's title and project, aligned with the column headers across the layout.
+- A new database file at `~/.chat-logbook/data.db` stores your deletes (and, later, titles and tags). Back this up if you want to keep that state across machines.
 
 ## [0.2.1] - 2026-04-16
 
 ### Changed
 
-- License changed from MIT to AGPL-3.0-only to support planned open core model
-- README rewritten to accurately reflect current project state — removed unimplemented features from feature list, added status block, architecture overview, and development guide
-- Organized .gitignore and .npmignore files
+- License changed from MIT to AGPL-3.0-only.
+- README rewritten to match what's actually shipped today — features list, status, architecture, and how to develop locally.
 
 ## [0.2.0] - 2026-04-09
 
+Conversations with long tool output and code blocks are easier to read and faster to scroll through.
+
 ### Added
 
-- Collapsible tool calls and thinking blocks in conversation view
-- Tool call summary generation for clearer conversation overview
-- Syntax highlighting for code blocks with dedicated CSS
-- Virtual scrolling for improved performance on long conversations
-- Playwright E2E test for virtual scrolling
-- GitHub Actions CI pipeline for PR checks
+- Tool calls and thinking blocks are collapsible, with a one-line summary so you can scan a long conversation without scrolling through every expanded payload.
+- Code blocks now render with syntax highlighting.
+- Long conversations use virtual scrolling, so opening a session with thousands of messages stays responsive.
 
 ### Fixed
 
-- Capitalize app title to "Chat Logbook"
-- Use pnpm filter to run Playwright install from web workspace
+- App title capitalization fixed to "Chat Logbook".
 
 ## [0.1.2] - 2026-04-08
 
 ### Changed
 
-- Improved Quick Start section in README and set Node.js minimum requirement to >= 20
+- Node.js 20 or newer is now required. The Quick Start section in the README has been updated to reflect this.
 
 ## [0.1.1] - 2026-04-07
 
 ### Added
 
-- Auto-open default browser on startup
-- Update notification when a newer version is available on npm
+- Your default browser opens automatically when you run `chat-logbook`.
+- A notification shows up on startup when a newer version is available on npm.
 
 ### Changed
 
-- Startup message improved to "chat-logbook is running at <url>" with colored clickable URL
+- Startup message now reads "chat-logbook is running at <url>" with a colored, clickable URL.
 
 ## [0.1.0] - 2026-04-07
 
+Initial release. Browse your Claude Code conversation history in a local web UI — no data leaves your machine.
+
 ### Added
 
-- Claude Data Parser for reading `~/.claude/` JSONL conversation files
-- API endpoints for listing sessions and viewing conversation messages
-- Three-column resizable layout (filter panel, session list, conversation view)
-- Markdown rendering with react-markdown and remark-gfm
-- Solarized Dark theme
-- Production build pipeline (Vite + tsup)
-- CLI entry points (`chat-logbook` and `chat-log` commands)
-- Static file serving in production mode via Hono
-- Configurable port via `PORT` environment variable (default: 3100)
-- Friendly error message on port conflict
-
-### Fixed
-
-- Filter out sessions without conversation files
-- Handle missing session gracefully instead of white screen crash
+- Reads your `~/.claude/` JSONL conversation files directly. The directory is treated as read-only; chat-logbook never writes back into it.
+- Three-column resizable layout: filter panel, session list, and conversation view.
+- Markdown rendering for messages, with the Solarized Dark theme.
+- `chat-logbook` and `chat-log` CLI commands, served on port 3100 by default. Set `PORT` to change it; you'll get a friendly error if the port is busy.
