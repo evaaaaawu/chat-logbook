@@ -6,9 +6,11 @@ A local-first library for the conversations you've had with your AI tools.
 Read by chat-logbook, kept on your machine, browsable and searchable in one
 place — even after your AI tool has deleted the original.
 
-> **Status.** Early release. Browsing, rendering, and soft-delete are working.
-> Search, tags, and the conversation archive that survives vendor cleanup are
-> on the way. See [Roadmap](#roadmap).
+> **Status.** A personal side project, moving at side-project pace —
+> development and responses happen as time allows. Early release:
+> browsing, rendering, and soft-delete work today. Search, tags, and the
+> archive that survives vendor cleanup are on the way. See
+> [Roadmap](#roadmap).
 
 ## What chat-logbook is
 
@@ -176,10 +178,17 @@ This project is **not affiliated with Anthropic, OpenAI, or any other AI
 provider.** It reads files those tools write on your machine; it does
 not talk to their servers and is not endorsed by them.
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 ## Contributing
 
-If you want to run the project locally, contribute code, or read the
-architecture, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Chat Logbook is in very early development. To keep focus on the current
+goals, we're not taking contributions right now.
+
+If there's something you really need — or you'd genuinely like to help —
+reach out directly and we can talk through it.
 
 ## License
 
