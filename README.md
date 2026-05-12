@@ -143,69 +143,29 @@ doesn't talk to their servers and isn't endorsed by them.
 
 ## Roadmap
 
-The headline feature on the way is **Spotlight Search** — a `⌘K` / `/`
-overlay that searches across sessions, messages, tags, and projects with
-full keyboard navigation, full-text matching (SQLite FTS5 trigram), and
-message-level jump and highlight. Tracked as the
-[Spotlight Search epic (#5)](https://github.com/evaaaaawu/chat-logbook/issues/5).
+Three phases of work are in flight, in this order.
 
-The other piece on the way is the **conversation archive that survives
-vendor cleanup** — once it lands, every conversation chat-logbook has
-read stays available even after the source tool has deleted it.
+**Conversation archive.** chat-logbook is moving to a model where every
+conversation it reads is kept in its own store on your machine, so your
+history survives even after the source tool prunes or rewrites its files.
+Once this lands, "stays yours" stops being a promise about today and
+becomes a property of the data.
 
-Work is grouped into release milestones:
+**Custom titles and tags.** Rename a session to something you'll
+recognize, attach tags with custom colors, and filter the list by tag or
+by project. This is the path from "I have a lot of conversations" to
+"I can find the one I need."
 
-### [v0.3.0 — Spotlight Alpha](https://github.com/evaaaaawu/chat-logbook/milestone/1)
+**Spotlight search.** A keyboard-driven overlay (`⌘K` or `/`) that
+searches across sessions, messages, tags, and projects from one input.
+A match lands you on the exact message with the term highlighted, and
+you can jump between every match without leaving the overlay.
 
-- Spotlight overlay skeleton — `⌘K` / `/` opens an overlay; sessions
-  picker; `Enter` opens, `Esc` closes.
-- SQLite + soft delete and restore — hide sessions you don't need;
-  recover them anytime.
-- Full keyboard contract — Browse + Spotlight bindings unified.
-
-### [v0.4.0 — Archive + Spotlight v1](https://github.com/evaaaaawu/chat-logbook/milestone/2)
-
-- **Conversation archive** — `archive.db` keeps every conversation
-  chat-logbook has read, even after the source tool deletes it.
-- FTS5 full-text messages search across all conversations, including
-  CJK and identifiers like file paths.
-- Incremental reindex — newly arrived messages are searchable within
-  seconds.
-- Message-level jump — Spotlight matches scroll to the exact message
-  and highlight the matched term, with a `n / m matches  ↑↓ Esc`
-  navigator bar.
-- Tags & Projects pickers — `Tab`-cycle picker scopes; tag / project
-  selection applies the same filter pipeline as the navigation panel.
-- Tag system + tag filtering — color-coded tags, multi-tag AND filter.
-- Project filtering — focus on conversations within a specific
-  project.
-- Title editing — customize session titles for easier identification.
-- Hard delete (Purge) — permanently remove a session from chat-logbook
-  with explicit confirmation.
-
-### [v0.5.0 — Cross-vendor foundation](https://github.com/evaaaaawu/chat-logbook/milestones)
-
-- Parser plugin architecture — one plugin per agent, behind a stable
-  three-method interface.
-- First additional agents — Codex CLI, Aider, OpenCode plugins
-  alongside the existing Claude Code reader.
-- `SyncProvider` interface stub — a no-op default in the OSS core,
-  leaving the integration point open for an opt-in cloud product.
-
-### Later
-
-- Real-time streaming — watch active conversations update live via SSE.
-- Annotations — add notes next to any message in a conversation.
-- Highlights — mark important text within conversations.
-- Edit your own past messages — local-only, with a clear "edited"
-  indicator and the ability to revert.
-- `chat-log show <id>` — print a session by id, useful from inside any
-  agent that can run a shell command.
-- `chat-log grep <pattern>` — substring / regex search across the
-  archive for power users.
-- Homebrew tap — `brew install` path for macOS users.
-- `[title](clog_xxx)` link rendering — clickable conversation
-  references inside chat-logbook itself; bidirectional links later.
+Beyond these three, several smaller things are on the list without firm
+timing — live updates while an AI tool is writing, annotations and
+highlights for marking what matters, editing your own past messages,
+CLI commands for working with conversations from a terminal. Some will
+ship; some are still being weighed.
 
 Explicit non-goals: semantic / vector search, cloud sync inside the OSS
 core, modification of source directories like `~/.claude/`, and bulk
