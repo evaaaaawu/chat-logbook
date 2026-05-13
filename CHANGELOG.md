@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-05-14
+
+Your conversations now live in chat-logbook's own archive, not just in Claude Code's files. If Claude Code prunes a session or you accidentally delete a JSONL, it stays visible here.
+
+### Added
+
+- A local archive at `~/.chat-logbook/archive.db`. On startup, `chat-logbook` scans `~/.claude/projects/` and copies any new conversations into it. Subsequent starts are cheap — unchanged files are skipped.
+- Sessions stay in the UI even after the original JSONL is gone. Back up `~/.chat-logbook/` to keep that history across machines.
+
+### Changed
+
+- The project label next to each session is now the real directory name (e.g. `chat-logbook`), read from the conversation's working directory. Earlier builds sometimes showed the encoded folder name (`-Users-…-chat-logbook`).
+
 ## [0.3.1] - 2026-05-07
 
 ### Fixed

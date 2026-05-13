@@ -8,8 +8,8 @@ place — even after your AI tool has deleted the original.
 
 > **Status.** A personal side project, moving at side-project pace —
 > development and responses happen as time allows. Early release:
-> browsing, rendering, and soft-delete work today. Search, tags, and the
-> archive that survives vendor cleanup are on the way. See
+> browsing, rendering, soft-delete, and a local archive that survives
+> vendor cleanup all work today. Search and tags are next. See
 > [Roadmap](#roadmap).
 
 ## What chat-logbook is
@@ -60,6 +60,9 @@ The full problem statement, user stories, and direction live in the
   Code's terminal look.
 - **Soft delete with Trash.** Hide sessions you don't want to see; restore
   them anytime.
+- **Local archive.** Every conversation chat-logbook reads is copied into
+  `~/.chat-logbook/archive.db`. The UI reads from the archive, so a
+  session stays visible even after the source JSONL is gone.
 
 ## Quick start
 
@@ -145,13 +148,7 @@ doesn't talk to their servers and isn't endorsed by them.
 
 ## Roadmap
 
-Three phases of work are in flight, in this order.
-
-**Conversation archive.** chat-logbook is moving to a model where every
-conversation it reads is kept in its own store on your machine, so your
-history survives even after the source tool prunes or rewrites its files.
-Once this lands, "stays yours" stops being a promise about today and
-becomes a property of the data.
+Two phases of work are in flight, in this order.
 
 **Custom titles and tags.** Rename a session to something you'll
 recognize, attach tags with custom colors, and filter the list by tag or
