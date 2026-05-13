@@ -25,3 +25,6 @@ playwright-report/
 .claude/
 .playwright-mcp/
 CLAUDE.local.md
+
+# Plugin test fixtures need to ship a fake ~/.claude tree
+!api/src/plugins/**/__fixtures__/**

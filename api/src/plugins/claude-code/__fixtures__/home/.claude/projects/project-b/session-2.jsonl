@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":"Hello from project b"},"isMeta":false,"isSidechain":false,"uuid":"msg-b1","timestamp":"2024-02-01T00:00:00Z","sessionId":"session-2"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hi there."}]},"uuid":"msg-b2","timestamp":"2024-02-01T00:00:01Z","sessionId":"session-2"}
