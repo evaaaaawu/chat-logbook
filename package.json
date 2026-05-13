@@ -19,6 +19,7 @@
   "scripts": {
     "dev": "pnpm -r run dev",
     "build": "pnpm --filter web run build && pnpm --filter @chat-logbook/api run build",
+    "prepublishOnly": "pnpm build",
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",
     "prepare": "husky"
