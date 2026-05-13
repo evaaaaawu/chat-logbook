@@ -71,6 +71,22 @@ export const messages = sqliteTable(
   ]
 );
 
+export const sessionScanState = sqliteTable(
+  "session_scan_state",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    agent: text("agent").notNull(),
+    sessionId: text("session_id").notNull(),
+    sourcePath: text("source_path").notNull(),
+    lastMtimeMs: integer("last_mtime_ms").notNull(),
+    lastSizeBytes: integer("last_size_bytes").notNull(),
+    lastScannedAt: integer("last_scanned_at", {
+      mode: "timestamp_ms",
+    }).notNull(),
+  },
+  (t) => [uniqueIndex("session_scan_state_idx").on(t.agent, t.sessionId)]
+);
+
 export const ingestionEvents = sqliteTable("ingestion_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   agent: text("agent").notNull(),

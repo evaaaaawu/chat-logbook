@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import updateNotifier from "update-notifier";
 import { createApp } from "./app.js";
+import { createArchiveRepository } from "./archive/repository.js";
+import { startIngestionInBackground } from "./ingestion/background.js";
+import { plugins } from "./plugins/registry.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgPath = path.join(__dirname, "../../package.json");
@@ -21,6 +24,13 @@ const dataDir = path.join(os.homedir(), ".chat-logbook");
 const webDistDir = path.join(__dirname, "../../web/dist");
 const app = createApp({ claudeDir, dataDir, webDistDir });
 const port = Number(process.env.PORT) || 3100;
+
+const archive = createArchiveRepository({ dataDir });
+startIngestionInBackground({
+  plugins,
+  archive,
+  env: { homeDir: os.homedir() },
+});
 
 function openBrowser(url: string): void {
   const cmd =
