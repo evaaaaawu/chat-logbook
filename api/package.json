@@ -8,7 +8,8 @@
     "build": "tsup",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:generate:archive": "drizzle-kit generate --config drizzle.archive.config.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.11",
