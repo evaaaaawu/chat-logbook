@@ -27,7 +27,13 @@ export class ClaudeCodePlugin implements AgentPlugin {
         if (!file.isFile() || !file.name.endsWith(".jsonl")) continue;
         const sourcePath = path.join(projectPath, file.name);
         const sessionId = file.name.replace(/\.jsonl$/, "");
-        yield { sessionId, sourcePath, watchPaths: [sourcePath] };
+        const cwd = readCwdFromJsonl(sourcePath);
+        yield {
+          sessionId,
+          sourcePath,
+          watchPaths: [sourcePath],
+          project: cwd ? path.basename(cwd) : undefined,
+        };
       }
     }
   }
@@ -93,6 +99,41 @@ export class ClaudeCodePlugin implements AgentPlugin {
 
     return null;
   }
+}
+
+function readCwdFromJsonl(sourcePath: string): string | undefined {
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(sourcePath, "r");
+    const buf = Buffer.alloc(64 * 1024);
+    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    const head = buf.subarray(0, n).toString("utf-8");
+    const lines = head.split("\n");
+    // Drop the last fragment; it may be a partial line if we truncated.
+    if (n === buf.length) lines.pop();
+    for (const line of lines) {
+      if (!line) continue;
+      try {
+        const obj = JSON.parse(line) as { cwd?: unknown };
+        if (typeof obj.cwd === "string" && obj.cwd.length > 0) {
+          return obj.cwd;
+        }
+      } catch {
+        // Ignore malformed lines.
+      }
+    }
+  } catch {
+    // Ignore I/O errors; fall back to undefined project.
+  } finally {
+    if (fd !== undefined) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return undefined;
 }
 
 function normalizeBlock(raw: unknown): NormalizedBlock | null {

@@ -63,6 +63,9 @@ describe("runIngestion", () => {
       expect(s.shortCode).toHaveLength(6);
     }
 
+    const session1 = sessionRows.find((s) => s.sourceSessionId === "session-1");
+    expect(session1?.project).toBe("project-a");
+
     archive.close();
   });
 
