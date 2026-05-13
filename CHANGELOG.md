@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-05-14
+
+### Fixed
+
+- `chat-log` no longer crashes on startup with `no such column: "session_id"`. The v0.4.0 npm tarball shipped a stale build that referenced a renamed column; reinstall with `npm install -g chat-logbook` to pick up this fix.
+
 ## [0.4.0] - 2026-05-14
 
 Your conversations now live in chat-logbook's own archive, not just in Claude Code's files. If Claude Code prunes a session or you accidentally delete a JSONL, it stays visible here.
