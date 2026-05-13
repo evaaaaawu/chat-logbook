@@ -1,5 +1,7 @@
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import { ClaudeCodePlugin } from "./plugin.js";
 import type { RawRecord, SessionRef } from "../types.js";
 
@@ -42,6 +44,44 @@ describe("ClaudeCodePlugin.discover", () => {
       plugin.discover({ homeDir: "/nonexistent/path" })
     );
     expect(refs).toEqual([]);
+  });
+
+  describe("with an encoded project directory and a cwd inside the JSONL", () => {
+    let tmpHome: string;
+
+    beforeEach(() => {
+      tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "chat-logbook-cwd-"));
+      const projectsDir = path.join(
+        tmpHome,
+        ".claude/projects/-Users-test-my-app"
+      );
+      fs.mkdirSync(projectsDir, { recursive: true });
+      const lines = [
+        JSON.stringify({ type: "file-history-snapshot", messageId: "m0" }),
+        JSON.stringify({
+          type: "user",
+          message: { role: "user", content: "hi" },
+          uuid: "u1",
+          timestamp: "2024-01-01T00:00:01Z",
+          cwd: "/Users/test/my-app",
+          sessionId: "sx",
+        }),
+      ];
+      fs.writeFileSync(
+        path.join(projectsDir, "sx.jsonl"),
+        lines.join("\n") + "\n"
+      );
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpHome, { recursive: true, force: true });
+    });
+
+    it("derives project from basename(cwd), not the encoded dir name", async () => {
+      const refs = await collect(plugin.discover({ homeDir: tmpHome }));
+      expect(refs).toHaveLength(1);
+      expect(refs[0].project).toBe("my-app");
+    });
   });
 });
 

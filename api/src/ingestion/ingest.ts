@@ -53,6 +53,8 @@ export async function runIngestion(opts: IngestOptions): Promise<IngestResult> {
         )
         .get();
 
+      ensureSession(opts.archive, plugin.id, ref.sessionId, now(), ref.project);
+
       if (
         stat &&
         prior &&
@@ -62,8 +64,6 @@ export async function runIngestion(opts: IngestOptions): Promise<IngestResult> {
         result.skippedByMtime += 1;
         continue;
       }
-
-      ensureSession(opts.archive, plugin.id, ref.sessionId, now());
 
       for await (const raw of plugin.extractRaw(ref)) {
         const payloadJson = JSON.stringify(raw.payload);
@@ -191,7 +191,8 @@ function ensureSession(
   archive: ArchiveRepository,
   agent: string,
   sourceSessionId: string,
-  firstSeenAt: Date
+  firstSeenAt: Date,
+  project: string | undefined
 ): string {
   const existing = archive.db
     .select()
@@ -203,7 +204,16 @@ function ensureSession(
       )
     )
     .get();
-  if (existing) return existing.id;
+  if (existing) {
+    if (project && existing.project !== project) {
+      archive.db
+        .update(sessions)
+        .set({ project })
+        .where(eq(sessions.id, existing.id))
+        .run();
+    }
+    return existing.id;
+  }
 
   const id = crypto.randomUUID();
   const shortCode = archive.generateShortCode();
@@ -215,6 +225,7 @@ function ensureSession(
       agent,
       sourceSessionId,
       firstSeenAt,
+      project: project ?? null,
     })
     .run();
   return id;

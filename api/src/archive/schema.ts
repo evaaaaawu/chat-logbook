@@ -24,6 +24,7 @@ export const sessions = sqliteTable(
     agent: text("agent").notNull(),
     sourceSessionId: text("source_session_id").notNull(),
     firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).notNull(),
+    project: text("project"),
   },
   (t) => [
     uniqueIndex("sessions_agent_source_idx").on(t.agent, t.sourceSessionId),

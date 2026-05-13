@@ -7,6 +7,7 @@ import { serve } from "@hono/node-server";
 import updateNotifier from "update-notifier";
 import { createApp } from "./app.js";
 import { createArchiveRepository } from "./archive/repository.js";
+import { createMetadataRepository } from "./metadata/repository.js";
 import { startIngestionInBackground } from "./ingestion/background.js";
 import { plugins } from "./plugins/registry.js";
 
@@ -19,13 +20,14 @@ const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
 
 updateNotifier({ pkg }).notify();
 
-const claudeDir = path.join(os.homedir(), ".claude");
 const dataDir = path.join(os.homedir(), ".chat-logbook");
 const webDistDir = path.join(__dirname, "../../web/dist");
-const app = createApp({ claudeDir, dataDir, webDistDir });
 const port = Number(process.env.PORT) || 3100;
 
 const archive = createArchiveRepository({ dataDir });
+const metadata = createMetadataRepository({ dataDir });
+const app = createApp({ archive, metadata, webDistDir });
+
 startIngestionInBackground({
   plugins,
   archive,

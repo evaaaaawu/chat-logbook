@@ -6,6 +6,7 @@ export interface SessionRef {
   sessionId: string;
   sourcePath: string;
   watchPaths: string[];
+  project?: string;
 }
 
 export interface RawRecord {
