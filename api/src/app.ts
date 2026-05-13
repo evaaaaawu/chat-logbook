@@ -7,6 +7,7 @@ import {
   sessions as archiveSessions,
 } from "./archive/schema.js";
 import type { MetadataRepository } from "./metadata/repository.js";
+import { loadSessionVisibility } from "./visibility.js";
 
 interface AppOptions {
   archive: ArchiveRepository;
@@ -65,15 +66,16 @@ export function createApp({ archive, metadata, webDistDir }: AppOptions) {
   }
 
   app.get("/api/sessions", (c) => {
-    const includeDeleted = c.req.query("includeDeleted") === "true";
-    const deleted = new Set(metadata.listDeletedIds());
+    const visibility = loadSessionVisibility(metadata, {
+      includeTrashed: c.req.query("includeTrashed") === "true",
+    });
 
     const rows = archive.db.select().from(archiveSessions).all();
     const sessions: SessionResponse[] = [];
 
     for (const row of rows) {
-      const isDeleted = deleted.has(row.id);
-      if (!includeDeleted && isDeleted) continue;
+      if (!visibility.isVisible(row.id)) continue;
+      const isDeleted = visibility.isTrashed(row.id);
 
       const lastMessage = archive.db
         .select({ ts: archiveMessages.ts })
@@ -128,6 +130,12 @@ export function createApp({ archive, metadata, webDistDir }: AppOptions) {
     const sessionId = c.req.param("id");
     const row = findArchiveSessionBySourceId(sessionId);
     if (!row) {
+      return c.json({ error: "Session not found" }, 404);
+    }
+    const visibility = loadSessionVisibility(metadata, {
+      includeTrashed: c.req.query("includeTrashed") === "true",
+    });
+    if (!visibility.isVisible(row.id)) {
       return c.json({ error: "Session not found" }, 404);
     }
     const rows = archive.db

@@ -13,7 +13,7 @@ export function useSessions(): UseSessionsResult {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/sessions?includeDeleted=true")
+    fetch("/api/sessions?includeTrashed=true")
       .then((res) => res.json())
       .then((data: { sessions: Session[] }) => {
         const sorted = [...data.sessions].sort(

@@ -130,8 +130,8 @@ export const fakeMessages = {
 export const handlers = [
   http.get("/api/sessions", ({ request }) => {
     const url = new URL(request.url);
-    const includeDeleted = url.searchParams.get("includeDeleted") === "true";
-    const sessions = includeDeleted
+    const includeTrashed = url.searchParams.get("includeTrashed") === "true";
+    const sessions = includeTrashed
       ? fakeSessions
       : fakeSessions.filter((s) => !s.isDeleted);
     return HttpResponse.json({ sessions });

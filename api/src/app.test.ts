@@ -287,6 +287,23 @@ describe("GET /api/sessions (archive-backed)", () => {
 });
 
 describe("Soft delete and restore (archive-backed)", () => {
+  it("ignores the legacy includeDeleted query param", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedSession(archive, {
+      internalId: "internal-uuid-1",
+      sourceSessionId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+
+    const app = createApp({ archive, metadata });
+    await app.request("/api/sessions/session-1", { method: "DELETE" });
+
+    const res = await app.request("/api/sessions?includeDeleted=true");
+    const body = (await res.json()) as { sessions: SessionResponse[] };
+    expect(body.sessions.map((s) => s.id)).not.toContain("session-1");
+  });
+
   it("hides a session from GET /api/sessions after DELETE", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
@@ -307,7 +324,7 @@ describe("Soft delete and restore (archive-backed)", () => {
     expect(body.sessions.map((s) => s.id)).not.toContain("session-1");
   });
 
-  it("includes deleted session with isDeleted flag when includeDeleted=true", async () => {
+  it("includes trashed session with isDeleted flag when includeTrashed=true", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     seedSession(archive, {
@@ -319,7 +336,7 @@ describe("Soft delete and restore (archive-backed)", () => {
     const app = createApp({ archive, metadata });
     await app.request("/api/sessions/session-1", { method: "DELETE" });
 
-    const res = await app.request("/api/sessions?includeDeleted=true");
+    const res = await app.request("/api/sessions?includeTrashed=true");
     const body = (await res.json()) as {
       sessions: (SessionResponse & { isDeleted?: boolean })[];
     };
@@ -362,6 +379,77 @@ describe("Soft delete and restore (archive-backed)", () => {
 
     const rows = archive.db.select().from(archiveSessions).all();
     expect(rows.map((r) => r.sourceSessionId)).toContain("session-1");
+  });
+});
+
+describe("GET /api/sessions/:id visibility", () => {
+  it("returns 404 for a trashed session by default", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedSession(archive, {
+      internalId: "internal-uuid-1",
+      sourceSessionId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceSessionId: "session-1",
+      messageId: "m1",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: "hi",
+      blocks: [{ type: "text", text: "hi" }],
+    });
+
+    const app = createApp({ archive, metadata });
+    await app.request("/api/sessions/session-1", { method: "DELETE" });
+
+    const res = await app.request("/api/sessions/session-1");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns messages for a trashed session when includeTrashed=true", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedSession(archive, {
+      internalId: "internal-uuid-1",
+      sourceSessionId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceSessionId: "session-1",
+      messageId: "m1",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: "hi",
+      blocks: [{ type: "text", text: "hi" }],
+    });
+
+    const app = createApp({ archive, metadata });
+    await app.request("/api/sessions/session-1", { method: "DELETE" });
+
+    const res = await app.request(
+      "/api/sessions/session-1?includeTrashed=true"
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { messages: MessageResponse[] };
+    expect(body.messages).toHaveLength(1);
+  });
+
+  it("still allows restore on a trashed session regardless of visibility flag", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedSession(archive, {
+      internalId: "internal-uuid-1",
+      sourceSessionId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+
+    const app = createApp({ archive, metadata });
+    await app.request("/api/sessions/session-1", { method: "DELETE" });
+    const restore = await app.request("/api/sessions/session-1/restore", {
+      method: "POST",
+    });
+    expect(restore.status).toBe(204);
   });
 });
 
