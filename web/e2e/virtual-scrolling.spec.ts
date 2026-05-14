@@ -34,7 +34,7 @@ test.describe("Virtual scrolling", () => {
       })
     );
 
-    await page.route("**/api/sessions/large-session", (route) =>
+    await page.route(/\/api\/sessions\/large-session(\?|$)/, (route) =>
       route.fulfill({
         json: { messages: generateMessages(MESSAGE_COUNT) },
       })
