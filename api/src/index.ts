@@ -9,6 +9,7 @@ import { createApp } from "./app.js";
 import { createArchiveRepository } from "./archive/repository.js";
 import { createMetadataRepository } from "./metadata/repository.js";
 import { startIngestionInBackground } from "./ingestion/background.js";
+import { startWatcher } from "./ingestion/watcher.js";
 import { plugins } from "./plugins/registry.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -28,11 +29,26 @@ const archive = createArchiveRepository({ dataDir });
 const metadata = createMetadataRepository({ dataDir });
 const app = createApp({ archive, metadata, webDistDir });
 
-startIngestionInBackground({
+const initialIngest = startIngestionInBackground({
   plugins,
   archive,
   env: { homeDir: os.homedir() },
 });
+
+const watcher = startWatcher({
+  plugins,
+  archive,
+  env: { homeDir: os.homedir() },
+});
+// Don't start watching until the initial scan has populated session_scan_state;
+// otherwise a `change` event could race the first scan and re-ingest from scratch.
+void initialIngest.done.then(() => watcher.ready).catch(() => {});
+
+function shutdown(): void {
+  void watcher.close().finally(() => process.exit(0));
+}
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
 function openBrowser(url: string): void {
   const cmd =
