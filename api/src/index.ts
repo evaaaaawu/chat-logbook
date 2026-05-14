@@ -11,6 +11,8 @@ import { createMetadataRepository } from "./metadata/repository.js";
 import { startIngestionInBackground } from "./ingestion/background.js";
 import { startWatcher } from "./ingestion/watcher.js";
 import { plugins } from "./plugins/registry.js";
+import { parseCliArgs } from "./cli/argv.js";
+import { helpText } from "./cli/help.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgPath = path.join(__dirname, "../../package.json");
@@ -18,6 +20,16 @@ const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
   name: string;
   version: string;
 };
+
+const action = parseCliArgs(process.argv.slice(2));
+if (action.kind === "version") {
+  console.log(pkg.version);
+  process.exit(0);
+}
+if (action.kind === "help") {
+  process.stdout.write(helpText);
+  process.exit(0);
+}
 
 updateNotifier({ pkg }).notify({ defer: false, isGlobal: true });
 
