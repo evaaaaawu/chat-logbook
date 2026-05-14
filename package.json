@@ -1,6 +1,6 @@
 {
   "name": "chat-logbook",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "A local-first conversation manager for Claude Code",
   "license": "AGPL-3.0-only",
   "type": "module",
