@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [0.4.0] - 2026-05-14
 
+> ⚠️ Deprecated — see [0.4.1](#041---2026-05-14). Crashes on startup with `no such column: "session_id"`.
+
 Your conversations now live in chat-logbook's own archive, not just in Claude Code's files. If Claude Code prunes a session or you accidentally delete a JSONL, it stays visible here.
 
 ### Added
@@ -30,6 +32,8 @@ Your conversations now live in chat-logbook's own archive, not just in Claude Co
 - `npm install -g chat-logbook` no longer fails to start with a missing-module error. (v0.3.0 was published without declaring `better-sqlite3` as a dependency.)
 
 ## [0.3.0] - 2026-05-07
+
+> ⚠️ Deprecated — see [0.3.1](#031---2026-05-07). Missing `better-sqlite3` dependency causes `ERR_MODULE_NOT_FOUND` on startup.
 
 You can now delete sessions you don't want to see anymore, and get them back if you change your mind. Your original `~/.claude/` files are never touched.
 
