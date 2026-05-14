@@ -1,8 +1,27 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+
+function findFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on("error", reject);
+    srv.listen(0, () => {
+      const addr = srv.address();
+      if (typeof addr === "object" && addr) {
+        const { port } = addr;
+        srv.close(() => resolve(port));
+      } else {
+        reject(new Error("could not allocate port"));
+      }
+    });
+  });
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const apiRoot = path.resolve(__dirname, "../..");
@@ -68,5 +87,57 @@ describe("cli --help", () => {
     const result = await runCli(["-h"], 3000);
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("Usage: chat-log");
+  });
+});
+
+describe("cli --port", () => {
+  let child: ChildProcess | null = null;
+  let tmpHome: string | null = null;
+
+  afterEach(async () => {
+    if (child && child.exitCode === null) {
+      child.kill("SIGTERM");
+      await new Promise((r) => child!.once("exit", r));
+    }
+    child = null;
+    if (tmpHome) {
+      fs.rmSync(tmpHome, { recursive: true, force: true });
+      tmpHome = null;
+    }
+  });
+
+  it("starts the server on the port from --port flag", async () => {
+    const port = await findFreePort();
+    tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "chat-log-e2e-"));
+    child = spawn(tsxBin, [entry, "--port", String(port)], {
+      env: { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome, PORT: "" },
+    });
+
+    const stdout = await new Promise<string>((resolve, reject) => {
+      let buf = "";
+      const t = setTimeout(
+        () => reject(new Error(`no startup log within 8s; got: ${buf}`)),
+        8000
+      );
+      child!.stdout!.on("data", (b) => {
+        buf += b.toString();
+        if (buf.includes(`localhost:${port}`)) {
+          clearTimeout(t);
+          resolve(buf);
+        }
+      });
+      child!.on("exit", (code) => {
+        clearTimeout(t);
+        reject(new Error(`exited early (code=${code}); stdout: ${buf}`));
+      });
+    });
+
+    expect(stdout).toContain(`http://localhost:${port}`);
+  });
+
+  it("exits non-zero with clear error on invalid --port value", async () => {
+    const result = await runCli(["--port", "abc"], 3000);
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toMatch(/abc/);
   });
 });

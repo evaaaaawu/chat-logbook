@@ -87,7 +87,7 @@ const server = serve({ fetch: app.fetch, port }, (info: { port: number }) => {
 server.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EADDRINUSE") {
     console.error(
-      `Port ${port} is already in use. Try a different port:\n\n  PORT=8080 chat-log\n`
+      `Port ${port} is already in use. Try a different port:\n\n  chat-log --port 8080\n  PORT=8080 chat-log\n`
     );
     process.exit(1);
   }

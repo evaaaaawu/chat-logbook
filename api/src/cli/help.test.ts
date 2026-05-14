@@ -21,6 +21,11 @@ describe("helpText", () => {
     expect(helpText).toMatch(/PORT=/);
   });
 
+  it("documents --port / -p flag", () => {
+    expect(helpText).toContain("--port");
+    expect(helpText).toContain("-p");
+  });
+
   it("fits within 80 columns", () => {
     for (const line of helpText.split("\n")) {
       expect(line.length).toBeLessThanOrEqual(80);
