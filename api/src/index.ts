@@ -18,7 +18,7 @@ const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
   version: string;
 };
 
-updateNotifier({ pkg }).notify();
+updateNotifier({ pkg }).notify({ defer: false, isGlobal: true });
 
 const dataDir = path.join(os.homedir(), ".chat-logbook");
 const webDistDir = path.join(__dirname, "../../web/dist");
