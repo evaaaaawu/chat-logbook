@@ -10,12 +10,8 @@ describe("parseCliArgs", () => {
     expect(parseCliArgs(["-v"])).toEqual({ kind: "version" });
   });
 
-  it("returns run action for empty argv", () => {
-    expect(parseCliArgs([])).toEqual({ kind: "run" });
-  });
-
-  it("returns run action for unknown args", () => {
-    expect(parseCliArgs(["--port", "8080"])).toEqual({ kind: "run" });
+  it("returns run with default port 3100 for empty argv", () => {
+    expect(parseCliArgs([])).toEqual({ kind: "run", port: 3100 });
   });
 
   it("returns help action for --help", () => {
@@ -24,5 +20,12 @@ describe("parseCliArgs", () => {
 
   it("returns help action for -h", () => {
     expect(parseCliArgs(["-h"])).toEqual({ kind: "help" });
+  });
+
+  it("falls back to PORT env when argv is empty", () => {
+    expect(parseCliArgs([], { PORT: "9000" })).toEqual({
+      kind: "run",
+      port: 9000,
+    });
   });
 });

@@ -21,7 +21,9 @@ const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
   version: string;
 };
 
-const action = parseCliArgs(process.argv.slice(2));
+const action = parseCliArgs(process.argv.slice(2), {
+  PORT: process.env.PORT,
+});
 if (action.kind === "version") {
   console.log(pkg.version);
   process.exit(0);
@@ -30,12 +32,16 @@ if (action.kind === "help") {
   process.stdout.write(helpText);
   process.exit(0);
 }
+if (action.kind === "error") {
+  console.error(action.message);
+  process.exit(1);
+}
 
 updateNotifier({ pkg }).notify({ defer: false, isGlobal: true });
 
 const dataDir = path.join(os.homedir(), ".chat-logbook");
 const webDistDir = path.join(__dirname, "../../web/dist");
-const port = Number(process.env.PORT) || 3100;
+const port = action.port;
 
 const archive = createArchiveRepository({ dataDir });
 const metadata = createMetadataRepository({ dataDir });
