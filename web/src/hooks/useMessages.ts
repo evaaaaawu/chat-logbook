@@ -17,7 +17,7 @@ export function useMessages(sessionId: string | null): {
     setLoading(true);
     setError(null);
 
-    fetch(`/api/sessions/${sessionId}`)
+    fetch(`/api/sessions/${sessionId}?includeTrashed=true`)
       .then((res) => {
         if (!res.ok) {
           return res.json().then((body: { error?: string }) => {
