@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-05-14
+
+Your conversations now update live in chat-logbook while an AI tool is still writing — no need to restart to see new messages. And if a vendor cleans up its internal storage behind your back, chat-logbook keeps a record of what disappeared so your archive stays trustworthy.
+
+### Added
+
+- Live updates while an AI tool is actively chatting. Open a session in chat-logbook and watch new messages appear as Claude Code writes them — within seconds of each turn.
+- An audit trail when source files vanish. If Claude Code (or another vendor) deletes one of its session files, chat-logbook records the event and keeps your archived copy intact. Your history doesn't quietly disappear.
+
+### Changed
+
+- The update-available banner now shows the moment you start `chat-log`, instead of waiting until the next run.
+
 ## [0.4.2] - 2026-05-14
 
 ### Fixed

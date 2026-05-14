@@ -63,6 +63,9 @@ The full problem statement, user stories, and direction live in the
 - **Local archive.** Every conversation chat-logbook reads is copied into
   `~/.chat-logbook/archive.db`. The UI reads from the archive, so a
   session stays visible even after the source JSONL is gone.
+- **Live updates.** While Claude Code is actively writing to a session,
+  new messages appear in chat-logbook within seconds — no restart
+  needed.
 
 ## Quick start
 
