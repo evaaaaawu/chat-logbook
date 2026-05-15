@@ -48,6 +48,51 @@ const TITLE_DISPLAY_CLASS =
 const TITLE_INPUT_CLASS =
   "min-w-[12ch] max-w-full rounded border border-border bg-transparent px-1.5 py-0.5 text-sm font-medium text-accent-foreground outline-none focus:border-primary [field-sizing:content]";
 
+function MenuItem({
+  icon,
+  label,
+  hint,
+  destructive = false,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  hint: string;
+  destructive?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className={`flex w-full items-center justify-between gap-6 rounded-md px-3 py-1.5 text-left transition-colors ${
+        destructive
+          ? "text-destructive hover:bg-[#3a1d23]"
+          : "hover:bg-white/[0.06]"
+      }`}
+    >
+      <span className="flex items-center gap-2">
+        {icon}
+        {label}
+      </span>
+      <span className="text-xs tabular-nums text-muted-foreground">{hint}</span>
+    </button>
+  );
+}
+
+function ActionTooltip({ label, hint }: { label: string; hint: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="pointer-events-none absolute right-full top-1/2 mr-1.5 flex -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/10 bg-[#0a0a0a] px-2 py-1 text-xs text-card-foreground opacity-0 shadow-lg transition-opacity duration-100 group-hover/action:opacity-100"
+    >
+      {label}
+      <span className="text-xs tabular-nums text-muted-foreground">{hint}</span>
+    </span>
+  );
+}
+
 export function SessionList({
   mode = "main",
   sessions,
@@ -77,11 +122,20 @@ export function SessionList({
   useEffect(() => {
     if (!contextMenu) return;
     const close = () => setContextMenu(null);
-    document.addEventListener("click", close);
-    document.addEventListener("contextmenu", close);
+    const closeOnEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setContextMenu(null);
+    };
+    // Defer attaching the click listener by one tick so the opening
+    // contextmenu event (which is followed by no native click) doesn't
+    // race a subsequent click handler from the same gesture.
+    const id = window.setTimeout(() => {
+      document.addEventListener("click", close);
+    }, 0);
+    document.addEventListener("keydown", closeOnEsc);
     return () => {
+      window.clearTimeout(id);
       document.removeEventListener("click", close);
-      document.removeEventListener("contextmenu", close);
+      document.removeEventListener("keydown", closeOnEsc);
     };
   }, [contextMenu]);
 
@@ -213,24 +267,30 @@ export function SessionList({
                 )}
                 <div className="absolute top-2 right-2 flex items-center gap-1">
                   {isTrash && onRestore ? (
-                    <button
-                      type="button"
-                      aria-label={`Restore session: ${session.title}`}
-                      onClick={() => onRestore(session.id)}
-                      className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground opacity-0 shadow-sm transition-all hover:border-[#5f7a26] hover:bg-[#1f2e15] hover:text-[#859900] group-hover:opacity-100 focus:opacity-100"
-                    >
-                      <RotateCcw size={14} aria-hidden="true" />
-                    </button>
-                  ) : (
-                    !isEditing && (
+                    <span className="group/action relative">
                       <button
                         type="button"
-                        aria-label={`Delete session: ${session.title}`}
-                        onClick={() => onDelete(session.id)}
-                        className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground opacity-0 shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive group-hover:opacity-100 focus:opacity-100"
+                        aria-label={`Restore: ${session.title}`}
+                        onClick={() => onRestore(session.id)}
+                        className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground opacity-0 shadow-sm transition-all hover:border-[#5f7a26] hover:bg-[#1f2e15] hover:text-[#859900] group-hover:opacity-100 focus:opacity-100"
                       >
-                        <Trash2 size={14} aria-hidden="true" />
+                        <RotateCcw size={14} aria-hidden="true" />
                       </button>
+                      <ActionTooltip label="Restore" hint="⌫" />
+                    </span>
+                  ) : (
+                    !isEditing && (
+                      <span className="group/action relative">
+                        <button
+                          type="button"
+                          aria-label={`Move to trash: ${session.title}`}
+                          onClick={() => onDelete(session.id)}
+                          className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground opacity-0 shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive group-hover:opacity-100 focus:opacity-100"
+                        >
+                          <Trash2 size={14} aria-hidden="true" />
+                        </button>
+                        <ActionTooltip label="Move to Trash" hint="⌫" />
+                      </span>
                     )
                   )}
                 </div>
@@ -242,52 +302,41 @@ export function SessionList({
       {contextMenu && (
         <div
           role="menu"
-          className="fixed z-50 min-w-[180px] rounded-md border border-border bg-card py-1 text-sm shadow-lg"
+          className="fixed z-50 min-w-[200px] rounded-md border border-border bg-card p-1 text-sm shadow-lg"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           {!isTrash && onRenameTitle && (
-            <button
-              type="button"
-              role="menuitem"
+            <MenuItem
+              icon={<Pencil size={14} aria-hidden="true" />}
+              label="Rename"
+              hint="F2 / ↵"
               onClick={() => {
                 setEditingId(contextMenu.sessionId);
                 setContextMenu(null);
               }}
-              className="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left transition-colors hover:bg-accent"
-            >
-              <span className="flex items-center gap-2">
-                <Pencil size={14} aria-hidden="true" />
-                Rename
-              </span>
-              <span className="text-xs text-muted-foreground">F2</span>
-            </button>
+            />
           )}
           {isTrash && onRestore ? (
-            <button
-              type="button"
-              role="menuitem"
+            <MenuItem
+              icon={<RotateCcw size={14} aria-hidden="true" />}
+              label="Restore"
+              hint="⌫"
               onClick={() => {
                 onRestore(contextMenu.sessionId);
                 setContextMenu(null);
               }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-accent"
-            >
-              <RotateCcw size={14} aria-hidden="true" />
-              Restore session
-            </button>
+            />
           ) : (
-            <button
-              type="button"
-              role="menuitem"
+            <MenuItem
+              icon={<Trash2 size={14} aria-hidden="true" />}
+              label="Move to Trash"
+              hint="⌫"
+              destructive
               onClick={() => {
                 onDelete(contextMenu.sessionId);
                 setContextMenu(null);
               }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-destructive transition-colors hover:bg-[#3a1d23]"
-            >
-              <Trash2 size={14} aria-hidden="true" />
-              Delete session
-            </button>
+            />
           )}
         </div>
       )}

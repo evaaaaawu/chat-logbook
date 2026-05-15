@@ -84,7 +84,7 @@ describe("Soft delete from session list", () => {
     if (!row) throw new Error("Session row not found");
 
     const deleteButton = within(row.parentElement!).getByRole("button", {
-      name: /delete session: fix database migration/i,
+      name: /move to trash: fix database migration/i,
     });
     await user.click(deleteButton);
 
@@ -115,7 +115,7 @@ describe("Auto-select next after delete", () => {
     // Delete it via hover button
     const list = screen.getByTestId("session-list");
     const deleteBtn = within(list).getByRole("button", {
-      name: /delete session: build a login page/i,
+      name: /move to trash: build a login page/i,
     });
     await user.click(deleteBtn);
 
@@ -135,7 +135,7 @@ describe("Undo toast on delete", () => {
 
     const list = screen.getByTestId("session-list");
     const deleteBtn = within(list).getByRole("button", {
-      name: /delete session: fix database migration/i,
+      name: /move to trash: fix database migration/i,
     });
     await user.click(deleteBtn);
 
@@ -284,7 +284,7 @@ describe("Trash mode triggers: hover button, Backspace, Esc", () => {
 
     const list = screen.getByTestId("session-list");
     const restoreBtn = within(list).getByRole("button", {
-      name: /restore session: old prototype/i,
+      name: /restore: old prototype/i,
     });
     await user.click(restoreBtn);
 
@@ -336,7 +336,7 @@ describe("Right-click context menu", () => {
 
     const menu = await screen.findByRole("menu");
     const deleteItem = within(menu).getByRole("menuitem", {
-      name: /delete session/i,
+      name: /move to trash/i,
     });
 
     await user.click(deleteItem);
@@ -346,6 +346,38 @@ describe("Right-click context menu", () => {
       expect(
         within(list).queryByText("Build a login page")
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("can reopen the context menu after closing it (no stale close-listener)", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const row = await screen.findByText("Build a login page");
+    fireEvent.contextMenu(row);
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+
+    // Close via outside click.
+    await user.click(document.body);
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    // Reopen — must not be torn down by a leftover document-level listener.
+    fireEvent.contextMenu(row);
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+  });
+
+  it("closes the context menu when Escape is pressed", async () => {
+    render(<App />);
+
+    const row = await screen.findByText("Build a login page");
+    fireEvent.contextMenu(row);
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     });
   });
 
@@ -361,7 +393,7 @@ describe("Right-click context menu", () => {
 
     const menu = await screen.findByRole("menu");
     expect(
-      within(menu).getByRole("menuitem", { name: /restore session/i })
+      within(menu).getByRole("menuitem", { name: /^restore/i })
     ).toBeInTheDocument();
   });
 });

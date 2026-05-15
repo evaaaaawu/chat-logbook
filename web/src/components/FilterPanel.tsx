@@ -1,4 +1,4 @@
-import { Trash } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 interface FilterPanelProps {
   deletedCount: number;
@@ -24,7 +24,7 @@ export function FilterPanel({ deletedCount, onOpenTrash }: FilterPanelProps) {
           className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-card"
         >
           <span className="flex items-center gap-2">
-            <Trash size={14} aria-hidden="true" />
+            <Trash2 size={14} aria-hidden="true" />
             Trash
           </span>
           <span className="rounded-full bg-card px-2 text-xs font-semibold tabular-nums text-muted-foreground">
