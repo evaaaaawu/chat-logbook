@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.1] - 2026-05-15
+
+### Fixed
+
+- A session whose first message contains a large pasted image now shows its project. Before, the project label was missing for those sessions.
+
 ## [0.7.0] - 2026-05-15
 
 You can now name your sessions. Instead of living with the title auto-generated from the first message, click any title to rename it — the name you choose sticks and shows everywhere that session appears.
