@@ -13,9 +13,13 @@ import {
 } from "@/components/ui/resizable";
 
 function App() {
-  const { sessions, softDelete, restore } = useSessions();
+  const { sessions, softDelete, restore, setTitle } = useSessions();
+  const handleRenameTitle = (id: string, title: string) => {
+    void setTitle(id, title);
+  };
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<"main" | "trash">("main");
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const { messages, error } = useMessages(selectedId);
   const { toast, showToast, dismissToast } = useToast();
   const mainSessions = sessions.filter((s) => !s.isDeleted);
@@ -45,6 +49,16 @@ function App() {
         } else {
           handleDelete(selectedId);
         }
+        return;
+      }
+
+      if (
+        (e.key === "F2" || e.key === "Enter") &&
+        selectedId &&
+        mode === "main"
+      ) {
+        e.preventDefault();
+        setEditingTitleId(selectedId);
         return;
       }
 
@@ -106,9 +120,12 @@ function App() {
             mode={mode}
             sessions={visibleSessions}
             selectedId={selectedId}
+            editingId={editingTitleId}
+            onEditingIdChange={setEditingTitleId}
             onSelect={setSelectedId}
             onDelete={handleDelete}
             onRestore={handleRestore}
+            onRenameTitle={handleRenameTitle}
             onBack={() => setMode("main")}
             deletedCount={deletedSessions.length}
             onOpenTrash={() => setMode("trash")}
@@ -121,6 +138,7 @@ function App() {
             messages={messages}
             error={error}
             onRestore={handleRestore}
+            onRenameTitle={handleRenameTitle}
           />
         </ResizablePanel>
       </ResizablePanelGroup>
