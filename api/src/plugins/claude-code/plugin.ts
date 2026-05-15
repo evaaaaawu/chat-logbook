@@ -27,7 +27,7 @@ export class ClaudeCodePlugin implements AgentPlugin {
         if (!file.isFile() || !file.name.endsWith(".jsonl")) continue;
         const sourcePath = path.join(projectPath, file.name);
         const sessionId = file.name.replace(/\.jsonl$/, "");
-        const cwd = readCwdFromJsonl(sourcePath);
+        const cwd = await readCwdFromJsonl(sourcePath);
         yield {
           sessionId,
           sourcePath,
@@ -101,37 +101,34 @@ export class ClaudeCodePlugin implements AgentPlugin {
   }
 }
 
-function readCwdFromJsonl(sourcePath: string): string | undefined {
-  let fd: number | undefined;
+// Stream lines until the first one carrying a cwd. A fixed-size head read
+// would miss the cwd when an earlier message embeds a large pasted image,
+// pushing every cwd-bearing line past the buffer.
+async function readCwdFromJsonl(
+  sourcePath: string
+): Promise<string | undefined> {
   try {
-    fd = fs.openSync(sourcePath, "r");
-    const buf = Buffer.alloc(64 * 1024);
-    const n = fs.readSync(fd, buf, 0, buf.length, 0);
-    const head = buf.subarray(0, n).toString("utf-8");
-    const lines = head.split("\n");
-    // Drop the last fragment; it may be a partial line if we truncated.
-    if (n === buf.length) lines.pop();
-    for (const line of lines) {
-      if (!line) continue;
-      try {
-        const obj = JSON.parse(line) as { cwd?: unknown };
+    const stream = fs.createReadStream(sourcePath, { encoding: "utf-8" });
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    try {
+      for await (const line of rl) {
+        if (!line) continue;
+        let obj: { cwd?: unknown };
+        try {
+          obj = JSON.parse(line) as { cwd?: unknown };
+        } catch {
+          continue; // Ignore malformed lines.
+        }
         if (typeof obj.cwd === "string" && obj.cwd.length > 0) {
           return obj.cwd;
         }
-      } catch {
-        // Ignore malformed lines.
       }
+    } finally {
+      rl.close();
+      stream.destroy();
     }
   } catch {
     // Ignore I/O errors; fall back to undefined project.
-  } finally {
-    if (fd !== undefined) {
-      try {
-        fs.closeSync(fd);
-      } catch {
-        // ignore
-      }
-    }
   }
   return undefined;
 }
