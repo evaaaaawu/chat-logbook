@@ -300,4 +300,69 @@ describe("runIngestion", () => {
       expect(rawAfter.some((a) => a.id === r.id)).toBe(true);
     }
   });
+
+  it("fills in a session's project on a later scan once cwd is resolvable", async () => {
+    const archive = createArchiveRepository({ dataDir: env.dataDir });
+    const pluginsList = [new ClaudeCodePlugin()];
+
+    // A session whose source carries no cwd: its project is unknown.
+    const projectDir = path.join(
+      env.homeDir,
+      ".claude",
+      "projects",
+      "-Users-test-late-app"
+    );
+    fs.mkdirSync(projectDir, { recursive: true });
+    const sourceFile = path.join(projectDir, "late.jsonl");
+    fs.writeFileSync(
+      sourceFile,
+      JSON.stringify({ type: "file-history-snapshot", messageId: "m0" }) +
+        "\n" +
+        JSON.stringify({
+          type: "user",
+          message: { role: "user", content: "hi" },
+          uuid: "u1",
+          timestamp: "2024-01-01T00:00:01Z",
+        }) +
+        "\n"
+    );
+
+    await runIngestion({
+      plugins: pluginsList,
+      archive,
+      env: { homeDir: env.homeDir },
+    });
+    const before = archive.db
+      .select()
+      .from(sessions)
+      .all()
+      .find((s) => s.sourceSessionId === "late");
+    expect(before?.project).toBeNull();
+
+    // A later message now carries cwd (e.g. read further into the file).
+    fs.appendFileSync(
+      sourceFile,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: "more" },
+        uuid: "u2",
+        timestamp: "2024-01-01T00:00:02Z",
+        cwd: "/Users/test/late-app",
+      }) + "\n"
+    );
+
+    await runIngestion({
+      plugins: pluginsList,
+      archive,
+      env: { homeDir: env.homeDir },
+    });
+    const after = archive.db
+      .select()
+      .from(sessions)
+      .all()
+      .find((s) => s.sourceSessionId === "late");
+    expect(after?.project).toBe("late-app");
+
+    archive.close();
+  });
 });

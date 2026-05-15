@@ -83,6 +83,53 @@ describe("ClaudeCodePlugin.discover", () => {
       expect(refs[0].project).toBe("my-app");
     });
   });
+
+  describe("when the first cwd line sits beyond the first 64KB", () => {
+    let tmpHome: string;
+
+    beforeEach(() => {
+      tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "chat-logbook-bigcwd-"));
+      const projectsDir = path.join(
+        tmpHome,
+        ".claude/projects/-Users-test-my-app"
+      );
+      fs.mkdirSync(projectsDir, { recursive: true });
+      // A pasted screenshot makes the first user message a single ~80KB line
+      // with no cwd; cwd only appears on the next, smaller line.
+      const hugeContent = "x".repeat(80 * 1024);
+      const lines = [
+        JSON.stringify({ type: "file-history-snapshot", messageId: "m0" }),
+        JSON.stringify({
+          type: "user",
+          message: { role: "user", content: hugeContent },
+          uuid: "u1",
+          timestamp: "2024-01-01T00:00:01Z",
+        }),
+        JSON.stringify({
+          type: "user",
+          message: { role: "user", content: "hi" },
+          uuid: "u2",
+          timestamp: "2024-01-01T00:00:02Z",
+          cwd: "/Users/test/my-app",
+          sessionId: "sx",
+        }),
+      ];
+      fs.writeFileSync(
+        path.join(projectsDir, "sx.jsonl"),
+        lines.join("\n") + "\n"
+      );
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpHome, { recursive: true, force: true });
+    });
+
+    it("still derives project from cwd", async () => {
+      const refs = await collect(plugin.discover({ homeDir: tmpHome }));
+      expect(refs).toHaveLength(1);
+      expect(refs[0].project).toBe("my-app");
+    });
+  });
 });
 
 describe("ClaudeCodePlugin.extractRaw", () => {
