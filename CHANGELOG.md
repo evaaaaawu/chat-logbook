@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-05-15
+
+You can now name your sessions. Instead of living with the title auto-generated from the first message, click any title to rename it — the name you choose sticks and shows everywhere that session appears.
+
+### Added
+
+- Give any session your own title. Click its title in the session list or the conversation header to edit it in place, or select a session and press `F2` / `↵`. The custom title replaces the auto-generated one everywhere, and it survives restarts.
+- Clear a custom title to fall back to the original first-message text.
+
+### Changed
+
+- Right-clicking a session now offers Rename alongside Move to Trash (renamed from "Delete session"); in Trash it offers Restore. Each menu action shows its keyboard shortcut.
+
 ## [0.6.0] - 2026-05-15
 
 The `chat-log` command now answers `--help`, `--version`, and `--port` like every other CLI you use.

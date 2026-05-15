@@ -60,6 +60,9 @@ The full problem statement, user stories, and direction live in the
   Code's terminal look.
 - **Soft delete with Trash.** Hide sessions you don't want to see; restore
   them anytime.
+- **Custom session titles.** Rename any session — click its title in the
+  list or conversation header, or select it and press `F2` / `↵`. Clear
+  the title to fall back to the first message.
 - **Local archive.** Every conversation chat-logbook reads is copied into
   `~/.chat-logbook/archive.db`. The UI reads from the archive, so a
   session stays visible even after the source JSONL is gone.
