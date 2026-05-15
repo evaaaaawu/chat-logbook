@@ -513,6 +513,167 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
   });
 });
 
+describe("PATCH /api/sessions/:id/title", () => {
+  it("updates the custom title and returns it in subsequent GET /api/sessions", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedSession(archive, {
+      internalId: "internal-uuid-1",
+      sourceSessionId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceSessionId: "session-1",
+      messageId: "m-user",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: "Build a login page",
+      blocks: [{ type: "text", text: "Build a login page" }],
+    });
+
+    const app = createApp({ archive, metadata });
+    const patch = await app.request("/api/sessions/session-1/title", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "My favourite chat" }),
+    });
+    expect(patch.status).toBe(204);
+
+    const list = await app.request("/api/sessions");
+    const body = (await list.json()) as { sessions: SessionResponse[] };
+    const session = body.sessions.find((s) => s.id === "session-1");
+    expect(session?.title).toBe("My favourite chat");
+  });
+
+  it("clears the custom title when an empty string is sent, reverting to derived", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedSession(archive, {
+      internalId: "internal-uuid-1",
+      sourceSessionId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceSessionId: "session-1",
+      messageId: "m-user",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: "Build a login page",
+      blocks: [{ type: "text", text: "Build a login page" }],
+    });
+    metadata.setCustomTitle("internal-uuid-1", "Custom");
+
+    const app = createApp({ archive, metadata });
+    const patch = await app.request("/api/sessions/session-1/title", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "" }),
+    });
+    expect(patch.status).toBe(204);
+
+    const list = await app.request("/api/sessions");
+    const body = (await list.json()) as { sessions: SessionResponse[] };
+    const session = body.sessions.find((s) => s.id === "session-1");
+    expect(session?.title).toBe("Build a login page");
+  });
+
+  it("treats whitespace-only title as a clear", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedSession(archive, {
+      internalId: "internal-uuid-1",
+      sourceSessionId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    metadata.setCustomTitle("internal-uuid-1", "Custom");
+
+    const app = createApp({ archive, metadata });
+    const patch = await app.request("/api/sessions/session-1/title", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "   " }),
+    });
+    expect(patch.status).toBe(204);
+
+    const list = await app.request("/api/sessions");
+    const body = (await list.json()) as { sessions: SessionResponse[] };
+    const session = body.sessions.find((s) => s.id === "session-1");
+    expect(session?.title).toBe("Untitled");
+  });
+
+  it("trims whitespace around the saved title", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedSession(archive, {
+      internalId: "internal-uuid-1",
+      sourceSessionId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+
+    const app = createApp({ archive, metadata });
+    await app.request("/api/sessions/session-1/title", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "  Padded title  " }),
+    });
+
+    const list = await app.request("/api/sessions");
+    const body = (await list.json()) as { sessions: SessionResponse[] };
+    const session = body.sessions.find((s) => s.id === "session-1");
+    expect(session?.title).toBe("Padded title");
+  });
+
+  it("returns 404 when archive has no session for the given id", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const app = createApp({ archive, metadata });
+
+    const res = await app.request("/api/sessions/nonexistent/title", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "x" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 when title is not a string", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedSession(archive, {
+      internalId: "internal-uuid-1",
+      sourceSessionId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const app = createApp({ archive, metadata });
+
+    const wrongType = await app.request("/api/sessions/session-1/title", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: 123 }),
+    });
+    expect(wrongType.status).toBe(400);
+  });
+
+  it("returns 400 when title exceeds 200 characters", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedSession(archive, {
+      internalId: "internal-uuid-1",
+      sourceSessionId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const app = createApp({ archive, metadata });
+
+    const tooLong = "x".repeat(201);
+    const res = await app.request("/api/sessions/session-1/title", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: tooLong }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("GET /api/sessions/:id (archive-backed)", () => {
   it("returns messages from archive.messages ordered by ts", async () => {
     const archive = createArchiveRepository({ dataDir });

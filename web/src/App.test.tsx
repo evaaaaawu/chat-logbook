@@ -37,7 +37,7 @@ describe("Session list", () => {
     const list = screen.getByTestId("session-list");
     const rowButtons = within(list)
       .getAllByRole("button")
-      .filter((el) => !el.getAttribute("aria-label")?.startsWith("Delete"));
+      .filter((el) => !el.getAttribute("aria-label"));
     const titles = rowButtons.map((item) => item.textContent);
 
     // session-2 has updatedAt 1700000300000 (newer)
@@ -84,7 +84,7 @@ describe("Soft delete from session list", () => {
     if (!row) throw new Error("Session row not found");
 
     const deleteButton = within(row.parentElement!).getByRole("button", {
-      name: /delete session: fix database migration/i,
+      name: /move to trash: fix database migration/i,
     });
     await user.click(deleteButton);
 
@@ -115,7 +115,7 @@ describe("Auto-select next after delete", () => {
     // Delete it via hover button
     const list = screen.getByTestId("session-list");
     const deleteBtn = within(list).getByRole("button", {
-      name: /delete session: build a login page/i,
+      name: /move to trash: build a login page/i,
     });
     await user.click(deleteBtn);
 
@@ -135,7 +135,7 @@ describe("Undo toast on delete", () => {
 
     const list = screen.getByTestId("session-list");
     const deleteBtn = within(list).getByRole("button", {
-      name: /delete session: fix database migration/i,
+      name: /move to trash: fix database migration/i,
     });
     await user.click(deleteBtn);
 
@@ -284,7 +284,7 @@ describe("Trash mode triggers: hover button, Backspace, Esc", () => {
 
     const list = screen.getByTestId("session-list");
     const restoreBtn = within(list).getByRole("button", {
-      name: /restore session: old prototype/i,
+      name: /restore: old prototype/i,
     });
     await user.click(restoreBtn);
 
@@ -336,7 +336,7 @@ describe("Right-click context menu", () => {
 
     const menu = await screen.findByRole("menu");
     const deleteItem = within(menu).getByRole("menuitem", {
-      name: /delete session/i,
+      name: /move to trash/i,
     });
 
     await user.click(deleteItem);
@@ -346,6 +346,38 @@ describe("Right-click context menu", () => {
       expect(
         within(list).queryByText("Build a login page")
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("can reopen the context menu after closing it (no stale close-listener)", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const row = await screen.findByText("Build a login page");
+    fireEvent.contextMenu(row);
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+
+    // Close via outside click.
+    await user.click(document.body);
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    // Reopen — must not be torn down by a leftover document-level listener.
+    fireEvent.contextMenu(row);
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+  });
+
+  it("closes the context menu when Escape is pressed", async () => {
+    render(<App />);
+
+    const row = await screen.findByText("Build a login page");
+    fireEvent.contextMenu(row);
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     });
   });
 
@@ -361,7 +393,7 @@ describe("Right-click context menu", () => {
 
     const menu = await screen.findByRole("menu");
     expect(
-      within(menu).getByRole("menuitem", { name: /restore session/i })
+      within(menu).getByRole("menuitem", { name: /^restore/i })
     ).toBeInTheDocument();
   });
 });
@@ -609,6 +641,156 @@ describe("Thinking block rendering", () => {
     expect(
       screen.queryByText(/read the current utils file/)
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("Custom session titles — inline edit", () => {
+  it("clicking the title in the conversation header enters edit mode", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+
+    const header = screen.getByTestId("conversation-header");
+    await user.click(within(header).getByText("Build a login page"));
+
+    const input = within(header).getByRole("textbox", {
+      name: /session title/i,
+    }) as HTMLInputElement;
+    expect(input.value).toBe("Build a login page");
+  });
+
+  it("saving via Enter updates both header and list row immediately", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+
+    const header = screen.getByTestId("conversation-header");
+    await user.click(within(header).getByText("Build a login page"));
+    const input = within(header).getByRole("textbox", {
+      name: /session title/i,
+    }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "My favourite chat" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(within(header).getByText("My favourite chat")).toBeInTheDocument();
+    });
+    const list = screen.getByTestId("session-list");
+    expect(within(list).getByText("My favourite chat")).toBeInTheDocument();
+    expect(
+      within(list).queryByText("Build a login page")
+    ).not.toBeInTheDocument();
+  });
+
+  it("pressing Escape cancels the edit and keeps the original title", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+
+    const header = screen.getByTestId("conversation-header");
+    await user.click(within(header).getByText("Build a login page"));
+    const input = within(header).getByRole("textbox", {
+      name: /session title/i,
+    }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Discard me" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(within(header).getByText("Build a login page")).toBeInTheDocument();
+    expect(within(header).queryByText("Discard me")).not.toBeInTheDocument();
+  });
+
+  it("clearing a custom title reverts to the default derived title", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+    const header = screen.getByTestId("conversation-header");
+
+    await user.click(within(header).getByText("Build a login page"));
+    let input = within(header).getByRole("textbox", {
+      name: /session title/i,
+    }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Temporary" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(within(header).getByText("Temporary")).toBeInTheDocument()
+    );
+
+    await user.click(within(header).getByText("Temporary"));
+    input = within(header).getByRole("textbox", {
+      name: /session title/i,
+    }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(
+        within(header).getByText("Build a login page")
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("clicking the title of an already-selected list row enters edit mode", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const list = await screen.findByTestId("session-list");
+    // First click selects the session
+    await user.click(within(list).getByText("Fix database migration"));
+    // Second click on the title of the already-selected row enters edit
+    await user.click(within(list).getByText("Fix database migration"));
+
+    const input = within(list).getByRole("textbox", {
+      name: /session title/i,
+    }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Migrate me" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(within(list).getByText("Migrate me")).toBeInTheDocument();
+    });
+    expect(
+      within(list).queryByText("Fix database migration")
+    ).not.toBeInTheDocument();
+  });
+
+  it("right-click Rename on a session row enters edit mode", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+    const list = screen.getByTestId("session-list");
+    fireEvent.contextMenu(within(list).getByText("Fix database migration"));
+
+    const menu = await screen.findByRole("menu");
+    await user.click(within(menu).getByRole("menuitem", { name: /rename/i }));
+
+    const input = within(list).getByRole("textbox", {
+      name: /session title/i,
+    }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Renamed via menu" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(within(list).getByText("Renamed via menu")).toBeInTheDocument();
+    });
+  });
+
+  it("pressing F2 on a selected session enters edit mode in the list row", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+    await user.keyboard("{F2}");
+
+    const list = screen.getByTestId("session-list");
+    const input = within(list).getByRole("textbox", {
+      name: /session title/i,
+    }) as HTMLInputElement;
+    expect(input.value).toBe("Build a login page");
   });
 });
 

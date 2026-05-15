@@ -126,6 +126,35 @@ export function createApp({ archive, metadata, webDistDir }: AppOptions) {
     return c.body(null, 204);
   });
 
+  app.patch("/api/sessions/:id/title", async (c) => {
+    const sessionId = c.req.param("id");
+    const row = findArchiveSessionBySourceId(sessionId);
+    if (!row) {
+      return c.json({ error: "Session not found" }, 404);
+    }
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    if (
+      !body ||
+      typeof body !== "object" ||
+      typeof (body as { title?: unknown }).title !== "string"
+    ) {
+      return c.json({ error: "Invalid title" }, 400);
+    }
+    const raw = (body as { title: string }).title;
+    if (raw.length > 200) {
+      return c.json({ error: "Title too long" }, 400);
+    }
+    const trimmed = raw.trim();
+    metadata.setCustomTitle(row.id, trimmed.length > 0 ? trimmed : null);
+    return c.body(null, 204);
+  });
+
   app.get("/api/sessions/:id", (c) => {
     const sessionId = c.req.param("id");
     const row = findArchiveSessionBySourceId(sessionId);

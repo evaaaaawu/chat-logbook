@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { RotateCcw } from "lucide-react";
 import Markdown from "react-markdown";
@@ -7,12 +7,16 @@ import remarkGfm from "remark-gfm";
 import type { Message, ContentBlock, Session } from "@/types";
 import { CollapsibleThinking } from "./CollapsibleThinking";
 import { CollapsibleToolCall } from "./CollapsibleToolCall";
+import { EditableTitle } from "./EditableTitle";
 
 interface ConversationViewProps {
   session: Session | null;
   messages: Message[];
   error?: string | null;
   onRestore?: (id: string) => void;
+  onRenameTitle?: (id: string, title: string) => void;
+  editingTitle?: boolean;
+  onEditingTitleChange?: (next: boolean) => void;
 }
 
 function DeletedBanner({
@@ -59,7 +63,22 @@ function getRelativeTime(timestamp: number): string {
   return "just now";
 }
 
-function ConversationHeader({ session }: { session: Session | null }) {
+const HEADER_TITLE_DISPLAY_CLASS =
+  "inline-block max-w-full truncate align-middle rounded px-1.5 py-0.5 -mx-1.5 text-sm font-semibold text-accent-foreground cursor-text transition-colors hover:bg-white/[0.04]";
+const HEADER_TITLE_INPUT_CLASS =
+  "min-w-[12ch] max-w-full rounded border border-border bg-transparent px-1.5 py-0.5 text-sm font-semibold text-accent-foreground outline-none focus:border-primary [field-sizing:content]";
+
+function ConversationHeader({
+  session,
+  editing,
+  onEditingChange,
+  onRenameTitle,
+}: {
+  session: Session | null;
+  editing: boolean;
+  onEditingChange: (next: boolean) => void;
+  onRenameTitle?: (id: string, title: string) => void;
+}) {
   return (
     <div
       data-testid="conversation-header"
@@ -67,8 +86,23 @@ function ConversationHeader({ session }: { session: Session | null }) {
     >
       {session && (
         <>
-          <div className="min-w-0 flex-1 truncate text-sm font-semibold text-accent-foreground">
-            {session.title}
+          <div className="min-w-0 flex-1">
+            {onRenameTitle ? (
+              <EditableTitle
+                value={session.title}
+                editing={editing}
+                onEditStart={() => onEditingChange(true)}
+                onEditEnd={() => onEditingChange(false)}
+                onSave={(next) => onRenameTitle(session.id, next)}
+                displayClassName={HEADER_TITLE_DISPLAY_CLASS}
+                inputClassName={HEADER_TITLE_INPUT_CLASS}
+                inputAriaLabel="Session title"
+              />
+            ) : (
+              <span className={HEADER_TITLE_DISPLAY_CLASS}>
+                {session.title}
+              </span>
+            )}
           </div>
           <div className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
             {getProjectName(session.project)} ·{" "}
@@ -136,7 +170,17 @@ export function ConversationView({
   messages,
   error,
   onRestore,
+  onRenameTitle,
+  editingTitle,
+  onEditingTitleChange,
 }: ConversationViewProps) {
+  const [internalEditing, setInternalEditing] = useState(false);
+  const headerEditing =
+    editingTitle !== undefined ? editingTitle : internalEditing;
+  const setHeaderEditing = (next: boolean) => {
+    setInternalEditing(next);
+    onEditingTitleChange?.(next);
+  };
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
@@ -148,7 +192,12 @@ export function ConversationView({
 
   return (
     <div className="flex h-full flex-col">
-      <ConversationHeader session={session} />
+      <ConversationHeader
+        session={session}
+        editing={headerEditing}
+        onEditingChange={setHeaderEditing}
+        onRenameTitle={onRenameTitle}
+      />
       {session?.isDeleted && onRestore && (
         <DeletedBanner sessionId={session.id} onRestore={onRestore} />
       )}

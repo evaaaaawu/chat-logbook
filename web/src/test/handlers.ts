@@ -2,7 +2,8 @@ import { http, HttpResponse } from "msw";
 
 type FakeSession = {
   id: string;
-  title: string;
+  defaultTitle: string;
+  customTitle: string | null;
   project: string;
   createdAt: number;
   updatedAt: number;
@@ -12,35 +13,40 @@ type FakeSession = {
 const initialFakeSessions: FakeSession[] = [
   {
     id: "session-1",
-    title: "Build a login page",
+    defaultTitle: "Build a login page",
+    customTitle: null,
     project: "/Users/test/my-web-app",
     createdAt: 1700000000000,
     updatedAt: 1700000200000,
   },
   {
     id: "session-2",
-    title: "Fix database migration",
+    defaultTitle: "Fix database migration",
+    customTitle: null,
     project: "/Users/test/backend-api",
     createdAt: 1700000100000,
     updatedAt: 1700000300000,
   },
   {
     id: "session-3",
-    title: "Refactor utils",
+    defaultTitle: "Refactor utils",
+    customTitle: null,
     project: "/Users/test/my-web-app",
     createdAt: 1700000050000,
     updatedAt: 1700000150000,
   },
   {
     id: "session-missing",
-    title: "Untitled",
+    defaultTitle: "Untitled",
+    customTitle: null,
     project: "/Users/test/some-project",
     createdAt: 1699999900000,
     updatedAt: 1699999900000,
   },
   {
     id: "session-deleted-1",
-    title: "Old prototype",
+    defaultTitle: "Old prototype",
+    customTitle: null,
     project: "/Users/test/my-web-app",
     createdAt: 1699999000000,
     updatedAt: 1699999500000,
@@ -127,14 +133,36 @@ export const fakeMessages = {
   ],
 };
 
+function projectSession(s: FakeSession) {
+  const { defaultTitle, customTitle, ...rest } = s;
+  return { ...rest, title: customTitle ?? defaultTitle };
+}
+
 export const handlers = [
   http.get("/api/sessions", ({ request }) => {
     const url = new URL(request.url);
     const includeTrashed = url.searchParams.get("includeTrashed") === "true";
-    const sessions = includeTrashed
+    const filtered = includeTrashed
       ? fakeSessions
       : fakeSessions.filter((s) => !s.isDeleted);
-    return HttpResponse.json({ sessions });
+    return HttpResponse.json({ sessions: filtered.map(projectSession) });
+  }),
+  http.patch("/api/sessions/:id/title", async ({ params, request }) => {
+    const id = params.id as string;
+    const session = fakeSessions.find((s) => s.id === id);
+    if (!session) {
+      return HttpResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+    const body = (await request.json()) as { title?: unknown };
+    if (typeof body?.title !== "string") {
+      return HttpResponse.json({ error: "Invalid title" }, { status: 400 });
+    }
+    if (body.title.length > 200) {
+      return HttpResponse.json({ error: "Title too long" }, { status: 400 });
+    }
+    const trimmed = body.title.trim();
+    session.customTitle = trimmed.length > 0 ? trimmed : null;
+    return new HttpResponse(null, { status: 204 });
   }),
   http.get("/api/sessions/:id", ({ params }) => {
     const id = params.id as string;
