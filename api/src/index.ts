@@ -11,6 +11,8 @@ import { createMetadataRepository } from "./metadata/repository.js";
 import { startIngestionInBackground } from "./ingestion/background.js";
 import { startWatcher } from "./ingestion/watcher.js";
 import { plugins } from "./plugins/registry.js";
+import { parseCliArgs } from "./cli/argv.js";
+import { helpText } from "./cli/help.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgPath = path.join(__dirname, "../../package.json");
@@ -19,11 +21,27 @@ const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
   version: string;
 };
 
+const action = parseCliArgs(process.argv.slice(2), {
+  PORT: process.env.PORT,
+});
+if (action.kind === "version") {
+  console.log(pkg.version);
+  process.exit(0);
+}
+if (action.kind === "help") {
+  process.stdout.write(helpText);
+  process.exit(0);
+}
+if (action.kind === "error") {
+  console.error(action.message);
+  process.exit(1);
+}
+
 updateNotifier({ pkg }).notify({ defer: false, isGlobal: true });
 
 const dataDir = path.join(os.homedir(), ".chat-logbook");
 const webDistDir = path.join(__dirname, "../../web/dist");
-const port = Number(process.env.PORT) || 3100;
+const port = action.port;
 
 const archive = createArchiveRepository({ dataDir });
 const metadata = createMetadataRepository({ dataDir });
@@ -69,7 +87,7 @@ const server = serve({ fetch: app.fetch, port }, (info: { port: number }) => {
 server.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EADDRINUSE") {
     console.error(
-      `Port ${port} is already in use. Try a different port:\n\n  PORT=8080 chat-log\n`
+      `Port ${port} is already in use. Try a different port:\n\n  chat-log --port 8080\n  PORT=8080 chat-log\n`
     );
     process.exit(1);
   }
