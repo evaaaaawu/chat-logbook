@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-05-15
+
+The `chat-log` command now answers `--help`, `--version`, and `--port` like every other CLI you use.
+
+### Added
+
+- `chat-log --version` (or `-v`) prints the installed version and exits.
+- `chat-log --help` (or `-h`) shows usage with the available flags and the `PORT=` env var.
+- `chat-log --port 8080` (or `-p 8080`) sets the HTTP port from the command line. `PORT=8080 chat-log` still works for daemon use; the flag wins when both are set.
+- Invalid `--port` values (non-numeric, missing, or out of range) now fail fast with a clear error instead of crashing on startup.
+
 ## [0.5.0] - 2026-05-14
 
 Your conversations now update live in chat-logbook while an AI tool is still writing — no need to restart to see new messages. And if a vendor cleans up its internal storage behind your back, chat-logbook keeps a record of what disappeared so your archive stays trustworthy.

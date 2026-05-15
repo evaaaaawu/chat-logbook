@@ -100,8 +100,8 @@ You need to have Claude Code conversation history at `~/.claude/`.
 chat-logbook reads from this directory automatically.
 
 **"Port already in use."**
-chat-logbook runs on port 3100 by default. Use `PORT=8080 chat-log` to
-pick a different port.
+chat-logbook runs on port 3100 by default. Use `chat-log --port 8080`
+(or `PORT=8080 chat-log`) to pick a different port.
 
 **Updating to the latest version.**
 Run `npm install -g chat-logbook@latest`. If you use npx, the `@latest`
