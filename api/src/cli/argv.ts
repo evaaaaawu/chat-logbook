@@ -2,13 +2,13 @@ export type CliAction =
   | { kind: "version" }
   | { kind: "help" }
   | { kind: "error"; message: string }
-  | { kind: "run"; port: number };
+  | { kind: "run"; port: number; open: boolean };
 
 const DEFAULT_PORT = 3100;
 
 export function parseCliArgs(
   argv: readonly string[],
-  env: { PORT?: string } = {}
+  env: { PORT?: string; CHAT_LOGBOOK_NO_OPEN?: string } = {}
 ): CliAction {
   if (argv.includes("--version") || argv.includes("-v")) {
     return { kind: "version" };
@@ -16,6 +16,7 @@ export function parseCliArgs(
   if (argv.includes("--help") || argv.includes("-h")) {
     return { kind: "help" };
   }
+  const open = !env.CHAT_LOGBOOK_NO_OPEN;
   const portIdx = argv.findIndex((a) => a === "--port" || a === "-p");
   if (portIdx !== -1) {
     const raw = argv[portIdx + 1];
@@ -38,10 +39,10 @@ export function parseCliArgs(
         message: `Invalid port "${raw}": must be between 1 and 65535`,
       };
     }
-    return { kind: "run", port };
+    return { kind: "run", port, open };
   }
   if (env.PORT) {
-    return { kind: "run", port: Number(env.PORT) };
+    return { kind: "run", port: Number(env.PORT), open };
   }
-  return { kind: "run", port: DEFAULT_PORT };
+  return { kind: "run", port: DEFAULT_PORT, open };
 }

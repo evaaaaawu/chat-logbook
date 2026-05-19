@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "PORT=3101 CHAT_LOGBOOK_NO_OPEN=1 tsx watch src/index.ts",
     "build": "tsup",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
