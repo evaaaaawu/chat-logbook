@@ -81,7 +81,7 @@ function openBrowser(url: string): void {
 const server = serve({ fetch: app.fetch, port }, (info: { port: number }) => {
   const url = `http://localhost:${info.port}`;
   console.log(`chat-logbook is running at \x1b[36m${url}\x1b[0m`);
-  openBrowser(url);
+  if (action.open) openBrowser(url);
 });
 
 server.on("error", (err: NodeJS.ErrnoException) => {
