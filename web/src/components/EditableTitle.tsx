@@ -20,7 +20,7 @@ export function EditableTitle({
   onSave,
   displayClassName,
   inputClassName,
-  inputAriaLabel = "Session title",
+  inputAriaLabel = "Chat title",
   onDisplayClick,
 }: EditableTitleProps) {
   const inputRef = useRef<HTMLInputElement>(null);

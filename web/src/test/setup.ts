@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll } from "vitest";
-import { resetFakeSessions } from "./handlers";
+import { resetFakeChats } from "./handlers";
 import { server } from "./server";
 
 // react-resizable-panels and @tanstack/react-virtual require ResizeObserver.
@@ -57,6 +57,6 @@ beforeAll(() => server.listen());
 afterEach(() => {
   cleanup();
   server.resetHandlers();
-  resetFakeSessions();
+  resetFakeChats();
 });
 afterAll(() => server.close());

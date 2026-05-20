@@ -11,7 +11,7 @@ import { describe, it, expect } from "vitest";
 import App from "./App";
 import { server } from "./test/server";
 
-describe("Session list", () => {
+describe("Chat list", () => {
   it("displays session titles fetched from the API", async () => {
     render(<App />);
 
@@ -34,7 +34,7 @@ describe("Session list", () => {
 
     await screen.findByText("Fix database migration");
 
-    const list = screen.getByTestId("session-list");
+    const list = screen.getByTestId("chat-list");
     const rowButtons = within(list)
       .getAllByRole("button")
       .filter((el) => !el.getAttribute("aria-label"));
@@ -72,7 +72,7 @@ describe("Trash link in filter panel", () => {
   });
 });
 
-describe("Soft delete from session list", () => {
+describe("Soft delete from chat list", () => {
   it("removes the session from the list and increments trash count", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -81,7 +81,7 @@ describe("Soft delete from session list", () => {
 
     // Find the session row by title, then its delete button
     const row = screen.getByText("Fix database migration").closest("button");
-    if (!row) throw new Error("Session row not found");
+    if (!row) throw new Error("Chat row not found");
 
     const deleteButton = within(row.parentElement!).getByRole("button", {
       name: /move to trash: fix database migration/i,
@@ -113,7 +113,7 @@ describe("Auto-select next after delete", () => {
     expect(within(header).getByText("Build a login page")).toBeInTheDocument();
 
     // Delete it via hover button
-    const list = screen.getByTestId("session-list");
+    const list = screen.getByTestId("chat-list");
     const deleteBtn = within(list).getByRole("button", {
       name: /move to trash: build a login page/i,
     });
@@ -133,14 +133,14 @@ describe("Undo toast on delete", () => {
 
     await screen.findByText("Fix database migration");
 
-    const list = screen.getByTestId("session-list");
+    const list = screen.getByTestId("chat-list");
     const deleteBtn = within(list).getByRole("button", {
       name: /move to trash: fix database migration/i,
     });
     await user.click(deleteBtn);
 
     const toast = await screen.findByTestId("toast");
-    expect(within(toast).getByText(/session deleted/i)).toBeInTheDocument();
+    expect(within(toast).getByText(/chat deleted/i)).toBeInTheDocument();
 
     await user.click(within(toast).getByRole("button", { name: /undo/i }));
 
@@ -164,7 +164,7 @@ describe("Keyboard shortcuts: delete and undo", () => {
 
     await user.keyboard("{Backspace}");
 
-    const list = screen.getByTestId("session-list");
+    const list = screen.getByTestId("chat-list");
     await waitFor(() => {
       expect(
         within(list).queryByText("Build a login page")
@@ -198,7 +198,7 @@ describe("Enter Trash mode", () => {
 
     await user.click(screen.getByTestId("trash-link"));
 
-    const list = screen.getByTestId("session-list");
+    const list = screen.getByTestId("chat-list");
     expect(within(list).getByText(/trash \(1\)/i)).toBeInTheDocument();
     expect(within(list).getByText("Old prototype")).toBeInTheDocument();
     expect(
@@ -221,7 +221,7 @@ describe("Deleted banner in Trash mode", () => {
     await user.click(screen.getByText("Old prototype"));
 
     expect(
-      await screen.findByText(/this session is deleted/i)
+      await screen.findByText(/this chat is deleted/i)
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /^restore$/i })
@@ -240,13 +240,13 @@ describe("Restore from Trash banner", () => {
 
     await user.click(screen.getByRole("button", { name: /^restore$/i }));
 
-    const list = screen.getByTestId("session-list");
+    const list = screen.getByTestId("chat-list");
     await waitFor(() => {
       expect(within(list).queryByText("Old prototype")).not.toBeInTheDocument();
     });
 
     const toast = await screen.findByTestId("toast");
-    expect(within(toast).getByText(/session restored/i)).toBeInTheDocument();
+    expect(within(toast).getByText(/chat restored/i)).toBeInTheDocument();
     expect(
       within(toast).getByRole("button", { name: /view/i })
     ).toBeInTheDocument();
@@ -265,8 +265,8 @@ describe("Restore from Trash banner", () => {
     await user.click(within(toast).getByRole("button", { name: /view/i }));
 
     // Back in main mode — Sessions header visible
-    const list = screen.getByTestId("session-list");
-    expect(within(list).getByText("Sessions")).toBeInTheDocument();
+    const list = screen.getByTestId("chat-list");
+    expect(within(list).getByText("Chats")).toBeInTheDocument();
 
     // Restored session selected and shown in conv header
     const header = screen.getByTestId("conversation-header");
@@ -282,7 +282,7 @@ describe("Trash mode triggers: hover button, Backspace, Esc", () => {
     await screen.findByText("Build a login page");
     await user.click(screen.getByTestId("trash-link"));
 
-    const list = screen.getByTestId("session-list");
+    const list = screen.getByTestId("chat-list");
     const restoreBtn = within(list).getByRole("button", {
       name: /restore: old prototype/i,
     });
@@ -303,7 +303,7 @@ describe("Trash mode triggers: hover button, Backspace, Esc", () => {
 
     await user.keyboard("{Backspace}");
 
-    const list = screen.getByTestId("session-list");
+    const list = screen.getByTestId("chat-list");
     await waitFor(() => {
       expect(within(list).queryByText("Old prototype")).not.toBeInTheDocument();
     });
@@ -316,12 +316,12 @@ describe("Trash mode triggers: hover button, Backspace, Esc", () => {
     await screen.findByText("Build a login page");
     await user.click(screen.getByTestId("trash-link"));
 
-    const list = screen.getByTestId("session-list");
+    const list = screen.getByTestId("chat-list");
     expect(within(list).getByText(/trash/i)).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
 
-    expect(within(list).getByText("Sessions")).toBeInTheDocument();
+    expect(within(list).getByText("Chats")).toBeInTheDocument();
     expect(within(list).getByText("Build a login page")).toBeInTheDocument();
   });
 });
@@ -341,7 +341,7 @@ describe("Right-click context menu", () => {
 
     await user.click(deleteItem);
 
-    const list = screen.getByTestId("session-list");
+    const list = screen.getByTestId("chat-list");
     await waitFor(() => {
       expect(
         within(list).queryByText("Build a login page")
@@ -401,11 +401,11 @@ describe("Right-click context menu", () => {
 describe("Empty states", () => {
   it("shows a Trash empty-state message when no sessions are deleted", async () => {
     server.use(
-      http.get("/api/sessions", () =>
+      http.get("/api/chats", () =>
         HttpResponse.json({
-          sessions: [
+          chats: [
             {
-              id: "session-1",
+              id: "chat-1",
               title: "Build a login page",
               project: "/Users/test/my-web-app",
               createdAt: 1700000000000,
@@ -423,18 +423,16 @@ describe("Empty states", () => {
     await user.click(screen.getByTestId("trash-link"));
 
     expect(screen.getByText(/trash is empty/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/deleted sessions appear here/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/deleted chats appear here/i)).toBeInTheDocument();
   });
 
   it("shows a 'No sessions' hint pointing to Trash when the main list is empty", async () => {
     server.use(
-      http.get("/api/sessions", () =>
+      http.get("/api/chats", () =>
         HttpResponse.json({
-          sessions: [
+          chats: [
             {
-              id: "session-deleted-only",
+              id: "chat-deleted-only",
               title: "Only deleted",
               project: "/Users/test/p",
               createdAt: 1,
@@ -448,7 +446,7 @@ describe("Empty states", () => {
 
     render(<App />);
 
-    expect(await screen.findByText(/no sessions/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no chats/i)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /^trash \(1\)$/i })
     ).toBeInTheDocument();
@@ -462,7 +460,7 @@ describe("Three-column layout", () => {
     await screen.findByText("Build a login page");
 
     expect(screen.getByTestId("filter-panel")).toBeInTheDocument();
-    expect(screen.getByTestId("session-list")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-list")).toBeInTheDocument();
     expect(screen.getByTestId("conversation-panel")).toBeInTheDocument();
   });
 });
@@ -475,10 +473,10 @@ describe("Error handling", () => {
     const sessionButton = await screen.findByText("Untitled");
     await user.click(sessionButton);
 
-    expect(await screen.findByText(/session not found/i)).toBeInTheDocument();
+    expect(await screen.findByText(/chat not found/i)).toBeInTheDocument();
 
     // App should still be functional — no white screen
-    expect(screen.getByTestId("session-list")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-list")).toBeInTheDocument();
   });
 });
 
@@ -644,7 +642,7 @@ describe("Thinking block rendering", () => {
   });
 });
 
-describe("Custom session titles — inline edit", () => {
+describe("Custom chat titles — inline edit", () => {
   it("clicking the title in the conversation header enters edit mode", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -655,7 +653,7 @@ describe("Custom session titles — inline edit", () => {
     await user.click(within(header).getByText("Build a login page"));
 
     const input = within(header).getByRole("textbox", {
-      name: /session title/i,
+      name: /chat title/i,
     }) as HTMLInputElement;
     expect(input.value).toBe("Build a login page");
   });
@@ -669,7 +667,7 @@ describe("Custom session titles — inline edit", () => {
     const header = screen.getByTestId("conversation-header");
     await user.click(within(header).getByText("Build a login page"));
     const input = within(header).getByRole("textbox", {
-      name: /session title/i,
+      name: /chat title/i,
     }) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "My favourite chat" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -677,7 +675,7 @@ describe("Custom session titles — inline edit", () => {
     await waitFor(() => {
       expect(within(header).getByText("My favourite chat")).toBeInTheDocument();
     });
-    const list = screen.getByTestId("session-list");
+    const list = screen.getByTestId("chat-list");
     expect(within(list).getByText("My favourite chat")).toBeInTheDocument();
     expect(
       within(list).queryByText("Build a login page")
@@ -693,7 +691,7 @@ describe("Custom session titles — inline edit", () => {
     const header = screen.getByTestId("conversation-header");
     await user.click(within(header).getByText("Build a login page"));
     const input = within(header).getByRole("textbox", {
-      name: /session title/i,
+      name: /chat title/i,
     }) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "Discard me" } });
     fireEvent.keyDown(input, { key: "Escape" });
@@ -711,7 +709,7 @@ describe("Custom session titles — inline edit", () => {
 
     await user.click(within(header).getByText("Build a login page"));
     let input = within(header).getByRole("textbox", {
-      name: /session title/i,
+      name: /chat title/i,
     }) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "Temporary" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -721,7 +719,7 @@ describe("Custom session titles — inline edit", () => {
 
     await user.click(within(header).getByText("Temporary"));
     input = within(header).getByRole("textbox", {
-      name: /session title/i,
+      name: /chat title/i,
     }) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -737,14 +735,14 @@ describe("Custom session titles — inline edit", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    const list = await screen.findByTestId("session-list");
+    const list = await screen.findByTestId("chat-list");
     // First click selects the session
     await user.click(within(list).getByText("Fix database migration"));
     // Second click on the title of the already-selected row enters edit
     await user.click(within(list).getByText("Fix database migration"));
 
     const input = within(list).getByRole("textbox", {
-      name: /session title/i,
+      name: /chat title/i,
     }) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "Migrate me" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -762,14 +760,14 @@ describe("Custom session titles — inline edit", () => {
     render(<App />);
 
     await screen.findByText("Build a login page");
-    const list = screen.getByTestId("session-list");
+    const list = screen.getByTestId("chat-list");
     fireEvent.contextMenu(within(list).getByText("Fix database migration"));
 
     const menu = await screen.findByRole("menu");
     await user.click(within(menu).getByRole("menuitem", { name: /rename/i }));
 
     const input = within(list).getByRole("textbox", {
-      name: /session title/i,
+      name: /chat title/i,
     }) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "Renamed via menu" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -786,9 +784,9 @@ describe("Custom session titles — inline edit", () => {
     await user.click(await screen.findByText("Build a login page"));
     await user.keyboard("{F2}");
 
-    const list = screen.getByTestId("session-list");
+    const list = screen.getByTestId("chat-list");
     const input = within(list).getByRole("textbox", {
-      name: /session title/i,
+      name: /chat title/i,
     }) as HTMLInputElement;
     expect(input.value).toBe("Build a login page");
   });

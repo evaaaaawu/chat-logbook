@@ -1,4 +1,4 @@
-export interface Session {
+export interface Chat {
   id: string;
   title: string;
   project: string;
