@@ -50,7 +50,7 @@ The full problem statement, user stories, and direction live in the
 
 ## What works today
 
-- **Three-column layout.** Resizable panels for filters, session list,
+- **Three-column layout.** Resizable panels for filters, chat list,
   and conversation content.
 - **Rich conversation rendering.** Markdown, syntax-highlighted code
   blocks, collapsible tool calls with one-line summaries, and collapsible
@@ -58,15 +58,15 @@ The full problem statement, user stories, and direction live in the
 - **Virtual scrolling.** Long conversations scroll smoothly.
 - **Solarized Dark theme.** Easy on the eyes, consistent with Claude
   Code's terminal look.
-- **Soft delete with Trash.** Hide sessions you don't want to see; restore
+- **Soft delete with Trash.** Hide chats you don't want to see; restore
   them anytime.
-- **Custom session titles.** Rename any session — click its title in the
+- **Custom chat titles.** Rename any chat — click its title in the
   list or conversation header, or select it and press `F2` / `↵`. Clear
   the title to fall back to the first message.
 - **Local archive.** Every conversation chat-logbook reads is copied into
   `~/.chat-logbook/archive.db`. The UI reads from the archive, so a
-  session stays visible even after the source JSONL is gone.
-- **Live updates.** While Claude Code is actively writing to a session,
+  chat stays visible even after the source JSONL is gone.
+- **Live updates.** While Claude Code is actively writing to a chat,
   new messages appear in chat-logbook within seconds — no restart
   needed.
 
@@ -94,7 +94,7 @@ chat-logbook is running at http://localhost:3100
 ```
 
 A browser window opens automatically, showing a list of your Claude Code
-sessions on the left and conversation content on the right.
+chats on the left and conversation content on the right.
 
 ### Troubleshooting
 
@@ -156,13 +156,13 @@ doesn't talk to their servers and isn't endorsed by them.
 
 Two phases of work are in flight, in this order.
 
-**Custom titles and tags.** Rename a session to something you'll
+**Custom titles and tags.** Rename a chat to something you'll
 recognize, attach tags with custom colors, and filter the list by tag or
 by project. This is the path from "I have a lot of conversations" to
 "I can find the one I need."
 
 **Spotlight search.** A keyboard-driven overlay (`⌘K` or `/`) that
-searches across sessions, messages, tags, and projects from one input.
+searches across chats, messages, tags, and projects from one input.
 A match lands you on the exact message with the term highlighted, and
 you can jump between every match without leaving the overlay.
 

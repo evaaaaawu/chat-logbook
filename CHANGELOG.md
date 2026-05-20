@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-05-20
+
+We renamed "session" to "chat" everywhere — in the UI, in the local storage schema, and in the HTTP routes. The product supports multiple AI agents and not all of them call a conversation a "session"; "chat" is the cross-agent word and matches the product name. This is the only major thing in this release. Your existing data migrates automatically on first launch.
+
+### Changed (BREAKING)
+
+- The visible terms in the UI are now "Chats" (left column), "Select a chat to view the conversation" (empty state), "This chat is deleted." (banner), and so on. Restore and Move to Trash actions read the same way.
+- The local SQLite schema under `~/.chat-logbook/` was renamed. `chat-log` migrates your existing `archive.db` and `data.db` in place on first launch — no rebuild, no data loss. Back up `~/.chat-logbook/` before upgrading if you want a safety net.
+- If you've built anything against the HTTP endpoints, `/api/sessions*` is now `/api/chats*`, and the JSON payload key changed from `{ sessions: [...] }` to `{ chats: [...] }`.
+
 ## [0.7.1] - 2026-05-15
 
 ### Fixed
