@@ -6,12 +6,12 @@ import { createApp } from "./app.js";
 import { createArchiveRepository } from "./archive/repository.js";
 import { createMetadataRepository } from "./metadata/repository.js";
 import {
-  sessions as archiveSessions,
+  chats as archiveChats,
   rawMessages as archiveRawMessages,
   messages as archiveMessages,
 } from "./archive/schema.js";
 
-interface SessionResponse {
+interface ChatResponse {
   id: string;
   title: string;
   project: string;
@@ -31,22 +31,22 @@ interface MessageResponse {
   timestamp: string;
 }
 
-function seedSession(
+function seedChat(
   archive: ReturnType<typeof createArchiveRepository>,
   opts: {
     internalId: string;
-    sourceSessionId: string;
+    sourceId: string;
     firstSeenAt: Date;
     project?: string | null;
   }
 ): void {
   archive.db
-    .insert(archiveSessions)
+    .insert(archiveChats)
     .values({
       id: opts.internalId,
-      shortCode: opts.internalId.slice(0, 6).toUpperCase(),
+      chatId: opts.internalId.slice(0, 6).toUpperCase(),
       agent: "claude-code",
-      sourceSessionId: opts.sourceSessionId,
+      sourceId: opts.sourceId,
       firstSeenAt: opts.firstSeenAt,
       project: opts.project ?? null,
     })
@@ -56,7 +56,7 @@ function seedSession(
 function seedMessage(
   archive: ReturnType<typeof createArchiveRepository>,
   opts: {
-    sourceSessionId: string;
+    sourceId: string;
     messageId: string;
     role: "user" | "assistant";
     ts: Date;
@@ -68,7 +68,7 @@ function seedMessage(
     .insert(archiveRawMessages)
     .values({
       agent: "claude-code",
-      sessionId: opts.sourceSessionId,
+      sourceId: opts.sourceId,
       sourcePath: "/dev/null",
       sourceLocator: `${opts.messageId}:0`,
       rawPayload: JSON.stringify({ id: opts.messageId }),
@@ -81,7 +81,7 @@ function seedMessage(
     .insert(archiveMessages)
     .values({
       agent: "claude-code",
-      sessionId: opts.sourceSessionId,
+      sourceId: opts.sourceId,
       messageId: opts.messageId,
       role: opts.role,
       ts: opts.ts,
@@ -102,23 +102,23 @@ afterEach(() => {
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
-describe("GET /api/sessions (archive-backed)", () => {
+describe("GET /api/chats (archive-backed)", () => {
   it("returns sessions from archive even when source JSONL is absent", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
 
     const app = createApp({ archive, metadata });
-    const res = await app.request("/api/sessions");
+    const res = await app.request("/api/chats");
     expect(res.status).toBe(200);
 
-    const body = (await res.json()) as { sessions: SessionResponse[] };
-    const ids = body.sessions.map((s) => s.id);
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    const ids = body.chats.map((s) => s.id);
     expect(ids).toContain("session-1");
   });
 
@@ -126,17 +126,17 @@ describe("GET /api/sessions (archive-backed)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
       project: "project-a",
     });
 
     const app = createApp({ archive, metadata });
-    const res = await app.request("/api/sessions");
-    const body = (await res.json()) as { sessions: SessionResponse[] };
-    const session = body.sessions.find((s) => s.id === "session-1");
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
     expect(session?.project).toBe("project-a");
   });
 
@@ -144,13 +144,13 @@ describe("GET /api/sessions (archive-backed)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
     seedMessage(archive, {
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       messageId: "m-assistant",
       role: "assistant",
       ts: new Date(1700000200000),
@@ -158,7 +158,7 @@ describe("GET /api/sessions (archive-backed)", () => {
       blocks: [{ type: "text", text: "Sure" }],
     });
     seedMessage(archive, {
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       messageId: "m-user",
       role: "user",
       ts: new Date(1700000100000),
@@ -167,9 +167,9 @@ describe("GET /api/sessions (archive-backed)", () => {
     });
 
     const app = createApp({ archive, metadata });
-    const res = await app.request("/api/sessions");
-    const body = (await res.json()) as { sessions: SessionResponse[] };
-    const session = body.sessions.find((s) => s.id === "session-1");
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
     expect(session?.title).toBe("Build a login page");
   });
 
@@ -177,13 +177,13 @@ describe("GET /api/sessions (archive-backed)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
     seedMessage(archive, {
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       messageId: "m-user",
       role: "user",
       ts: new Date(1700000100000),
@@ -193,9 +193,9 @@ describe("GET /api/sessions (archive-backed)", () => {
     metadata.setCustomTitle("internal-uuid-1", "My favourite chat");
 
     const app = createApp({ archive, metadata });
-    const res = await app.request("/api/sessions");
-    const body = (await res.json()) as { sessions: SessionResponse[] };
-    const session = body.sessions.find((s) => s.id === "session-1");
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
     expect(session?.title).toBe("My favourite chat");
   });
 
@@ -203,16 +203,16 @@ describe("GET /api/sessions (archive-backed)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
 
     const app = createApp({ archive, metadata });
-    const res = await app.request("/api/sessions");
-    const body = (await res.json()) as { sessions: SessionResponse[] };
-    const session = body.sessions.find((s) => s.id === "session-1");
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
     expect(session?.title).toBe("Untitled");
   });
 
@@ -220,13 +220,13 @@ describe("GET /api/sessions (archive-backed)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
     seedMessage(archive, {
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       messageId: "m1",
       role: "user",
       ts: new Date(1700000100000),
@@ -234,7 +234,7 @@ describe("GET /api/sessions (archive-backed)", () => {
       blocks: [{ type: "text", text: "hi" }],
     });
     seedMessage(archive, {
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       messageId: "m2",
       role: "assistant",
       ts: new Date(1700000500000),
@@ -243,9 +243,9 @@ describe("GET /api/sessions (archive-backed)", () => {
     });
 
     const app = createApp({ archive, metadata });
-    const res = await app.request("/api/sessions");
-    const body = (await res.json()) as { sessions: SessionResponse[] };
-    const session = body.sessions.find((s) => s.id === "session-1");
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
     expect(session?.updatedAt).toBe(1700000500000);
     expect(session?.createdAt).toBe(1700000000000);
   });
@@ -254,16 +254,16 @@ describe("GET /api/sessions (archive-backed)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
 
     const app = createApp({ archive, metadata });
-    const res = await app.request("/api/sessions");
-    const body = (await res.json()) as { sessions: SessionResponse[] };
-    const session = body.sessions.find((s) => s.id === "session-1");
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
     expect(session?.updatedAt).toBe(1700000000000);
   });
 
@@ -271,17 +271,17 @@ describe("GET /api/sessions (archive-backed)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
       project: null,
     });
 
     const app = createApp({ archive, metadata });
-    const res = await app.request("/api/sessions");
-    const body = (await res.json()) as { sessions: SessionResponse[] };
-    const session = body.sessions.find((s) => s.id === "session-1");
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
     expect(session?.project).toBe("");
   });
 });
@@ -290,109 +290,109 @@ describe("Soft delete and restore (archive-backed)", () => {
   it("ignores the legacy includeDeleted query param", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
 
     const app = createApp({ archive, metadata });
-    await app.request("/api/sessions/session-1", { method: "DELETE" });
+    await app.request("/api/chats/session-1", { method: "DELETE" });
 
-    const res = await app.request("/api/sessions?includeDeleted=true");
-    const body = (await res.json()) as { sessions: SessionResponse[] };
-    expect(body.sessions.map((s) => s.id)).not.toContain("session-1");
+    const res = await app.request("/api/chats?includeDeleted=true");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    expect(body.chats.map((s) => s.id)).not.toContain("session-1");
   });
 
-  it("hides a session from GET /api/sessions after DELETE", async () => {
+  it("hides a session from GET /api/chats after DELETE", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
 
     const app = createApp({ archive, metadata });
-    const del = await app.request("/api/sessions/session-1", {
+    const del = await app.request("/api/chats/session-1", {
       method: "DELETE",
     });
     expect(del.status).toBe(204);
 
-    const list = await app.request("/api/sessions");
-    const body = (await list.json()) as { sessions: SessionResponse[] };
-    expect(body.sessions.map((s) => s.id)).not.toContain("session-1");
+    const list = await app.request("/api/chats");
+    const body = (await list.json()) as { chats: ChatResponse[] };
+    expect(body.chats.map((s) => s.id)).not.toContain("session-1");
   });
 
   it("includes trashed session with isDeleted flag when includeTrashed=true", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
 
     const app = createApp({ archive, metadata });
-    await app.request("/api/sessions/session-1", { method: "DELETE" });
+    await app.request("/api/chats/session-1", { method: "DELETE" });
 
-    const res = await app.request("/api/sessions?includeTrashed=true");
+    const res = await app.request("/api/chats?includeTrashed=true");
     const body = (await res.json()) as {
-      sessions: (SessionResponse & { isDeleted?: boolean })[];
+      chats: (ChatResponse & { isDeleted?: boolean })[];
     };
-    const s = body.sessions.find((x) => x.id === "session-1");
+    const s = body.chats.find((x) => x.id === "session-1");
     expect(s?.isDeleted).toBe(true);
   });
 
   it("restores a previously deleted session", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
 
     const app = createApp({ archive, metadata });
-    await app.request("/api/sessions/session-1", { method: "DELETE" });
-    const restore = await app.request("/api/sessions/session-1/restore", {
+    await app.request("/api/chats/session-1", { method: "DELETE" });
+    const restore = await app.request("/api/chats/session-1/restore", {
       method: "POST",
     });
     expect(restore.status).toBe(204);
 
-    const list = await app.request("/api/sessions");
-    const body = (await list.json()) as { sessions: SessionResponse[] };
-    expect(body.sessions.map((s) => s.id)).toContain("session-1");
+    const list = await app.request("/api/chats");
+    const body = (await list.json()) as { chats: ChatResponse[] };
+    expect(body.chats.map((s) => s.id)).toContain("session-1");
   });
 
   it("never deletes archive.sessions rows on soft delete", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
 
     const app = createApp({ archive, metadata });
-    await app.request("/api/sessions/session-1", { method: "DELETE" });
+    await app.request("/api/chats/session-1", { method: "DELETE" });
 
-    const rows = archive.db.select().from(archiveSessions).all();
-    expect(rows.map((r) => r.sourceSessionId)).toContain("session-1");
+    const rows = archive.db.select().from(archiveChats).all();
+    expect(rows.map((r) => r.sourceId)).toContain("session-1");
   });
 });
 
-describe("GET /api/sessions/:id visibility", () => {
+describe("GET /api/chats/:id visibility", () => {
   it("returns 404 for a trashed session by default", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
     seedMessage(archive, {
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       messageId: "m1",
       role: "user",
       ts: new Date(1700000100000),
@@ -401,22 +401,22 @@ describe("GET /api/sessions/:id visibility", () => {
     });
 
     const app = createApp({ archive, metadata });
-    await app.request("/api/sessions/session-1", { method: "DELETE" });
+    await app.request("/api/chats/session-1", { method: "DELETE" });
 
-    const res = await app.request("/api/sessions/session-1");
+    const res = await app.request("/api/chats/session-1");
     expect(res.status).toBe(404);
   });
 
   it("returns messages for a trashed session when includeTrashed=true", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
     seedMessage(archive, {
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       messageId: "m1",
       role: "user",
       ts: new Date(1700000100000),
@@ -425,11 +425,9 @@ describe("GET /api/sessions/:id visibility", () => {
     });
 
     const app = createApp({ archive, metadata });
-    await app.request("/api/sessions/session-1", { method: "DELETE" });
+    await app.request("/api/chats/session-1", { method: "DELETE" });
 
-    const res = await app.request(
-      "/api/sessions/session-1?includeTrashed=true"
-    );
+    const res = await app.request("/api/chats/session-1?includeTrashed=true");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { messages: MessageResponse[] };
     expect(body.messages).toHaveLength(1);
@@ -438,15 +436,15 @@ describe("GET /api/sessions/:id visibility", () => {
   it("still allows restore on a trashed session regardless of visibility flag", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
 
     const app = createApp({ archive, metadata });
-    await app.request("/api/sessions/session-1", { method: "DELETE" });
-    const restore = await app.request("/api/sessions/session-1/restore", {
+    await app.request("/api/chats/session-1", { method: "DELETE" });
+    const restore = await app.request("/api/chats/session-1/restore", {
       method: "POST",
     });
     expect(restore.status).toBe(204);
@@ -459,7 +457,7 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
     const metadata = createMetadataRepository({ dataDir });
     const app = createApp({ archive, metadata });
 
-    const res = await app.request("/api/sessions/nonexistent", {
+    const res = await app.request("/api/chats/nonexistent", {
       method: "DELETE",
     });
     expect(res.status).toBe(404);
@@ -470,7 +468,7 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
     const metadata = createMetadataRepository({ dataDir });
     const app = createApp({ archive, metadata });
 
-    const res = await app.request("/api/sessions/nonexistent/restore", {
+    const res = await app.request("/api/chats/nonexistent/restore", {
       method: "POST",
     });
     expect(res.status).toBe(404);
@@ -479,18 +477,18 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
   it("returns 204 when deleting an already-deleted session", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
     const app = createApp({ archive, metadata });
 
-    const first = await app.request("/api/sessions/session-1", {
+    const first = await app.request("/api/chats/session-1", {
       method: "DELETE",
     });
     expect(first.status).toBe(204);
-    const second = await app.request("/api/sessions/session-1", {
+    const second = await app.request("/api/chats/session-1", {
       method: "DELETE",
     });
     expect(second.status).toBe(204);
@@ -499,31 +497,31 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
   it("returns 204 when restoring a session that was never deleted", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
     const app = createApp({ archive, metadata });
 
-    const res = await app.request("/api/sessions/session-1/restore", {
+    const res = await app.request("/api/chats/session-1/restore", {
       method: "POST",
     });
     expect(res.status).toBe(204);
   });
 });
 
-describe("PATCH /api/sessions/:id/title", () => {
-  it("updates the custom title and returns it in subsequent GET /api/sessions", async () => {
+describe("PATCH /api/chats/:id/title", () => {
+  it("updates the custom title and returns it in subsequent GET /api/chats", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
     seedMessage(archive, {
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       messageId: "m-user",
       role: "user",
       ts: new Date(1700000100000),
@@ -532,29 +530,29 @@ describe("PATCH /api/sessions/:id/title", () => {
     });
 
     const app = createApp({ archive, metadata });
-    const patch = await app.request("/api/sessions/session-1/title", {
+    const patch = await app.request("/api/chats/session-1/title", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "My favourite chat" }),
     });
     expect(patch.status).toBe(204);
 
-    const list = await app.request("/api/sessions");
-    const body = (await list.json()) as { sessions: SessionResponse[] };
-    const session = body.sessions.find((s) => s.id === "session-1");
+    const list = await app.request("/api/chats");
+    const body = (await list.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
     expect(session?.title).toBe("My favourite chat");
   });
 
   it("clears the custom title when an empty string is sent, reverting to derived", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
     seedMessage(archive, {
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       messageId: "m-user",
       role: "user",
       ts: new Date(1700000100000),
@@ -564,62 +562,62 @@ describe("PATCH /api/sessions/:id/title", () => {
     metadata.setCustomTitle("internal-uuid-1", "Custom");
 
     const app = createApp({ archive, metadata });
-    const patch = await app.request("/api/sessions/session-1/title", {
+    const patch = await app.request("/api/chats/session-1/title", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "" }),
     });
     expect(patch.status).toBe(204);
 
-    const list = await app.request("/api/sessions");
-    const body = (await list.json()) as { sessions: SessionResponse[] };
-    const session = body.sessions.find((s) => s.id === "session-1");
+    const list = await app.request("/api/chats");
+    const body = (await list.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
     expect(session?.title).toBe("Build a login page");
   });
 
   it("treats whitespace-only title as a clear", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
     metadata.setCustomTitle("internal-uuid-1", "Custom");
 
     const app = createApp({ archive, metadata });
-    const patch = await app.request("/api/sessions/session-1/title", {
+    const patch = await app.request("/api/chats/session-1/title", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "   " }),
     });
     expect(patch.status).toBe(204);
 
-    const list = await app.request("/api/sessions");
-    const body = (await list.json()) as { sessions: SessionResponse[] };
-    const session = body.sessions.find((s) => s.id === "session-1");
+    const list = await app.request("/api/chats");
+    const body = (await list.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
     expect(session?.title).toBe("Untitled");
   });
 
   it("trims whitespace around the saved title", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
 
     const app = createApp({ archive, metadata });
-    await app.request("/api/sessions/session-1/title", {
+    await app.request("/api/chats/session-1/title", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "  Padded title  " }),
     });
 
-    const list = await app.request("/api/sessions");
-    const body = (await list.json()) as { sessions: SessionResponse[] };
-    const session = body.sessions.find((s) => s.id === "session-1");
+    const list = await app.request("/api/chats");
+    const body = (await list.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
     expect(session?.title).toBe("Padded title");
   });
 
@@ -628,7 +626,7 @@ describe("PATCH /api/sessions/:id/title", () => {
     const metadata = createMetadataRepository({ dataDir });
     const app = createApp({ archive, metadata });
 
-    const res = await app.request("/api/sessions/nonexistent/title", {
+    const res = await app.request("/api/chats/nonexistent/title", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "x" }),
@@ -639,14 +637,14 @@ describe("PATCH /api/sessions/:id/title", () => {
   it("returns 400 when title is not a string", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
     const app = createApp({ archive, metadata });
 
-    const wrongType = await app.request("/api/sessions/session-1/title", {
+    const wrongType = await app.request("/api/chats/session-1/title", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: 123 }),
@@ -657,15 +655,15 @@ describe("PATCH /api/sessions/:id/title", () => {
   it("returns 400 when title exceeds 200 characters", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
     const app = createApp({ archive, metadata });
 
     const tooLong = "x".repeat(201);
-    const res = await app.request("/api/sessions/session-1/title", {
+    const res = await app.request("/api/chats/session-1/title", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: tooLong }),
@@ -674,19 +672,19 @@ describe("PATCH /api/sessions/:id/title", () => {
   });
 });
 
-describe("GET /api/sessions/:id (archive-backed)", () => {
+describe("GET /api/chats/:id (archive-backed)", () => {
   it("returns messages from archive.messages ordered by ts", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
 
     seedMessage(archive, {
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       messageId: "m-assistant",
       role: "assistant",
       ts: new Date(1700000200000),
@@ -694,7 +692,7 @@ describe("GET /api/sessions/:id (archive-backed)", () => {
       blocks: [{ type: "text", text: "Sure" }],
     });
     seedMessage(archive, {
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       messageId: "m-user",
       role: "user",
       ts: new Date(1700000100000),
@@ -703,7 +701,7 @@ describe("GET /api/sessions/:id (archive-backed)", () => {
     });
 
     const app = createApp({ archive, metadata });
-    const res = await app.request("/api/sessions/session-1");
+    const res = await app.request("/api/chats/session-1");
     expect(res.status).toBe(200);
 
     const body = (await res.json()) as { messages: MessageResponse[] };
@@ -721,7 +719,7 @@ describe("GET /api/sessions/:id (archive-backed)", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     const app = createApp({ archive, metadata });
-    const res = await app.request("/api/sessions/does-not-exist");
+    const res = await app.request("/api/chats/does-not-exist");
     expect(res.status).toBe(404);
   });
 
@@ -729,13 +727,13 @@ describe("GET /api/sessions/:id (archive-backed)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
-    seedSession(archive, {
+    seedChat(archive, {
       internalId: "internal-uuid-1",
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
     seedMessage(archive, {
-      sourceSessionId: "session-1",
+      sourceId: "session-1",
       messageId: "m-tool",
       role: "user",
       ts: new Date(1700000100000),
@@ -744,7 +742,7 @@ describe("GET /api/sessions/:id (archive-backed)", () => {
     });
 
     const app = createApp({ archive, metadata });
-    const res = await app.request("/api/sessions/session-1");
+    const res = await app.request("/api/chats/session-1");
     const body = (await res.json()) as { messages: MessageResponse[] };
     expect(body.messages[0].content).toEqual([
       { type: "tool_result", tool_use_id: "tool-1", content: "result" },

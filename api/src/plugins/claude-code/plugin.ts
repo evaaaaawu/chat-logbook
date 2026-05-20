@@ -7,14 +7,14 @@ import type {
   NormalizedBlock,
   PluginEnv,
   RawRecord,
-  SessionRef,
+  ChatRef,
 } from "../types.js";
 
 export class ClaudeCodePlugin implements AgentPlugin {
   readonly id = "claude-code";
   readonly displayName = "Claude Code";
 
-  async *discover(env: PluginEnv): AsyncIterable<SessionRef> {
+  async *discover(env: PluginEnv): AsyncIterable<ChatRef> {
     const projectsDir = path.join(env.homeDir, ".claude", "projects");
     if (!fs.existsSync(projectsDir)) return;
 
@@ -26,10 +26,10 @@ export class ClaudeCodePlugin implements AgentPlugin {
       for (const file of files) {
         if (!file.isFile() || !file.name.endsWith(".jsonl")) continue;
         const sourcePath = path.join(projectPath, file.name);
-        const sessionId = file.name.replace(/\.jsonl$/, "");
+        const sourceId = file.name.replace(/\.jsonl$/, "");
         const cwd = await readCwdFromJsonl(sourcePath);
         yield {
-          sessionId,
+          sourceId,
           sourcePath,
           watchPaths: [sourcePath],
           project: cwd ? path.basename(cwd) : undefined,
@@ -38,7 +38,7 @@ export class ClaudeCodePlugin implements AgentPlugin {
     }
   }
 
-  async *extractRaw(ref: SessionRef): AsyncIterable<RawRecord> {
+  async *extractRaw(ref: ChatRef): AsyncIterable<RawRecord> {
     if (!fs.existsSync(ref.sourcePath)) return;
 
     const stream = fs.createReadStream(ref.sourcePath, { encoding: "utf-8" });
@@ -48,7 +48,7 @@ export class ClaudeCodePlugin implements AgentPlugin {
       lineNo += 1;
       if (!line) continue;
       yield {
-        sessionId: ref.sessionId,
+        sourceId: ref.sourceId,
         sourcePath: ref.sourcePath,
         sourceLocator: `L${lineNo}`,
         payload: JSON.parse(line),

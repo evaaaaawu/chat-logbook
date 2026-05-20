@@ -1,6 +1,6 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-export const sessionsMeta = sqliteTable("sessions_meta", {
+export const chatsMeta = sqliteTable("chats_meta", {
   id: text("id").primaryKey(),
   isDeleted: integer("is_deleted", { mode: "boolean" })
     .notNull()

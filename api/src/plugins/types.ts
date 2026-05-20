@@ -2,15 +2,15 @@ export interface PluginEnv {
   homeDir: string;
 }
 
-export interface SessionRef {
-  sessionId: string;
+export interface ChatRef {
+  sourceId: string;
   sourcePath: string;
   watchPaths: string[];
   project?: string;
 }
 
 export interface RawRecord {
-  sessionId: string;
+  sourceId: string;
   sourcePath: string;
   sourceLocator: string;
   payload: unknown;
@@ -33,7 +33,7 @@ export interface CanonicalMessage {
 export interface AgentPlugin {
   id: string;
   displayName: string;
-  discover(env: PluginEnv): AsyncIterable<SessionRef>;
-  extractRaw(ref: SessionRef): AsyncIterable<RawRecord>;
+  discover(env: PluginEnv): AsyncIterable<ChatRef>;
+  extractRaw(ref: ChatRef): AsyncIterable<RawRecord>;
   normalize(raw: RawRecord): CanonicalMessage | null;
 }

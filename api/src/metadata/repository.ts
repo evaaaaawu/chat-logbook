@@ -8,7 +8,7 @@ import {
   type BetterSQLite3Database,
 } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { sessionsMeta } from "./schema.js";
+import { chatsMeta } from "./schema.js";
 
 function resolveMigrationsFolder(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -34,15 +34,15 @@ export interface MetadataRepository {
 
 export type LookupInternalId = (
   agent: string,
-  sourceSessionId: string
+  sourceId: string
 ) => string | null;
 
-export type EnsureSession = (agent: string, sourceSessionId: string) => string;
+export type EnsureChat = (agent: string, sourceId: string) => string;
 
 interface RepositoryOptions {
   dataDir: string;
   lookupInternalId?: LookupInternalId;
-  ensureSession?: EnsureSession;
+  ensureChat?: EnsureChat;
 }
 
 const CLAUDE_CODE_AGENT = "claude-code";
@@ -50,7 +50,7 @@ const CLAUDE_CODE_AGENT = "claude-code";
 export function createMetadataRepository({
   dataDir,
   lookupInternalId,
-  ensureSession,
+  ensureChat,
 }: RepositoryOptions): MetadataRepository {
   fs.mkdirSync(dataDir, { recursive: true });
   const sqlite = new Database(path.join(dataDir, "data.db"));
@@ -58,13 +58,13 @@ export function createMetadataRepository({
   migrate(db, { migrationsFolder: resolveMigrationsFolder() });
 
   if (lookupInternalId) {
-    rekeyLegacyRows(sqlite, db, lookupInternalId, ensureSession);
+    rekeyLegacyRows(sqlite, db, lookupInternalId, ensureChat);
   }
 
   return {
     softDelete(internalId) {
       const now = new Date();
-      db.insert(sessionsMeta)
+      db.insert(chatsMeta)
         .values({
           id: internalId,
           isDeleted: true,
@@ -72,7 +72,7 @@ export function createMetadataRepository({
           updatedAt: now,
         })
         .onConflictDoUpdate({
-          target: sessionsMeta.id,
+          target: chatsMeta.id,
           set: { isDeleted: true, updatedAt: now },
         })
         .run();
@@ -80,42 +80,42 @@ export function createMetadataRepository({
 
     restore(internalId) {
       const now = new Date();
-      db.update(sessionsMeta)
+      db.update(chatsMeta)
         .set({ isDeleted: false, updatedAt: now })
-        .where(eq(sessionsMeta.id, internalId))
+        .where(eq(chatsMeta.id, internalId))
         .run();
     },
 
     isDeleted(internalId) {
       const row = db
-        .select({ isDeleted: sessionsMeta.isDeleted })
-        .from(sessionsMeta)
-        .where(eq(sessionsMeta.id, internalId))
+        .select({ isDeleted: chatsMeta.isDeleted })
+        .from(chatsMeta)
+        .where(eq(chatsMeta.id, internalId))
         .get();
       return row?.isDeleted ?? false;
     },
 
     listDeletedIds() {
       const rows = db
-        .select({ id: sessionsMeta.id })
-        .from(sessionsMeta)
-        .where(eq(sessionsMeta.isDeleted, true))
+        .select({ id: chatsMeta.id })
+        .from(chatsMeta)
+        .where(eq(chatsMeta.isDeleted, true))
         .all();
       return rows.map((r) => r.id);
     },
 
     getCustomTitle(internalId) {
       const row = db
-        .select({ customTitle: sessionsMeta.customTitle })
-        .from(sessionsMeta)
-        .where(eq(sessionsMeta.id, internalId))
+        .select({ customTitle: chatsMeta.customTitle })
+        .from(chatsMeta)
+        .where(eq(chatsMeta.id, internalId))
         .get();
       return row?.customTitle ?? null;
     },
 
     setCustomTitle(internalId, title) {
       const now = new Date();
-      db.insert(sessionsMeta)
+      db.insert(chatsMeta)
         .values({
           id: internalId,
           customTitle: title,
@@ -123,7 +123,7 @@ export function createMetadataRepository({
           updatedAt: now,
         })
         .onConflictDoUpdate({
-          target: sessionsMeta.id,
+          target: chatsMeta.id,
           set: { customTitle: title, updatedAt: now },
         })
         .run();
@@ -137,22 +137,22 @@ function rekeyLegacyRows(
   sqlite: Database.Database,
   db: BetterSQLite3Database,
   lookupInternalId: LookupInternalId,
-  ensureSession: EnsureSession | undefined
+  ensureChat: EnsureChat | undefined
 ): void {
   const current = sqlite.pragma("user_version", { simple: true }) as number;
   if (current >= REKEY_USER_VERSION) return;
 
-  const rows = db.select({ id: sessionsMeta.id }).from(sessionsMeta).all();
+  const rows = db.select({ id: chatsMeta.id }).from(chatsMeta).all();
   for (const row of rows) {
     let target = lookupInternalId(CLAUDE_CODE_AGENT, row.id);
     if (target === null) {
-      if (!ensureSession) continue;
-      target = ensureSession(CLAUDE_CODE_AGENT, row.id);
+      if (!ensureChat) continue;
+      target = ensureChat(CLAUDE_CODE_AGENT, row.id);
     }
     if (target === row.id) continue;
-    db.update(sessionsMeta)
+    db.update(chatsMeta)
       .set({ id: target, updatedAt: new Date() })
-      .where(eq(sessionsMeta.id, row.id))
+      .where(eq(chatsMeta.id, row.id))
       .run();
   }
 

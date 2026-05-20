@@ -7,7 +7,7 @@ import {
   ingestionEvents,
   messages,
   rawMessages,
-  sessions,
+  chats,
 } from "../archive/schema.js";
 import { ClaudeCodePlugin } from "../plugins/claude-code/plugin.js";
 import { runIngestion } from "./ingest.js";
@@ -107,7 +107,7 @@ describe("startWatcher", () => {
     await runIngestion({ plugins, archive, env: { homeDir: env.homeDir } });
     const rawBefore = archive.db.select().from(rawMessages).all().length;
     const msgBefore = archive.db.select().from(messages).all().length;
-    const sessBefore = archive.db.select().from(sessions).all().length;
+    const chatsBefore = archive.db.select().from(chats).all().length;
 
     const watcher = startWatcher({
       plugins,
@@ -145,7 +145,7 @@ describe("startWatcher", () => {
         rawBefore
       );
       expect(archive.db.select().from(messages).all().length).toBe(msgBefore);
-      expect(archive.db.select().from(sessions).all().length).toBe(sessBefore);
+      expect(archive.db.select().from(chats).all().length).toBe(chatsBefore);
     } finally {
       await watcher.close();
       archive.close();

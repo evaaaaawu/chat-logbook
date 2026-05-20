@@ -3,10 +3,10 @@ import fs from "node:fs";
 import { and, eq } from "drizzle-orm";
 import type { ArchiveRepository } from "../archive/repository.js";
 import {
+  chats,
+  chatScanState,
   messages,
   rawMessages,
-  sessions,
-  sessionScanState,
 } from "../archive/schema.js";
 import type {
   AgentPlugin,
@@ -44,16 +44,16 @@ export async function runIngestion(opts: IngestOptions): Promise<IngestResult> {
       const stat = safeStat(ref.sourcePath);
       const prior = opts.archive.db
         .select()
-        .from(sessionScanState)
+        .from(chatScanState)
         .where(
           and(
-            eq(sessionScanState.agent, plugin.id),
-            eq(sessionScanState.sessionId, ref.sessionId)
+            eq(chatScanState.agent, plugin.id),
+            eq(chatScanState.sourceId, ref.sourceId)
           )
         )
         .get();
 
-      ensureSession(opts.archive, plugin.id, ref.sessionId, now(), ref.project);
+      ensureChat(opts.archive, plugin.id, ref.sourceId, now(), ref.project);
 
       if (
         stat &&
@@ -78,7 +78,7 @@ export async function runIngestion(opts: IngestOptions): Promise<IngestResult> {
           .where(
             and(
               eq(rawMessages.agent, plugin.id),
-              eq(rawMessages.sessionId, ref.sessionId),
+              eq(rawMessages.sourceId, ref.sourceId),
               eq(rawMessages.payloadHash, payloadHash)
             )
           )
@@ -92,7 +92,7 @@ export async function runIngestion(opts: IngestOptions): Promise<IngestResult> {
             .insert(rawMessages)
             .values({
               agent: plugin.id,
-              sessionId: ref.sessionId,
+              sourceId: ref.sourceId,
               sourcePath: raw.sourcePath,
               sourceLocator: raw.sourceLocator,
               rawPayload: payloadJson,
@@ -111,7 +111,7 @@ export async function runIngestion(opts: IngestOptions): Promise<IngestResult> {
         const upserted = upsertCanonical(
           opts.archive,
           plugin.id,
-          ref.sessionId,
+          ref.sourceId,
           canonical,
           rawId
         );
@@ -122,7 +122,7 @@ export async function runIngestion(opts: IngestOptions): Promise<IngestResult> {
         recordScanState(
           opts.archive,
           plugin.id,
-          ref.sessionId,
+          ref.sourceId,
           ref.sourcePath,
           stat,
           now()
@@ -145,39 +145,36 @@ function safeStat(p: string): fs.Stats | null {
 function recordScanState(
   archive: ArchiveRepository,
   agent: string,
-  sessionId: string,
+  sourceId: string,
   sourcePath: string,
   stat: fs.Stats,
   scannedAt: Date
 ): void {
   const existing = archive.db
-    .select({ id: sessionScanState.id })
-    .from(sessionScanState)
+    .select({ id: chatScanState.id })
+    .from(chatScanState)
     .where(
-      and(
-        eq(sessionScanState.agent, agent),
-        eq(sessionScanState.sessionId, sessionId)
-      )
+      and(eq(chatScanState.agent, agent), eq(chatScanState.sourceId, sourceId))
     )
     .get();
 
   if (existing) {
     archive.db
-      .update(sessionScanState)
+      .update(chatScanState)
       .set({
         sourcePath,
         lastMtimeMs: stat.mtimeMs,
         lastSizeBytes: stat.size,
         lastScannedAt: scannedAt,
       })
-      .where(eq(sessionScanState.id, existing.id))
+      .where(eq(chatScanState.id, existing.id))
       .run();
   } else {
     archive.db
-      .insert(sessionScanState)
+      .insert(chatScanState)
       .values({
         agent,
-        sessionId,
+        sourceId,
         sourcePath,
         lastMtimeMs: stat.mtimeMs,
         lastSizeBytes: stat.size,
@@ -187,43 +184,38 @@ function recordScanState(
   }
 }
 
-function ensureSession(
+function ensureChat(
   archive: ArchiveRepository,
   agent: string,
-  sourceSessionId: string,
+  sourceId: string,
   firstSeenAt: Date,
   project: string | undefined
 ): string {
   const existing = archive.db
     .select()
-    .from(sessions)
-    .where(
-      and(
-        eq(sessions.agent, agent),
-        eq(sessions.sourceSessionId, sourceSessionId)
-      )
-    )
+    .from(chats)
+    .where(and(eq(chats.agent, agent), eq(chats.sourceId, sourceId)))
     .get();
   if (existing) {
     if (project && existing.project !== project) {
       archive.db
-        .update(sessions)
+        .update(chats)
         .set({ project })
-        .where(eq(sessions.id, existing.id))
+        .where(eq(chats.id, existing.id))
         .run();
     }
     return existing.id;
   }
 
   const id = crypto.randomUUID();
-  const shortCode = archive.generateShortCode();
+  const chatId = archive.generateChatId();
   archive.db
-    .insert(sessions)
+    .insert(chats)
     .values({
       id,
-      shortCode,
+      chatId,
       agent,
-      sourceSessionId,
+      sourceId,
       firstSeenAt,
       project: project ?? null,
     })
@@ -234,7 +226,7 @@ function ensureSession(
 function upsertCanonical(
   archive: ArchiveRepository,
   agent: string,
-  sessionId: string,
+  sourceId: string,
   msg: CanonicalMessage,
   rawId: number
 ): boolean {
@@ -244,7 +236,7 @@ function upsertCanonical(
     .where(
       and(
         eq(messages.agent, agent),
-        eq(messages.sessionId, sessionId),
+        eq(messages.sourceId, sourceId),
         eq(messages.messageId, msg.messageId)
       )
     )
@@ -257,7 +249,7 @@ function upsertCanonical(
       .insert(messages)
       .values({
         agent,
-        sessionId,
+        sourceId,
         messageId: msg.messageId,
         role: msg.role,
         ts,

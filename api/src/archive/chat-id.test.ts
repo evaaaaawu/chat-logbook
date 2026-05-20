@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { CROCKFORD_ALPHABET, generateShortCode } from "./short-code.js";
+import { CROCKFORD_ALPHABET, generateChatId } from "./chat-id.js";
 
 const ALLOWED = new Set(CROCKFORD_ALPHABET);
 
-describe("generateShortCode", () => {
+describe("generateChatId", () => {
   it("returns a 6-character string using only Crockford alphabet", () => {
     for (let i = 0; i < 100; i++) {
-      const code = generateShortCode({ isTaken: () => false });
+      const code = generateChatId({ isTaken: () => false });
       expect(code).toHaveLength(6);
       for (const ch of code) {
         expect(ALLOWED.has(ch)).toBe(true);
@@ -16,9 +16,9 @@ describe("generateShortCode", () => {
 
   it("retries when isTaken reports a collision, returning the first free code", () => {
     const sequences = [
-      [0, 0, 0, 0, 0, 0], // → "000000"
-      [1, 1, 1, 1, 1, 1], // → "111111"
-      [2, 2, 2, 2, 2, 2], // → "222222"
+      [0, 0, 0, 0, 0, 0],
+      [1, 1, 1, 1, 1, 1],
+      [2, 2, 2, 2, 2, 2],
     ];
     let cursor = 0;
     const randomIndex = (): number => {
@@ -29,7 +29,7 @@ describe("generateShortCode", () => {
     };
     const taken = new Set(["000000", "111111"]);
 
-    const code = generateShortCode({
+    const code = generateChatId({
       isTaken: (c) => taken.has(c),
       randomIndex,
     });
@@ -39,11 +39,11 @@ describe("generateShortCode", () => {
 
   it("throws when every retry collides", () => {
     expect(() =>
-      generateShortCode({
+      generateChatId({
         isTaken: () => true,
         randomIndex: () => 0,
       })
-    ).toThrow(/short_code/);
+    ).toThrow(/chat_id/);
   });
 
   it("excludes i, l, o, u from the alphabet", () => {

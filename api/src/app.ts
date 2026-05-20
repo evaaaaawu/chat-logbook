@@ -3,11 +3,11 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { and, asc, desc, eq } from "drizzle-orm";
 import type { ArchiveRepository } from "./archive/repository.js";
 import {
+  chats as archiveChats,
   messages as archiveMessages,
-  sessions as archiveSessions,
 } from "./archive/schema.js";
 import type { MetadataRepository } from "./metadata/repository.js";
-import { loadSessionVisibility } from "./visibility.js";
+import { loadChatVisibility } from "./visibility.js";
 
 interface AppOptions {
   archive: ArchiveRepository;
@@ -15,7 +15,7 @@ interface AppOptions {
   webDistDir?: string;
 }
 
-interface SessionResponse {
+interface ChatResponse {
   id: string;
   title: string;
   project: string;
@@ -57,21 +57,21 @@ const CLAUDE_CODE_AGENT = "claude-code";
 export function createApp({ archive, metadata, webDistDir }: AppOptions) {
   const app = new Hono();
 
-  function findArchiveSessionBySourceId(sourceSessionId: string) {
+  function findArchiveChatBySourceId(sourceId: string) {
     return archive.db
       .select()
-      .from(archiveSessions)
-      .where(eq(archiveSessions.sourceSessionId, sourceSessionId))
+      .from(archiveChats)
+      .where(eq(archiveChats.sourceId, sourceId))
       .get();
   }
 
-  app.get("/api/sessions", (c) => {
-    const visibility = loadSessionVisibility(metadata, {
+  app.get("/api/chats", (c) => {
+    const visibility = loadChatVisibility(metadata, {
       includeTrashed: c.req.query("includeTrashed") === "true",
     });
 
-    const rows = archive.db.select().from(archiveSessions).all();
-    const sessions: SessionResponse[] = [];
+    const rows = archive.db.select().from(archiveChats).all();
+    const chats: ChatResponse[] = [];
 
     for (const row of rows) {
       if (!visibility.isVisible(row.id)) continue;
@@ -83,15 +83,15 @@ export function createApp({ archive, metadata, webDistDir }: AppOptions) {
         .where(
           and(
             eq(archiveMessages.agent, CLAUDE_CODE_AGENT),
-            eq(archiveMessages.sessionId, row.sourceSessionId)
+            eq(archiveMessages.sourceId, row.sourceId)
           )
         )
         .orderBy(desc(archiveMessages.ts))
         .limit(1)
         .get();
 
-      const session: SessionResponse = {
-        id: row.sourceSessionId,
+      const chat: ChatResponse = {
+        id: row.sourceId,
         title: deriveTitle(archive, metadata, row),
         project: row.project ?? "",
         createdAt: row.firstSeenAt.getTime(),
@@ -99,38 +99,38 @@ export function createApp({ archive, metadata, webDistDir }: AppOptions) {
           ? lastMessage.ts.getTime()
           : row.firstSeenAt.getTime(),
       };
-      if (isDeleted) session.isDeleted = true;
-      sessions.push(session);
+      if (isDeleted) chat.isDeleted = true;
+      chats.push(chat);
     }
 
-    return c.json({ sessions });
+    return c.json({ chats });
   });
 
-  app.delete("/api/sessions/:id", (c) => {
-    const sessionId = c.req.param("id");
-    const row = findArchiveSessionBySourceId(sessionId);
+  app.delete("/api/chats/:id", (c) => {
+    const id = c.req.param("id");
+    const row = findArchiveChatBySourceId(id);
     if (!row) {
-      return c.json({ error: "Session not found" }, 404);
+      return c.json({ error: "Chat not found" }, 404);
     }
     metadata.softDelete(row.id);
     return c.body(null, 204);
   });
 
-  app.post("/api/sessions/:id/restore", (c) => {
-    const sessionId = c.req.param("id");
-    const row = findArchiveSessionBySourceId(sessionId);
+  app.post("/api/chats/:id/restore", (c) => {
+    const id = c.req.param("id");
+    const row = findArchiveChatBySourceId(id);
     if (!row) {
-      return c.json({ error: "Session not found" }, 404);
+      return c.json({ error: "Chat not found" }, 404);
     }
     metadata.restore(row.id);
     return c.body(null, 204);
   });
 
-  app.patch("/api/sessions/:id/title", async (c) => {
-    const sessionId = c.req.param("id");
-    const row = findArchiveSessionBySourceId(sessionId);
+  app.patch("/api/chats/:id/title", async (c) => {
+    const id = c.req.param("id");
+    const row = findArchiveChatBySourceId(id);
     if (!row) {
-      return c.json({ error: "Session not found" }, 404);
+      return c.json({ error: "Chat not found" }, 404);
     }
 
     let body: unknown;
@@ -155,17 +155,17 @@ export function createApp({ archive, metadata, webDistDir }: AppOptions) {
     return c.body(null, 204);
   });
 
-  app.get("/api/sessions/:id", (c) => {
-    const sessionId = c.req.param("id");
-    const row = findArchiveSessionBySourceId(sessionId);
+  app.get("/api/chats/:id", (c) => {
+    const id = c.req.param("id");
+    const row = findArchiveChatBySourceId(id);
     if (!row) {
-      return c.json({ error: "Session not found" }, 404);
+      return c.json({ error: "Chat not found" }, 404);
     }
-    const visibility = loadSessionVisibility(metadata, {
+    const visibility = loadChatVisibility(metadata, {
       includeTrashed: c.req.query("includeTrashed") === "true",
     });
     if (!visibility.isVisible(row.id)) {
-      return c.json({ error: "Session not found" }, 404);
+      return c.json({ error: "Chat not found" }, 404);
     }
     const rows = archive.db
       .select()
@@ -173,7 +173,7 @@ export function createApp({ archive, metadata, webDistDir }: AppOptions) {
       .where(
         and(
           eq(archiveMessages.agent, CLAUDE_CODE_AGENT),
-          eq(archiveMessages.sessionId, sessionId)
+          eq(archiveMessages.sourceId, id)
         )
       )
       .orderBy(asc(archiveMessages.ts))
@@ -191,7 +191,7 @@ export function createApp({ archive, metadata, webDistDir }: AppOptions) {
   function deriveTitle(
     archive: ArchiveRepository,
     metadata: MetadataRepository,
-    row: { id: string; sourceSessionId: string }
+    row: { id: string; sourceId: string }
   ): string {
     const custom = metadata.getCustomTitle(row.id);
     if (custom && custom.trim()) return custom;
@@ -202,7 +202,7 @@ export function createApp({ archive, metadata, webDistDir }: AppOptions) {
       .where(
         and(
           eq(archiveMessages.agent, CLAUDE_CODE_AGENT),
-          eq(archiveMessages.sessionId, row.sourceSessionId),
+          eq(archiveMessages.sourceId, row.sourceId),
           eq(archiveMessages.role, "user")
         )
       )

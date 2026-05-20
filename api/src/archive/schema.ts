@@ -16,19 +16,17 @@ export const schemaVersion = sqliteTable("schema_version", {
   appliedAt: integer("applied_at", { mode: "timestamp_ms" }).notNull(),
 });
 
-export const sessions = sqliteTable(
-  "sessions",
+export const chats = sqliteTable(
+  "chats",
   {
     id: text("id").primaryKey(),
-    shortCode: text("short_code").notNull().unique(),
+    chatId: text("chat_id").notNull().unique(),
     agent: text("agent").notNull(),
-    sourceSessionId: text("source_session_id").notNull(),
+    sourceId: text("source_id").notNull(),
     firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).notNull(),
     project: text("project"),
   },
-  (t) => [
-    uniqueIndex("sessions_agent_source_idx").on(t.agent, t.sourceSessionId),
-  ]
+  (t) => [uniqueIndex("chats_agent_source_idx").on(t.agent, t.sourceId)]
 );
 
 export const rawMessages = sqliteTable(
@@ -36,7 +34,7 @@ export const rawMessages = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     agent: text("agent").notNull(),
-    sessionId: text("session_id").notNull(),
+    sourceId: text("source_id").notNull(),
     sourcePath: text("source_path").notNull(),
     sourceLocator: text("source_locator").notNull(),
     rawPayload: text("raw_payload").notNull(),
@@ -44,11 +42,7 @@ export const rawMessages = sqliteTable(
     ingestedAt: integer("ingested_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [
-    uniqueIndex("raw_messages_idem_idx").on(
-      t.agent,
-      t.sessionId,
-      t.payloadHash
-    ),
+    uniqueIndex("raw_messages_idem_idx").on(t.agent, t.sourceId, t.payloadHash),
   ]
 );
 
@@ -57,7 +51,7 @@ export const messages = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     agent: text("agent").notNull(),
-    sessionId: text("session_id").notNull(),
+    sourceId: text("source_id").notNull(),
     messageId: text("message_id").notNull(),
     role: text("role").notNull(),
     ts: integer("ts", { mode: "timestamp_ms" }).notNull(),
@@ -68,16 +62,16 @@ export const messages = sqliteTable(
       .references(() => rawMessages.id),
   },
   (t) => [
-    uniqueIndex("messages_canonical_idx").on(t.agent, t.sessionId, t.messageId),
+    uniqueIndex("messages_canonical_idx").on(t.agent, t.sourceId, t.messageId),
   ]
 );
 
-export const sessionScanState = sqliteTable(
+export const chatScanState = sqliteTable(
   "session_scan_state",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     agent: text("agent").notNull(),
-    sessionId: text("session_id").notNull(),
+    sourceId: text("source_id").notNull(),
     sourcePath: text("source_path").notNull(),
     lastMtimeMs: integer("last_mtime_ms").notNull(),
     lastSizeBytes: integer("last_size_bytes").notNull(),
@@ -85,13 +79,13 @@ export const sessionScanState = sqliteTable(
       mode: "timestamp_ms",
     }).notNull(),
   },
-  (t) => [uniqueIndex("session_scan_state_idx").on(t.agent, t.sessionId)]
+  (t) => [uniqueIndex("session_scan_state_idx").on(t.agent, t.sourceId)]
 );
 
 export const ingestionEvents = sqliteTable("ingestion_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   agent: text("agent").notNull(),
-  sessionId: text("session_id").notNull(),
+  sourceId: text("source_id").notNull(),
   sourcePath: text("source_path").notNull(),
   eventType: text("event_type").notNull(),
   detail: text("detail", { mode: "json" }).notNull(),
