@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { useSessions } from "@/hooks/useSessions";
+import { useChats } from "@/hooks/useChats";
 import { useMessages } from "@/hooks/useMessages";
 import { useToast } from "@/hooks/useToast";
 import { FilterPanel } from "@/components/FilterPanel";
-import { SessionList } from "@/components/SessionList";
+import { ChatList } from "@/components/ChatList";
 import { ConversationView } from "@/components/ConversationView";
 import { Toast } from "@/components/Toast";
 import {
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/resizable";
 
 function App() {
-  const { sessions, softDelete, restore, setTitle } = useSessions();
+  const { chats, softDelete, restore, setTitle } = useChats();
   const handleRenameTitle = (id: string, title: string) => {
     void setTitle(id, title);
   };
@@ -22,10 +22,10 @@ function App() {
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const { messages, error } = useMessages(selectedId);
   const { toast, showToast, dismissToast } = useToast();
-  const mainSessions = sessions.filter((s) => !s.isDeleted);
-  const deletedSessions = sessions.filter((s) => s.isDeleted);
-  const visibleSessions = mode === "trash" ? deletedSessions : mainSessions;
-  const selectedSession = sessions.find((s) => s.id === selectedId) ?? null;
+  const mainChats = chats.filter((c) => !c.isDeleted);
+  const deletedChats = chats.filter((c) => c.isDeleted);
+  const visibleChats = mode === "trash" ? deletedChats : mainChats;
+  const selectedChat = chats.find((c) => c.id === selectedId) ?? null;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -74,14 +74,14 @@ function App() {
 
   const handleRestore = (id: string) => {
     if (id === selectedId) {
-      const idx = deletedSessions.findIndex((s) => s.id === id);
-      const remaining = deletedSessions.filter((_, i) => i !== idx);
+      const idx = deletedChats.findIndex((c) => c.id === id);
+      const remaining = deletedChats.filter((_, i) => i !== idx);
       const next = remaining[idx] ?? remaining[idx - 1] ?? null;
       setSelectedId(next?.id ?? null);
     }
     void restore(id);
     showToast({
-      message: "Session restored.",
+      message: "Chat restored.",
       actionLabel: "View",
       onAction: () => {
         setMode("main");
@@ -92,14 +92,14 @@ function App() {
 
   const handleDelete = (id: string) => {
     if (id === selectedId) {
-      const idx = mainSessions.findIndex((s) => s.id === id);
-      const remaining = mainSessions.filter((_, i) => i !== idx);
+      const idx = mainChats.findIndex((c) => c.id === id);
+      const remaining = mainChats.filter((_, i) => i !== idx);
       const next = remaining[idx] ?? remaining[idx - 1] ?? null;
       setSelectedId(next?.id ?? null);
     }
     void softDelete(id);
     showToast({
-      message: "Session deleted.",
+      message: "Chat deleted.",
       actionLabel: "Undo",
       onAction: () => void restore(id),
     });
@@ -110,15 +110,15 @@ function App() {
       <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel defaultSize={15} minSize={10}>
           <FilterPanel
-            deletedCount={deletedSessions.length}
+            deletedCount={deletedChats.length}
             onOpenTrash={() => setMode("trash")}
           />
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel defaultSize={25} minSize={15}>
-          <SessionList
+          <ChatList
             mode={mode}
-            sessions={visibleSessions}
+            chats={visibleChats}
             selectedId={selectedId}
             editingId={editingTitleId}
             onEditingIdChange={setEditingTitleId}
@@ -127,14 +127,14 @@ function App() {
             onRestore={handleRestore}
             onRenameTitle={handleRenameTitle}
             onBack={() => setMode("main")}
-            deletedCount={deletedSessions.length}
+            deletedCount={deletedChats.length}
             onOpenTrash={() => setMode("trash")}
           />
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel defaultSize={60} minSize={30}>
           <ConversationView
-            session={selectedSession}
+            chat={selectedChat}
             messages={messages}
             error={error}
             onRestore={handleRestore}

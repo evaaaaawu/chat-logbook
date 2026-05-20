@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createArchiveRepository } from "../archive/repository.js";
-import { messages, rawMessages, sessions } from "../archive/schema.js";
+import { chats, messages, rawMessages } from "../archive/schema.js";
 import { ClaudeCodePlugin } from "../plugins/claude-code/plugin.js";
 import { runIngestion } from "./ingest.js";
 
@@ -49,21 +49,21 @@ describe("runIngestion", () => {
     expect(result.rawInserted).toBeGreaterThan(0);
     expect(result.canonicalUpserted).toBeGreaterThan(0);
 
-    const sessionRows = archive.db.select().from(sessions).all();
+    const chatRows = archive.db.select().from(chats).all();
     const rawRows = archive.db.select().from(rawMessages).all();
     const msgRows = archive.db.select().from(messages).all();
 
-    expect(sessionRows.length).toBeGreaterThan(0);
+    expect(chatRows.length).toBeGreaterThan(0);
     expect(rawRows.length).toBeGreaterThan(0);
     expect(msgRows.length).toBeGreaterThan(0);
     expect(msgRows.length).toBeLessThanOrEqual(rawRows.length);
 
-    for (const s of sessionRows) {
+    for (const s of chatRows) {
       expect(s.agent).toBe("claude-code");
-      expect(s.shortCode).toHaveLength(6);
+      expect(s.chatId).toHaveLength(6);
     }
 
-    const session1 = sessionRows.find((s) => s.sourceSessionId === "session-1");
+    const session1 = chatRows.find((s) => s.sourceId === "session-1");
     expect(session1?.project).toBe("project-a");
 
     archive.close();
@@ -80,7 +80,7 @@ describe("runIngestion", () => {
     });
     const rawBefore = archive.db.select().from(rawMessages).all().length;
     const msgBefore = archive.db.select().from(messages).all().length;
-    const sessBefore = archive.db.select().from(sessions).all().length;
+    const chatsBefore = archive.db.select().from(chats).all().length;
 
     const second = await runIngestion({
       plugins: pluginsList,
@@ -92,7 +92,7 @@ describe("runIngestion", () => {
     expect(second.rawInserted).toBe(0);
     expect(archive.db.select().from(rawMessages).all().length).toBe(rawBefore);
     expect(archive.db.select().from(messages).all().length).toBe(msgBefore);
-    expect(archive.db.select().from(sessions).all().length).toBe(sessBefore);
+    expect(archive.db.select().from(chats).all().length).toBe(chatsBefore);
 
     archive.close();
   });
@@ -198,7 +198,7 @@ describe("runIngestion", () => {
     const observedPlugin = new ClaudeCodePlugin();
     const originalExtract = observedPlugin.extractRaw.bind(observedPlugin);
     observedPlugin.extractRaw = async function* (ref) {
-      opened.push(ref.sessionId);
+      opened.push(ref.sourceId);
       yield* originalExtract(ref);
     };
 
@@ -267,7 +267,7 @@ describe("runIngestion", () => {
     });
     const rawBefore = archive.db.select().from(rawMessages).all();
     const msgBefore = archive.db.select().from(messages).all();
-    const sessBefore = archive.db.select().from(sessions).all();
+    const chatsBefore = archive.db.select().from(chats).all();
     expect(rawBefore.length).toBeGreaterThan(1);
 
     // Truncate source file to a single line (simulate vendor pruning).
@@ -291,11 +291,11 @@ describe("runIngestion", () => {
 
     const rawAfter = archive.db.select().from(rawMessages).all();
     const msgAfter = archive.db.select().from(messages).all();
-    const sessAfter = archive.db.select().from(sessions).all();
+    const chatsAfter = archive.db.select().from(chats).all();
 
     expect(rawAfter.length).toBeGreaterThanOrEqual(rawBefore.length);
     expect(msgAfter.length).toBeGreaterThanOrEqual(msgBefore.length);
-    expect(sessAfter.length).toBe(sessBefore.length);
+    expect(chatsAfter.length).toBe(chatsBefore.length);
     for (const r of rawBefore) {
       expect(rawAfter.some((a) => a.id === r.id)).toBe(true);
     }
@@ -334,9 +334,9 @@ describe("runIngestion", () => {
     });
     const before = archive.db
       .select()
-      .from(sessions)
+      .from(chats)
       .all()
-      .find((s) => s.sourceSessionId === "late");
+      .find((s) => s.sourceId === "late");
     expect(before?.project).toBeNull();
 
     // A later message now carries cwd (e.g. read further into the file).
@@ -358,9 +358,9 @@ describe("runIngestion", () => {
     });
     const after = archive.db
       .select()
-      .from(sessions)
+      .from(chats)
       .all()
-      .find((s) => s.sourceSessionId === "late");
+      .find((s) => s.sourceId === "late");
     expect(after?.project).toBe("late-app");
 
     archive.close();

@@ -1,7 +1,7 @@
 import chokidar, { type FSWatcher, type ChokidarOptions } from "chokidar";
 import type { ArchiveRepository } from "../archive/repository.js";
 import { ingestionEvents } from "../archive/schema.js";
-import type { AgentPlugin, PluginEnv, SessionRef } from "../plugins/types.js";
+import type { AgentPlugin, PluginEnv, ChatRef } from "../plugins/types.js";
 import { runIngestion } from "./ingest.js";
 
 export interface WatcherOptions {
@@ -20,7 +20,7 @@ export interface IngestionWatcher {
 
 interface PathBinding {
   plugin: AgentPlugin;
-  ref: SessionRef;
+  ref: ChatRef;
 }
 
 export function startWatcher(opts: WatcherOptions): IngestionWatcher {
@@ -75,7 +75,7 @@ export function startWatcher(opts: WatcherOptions): IngestionWatcher {
         .insert(ingestionEvents)
         .values({
           agent: binding.plugin.id,
-          sessionId: binding.ref.sessionId,
+          sourceId: binding.ref.sourceId,
           sourcePath: removedPath,
           eventType: "unlink_observed",
           detail: { path: removedPath },

@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
 
-type FakeSession = {
+type FakeChat = {
   id: string;
   defaultTitle: string;
   customTitle: string | null;
@@ -10,9 +10,9 @@ type FakeSession = {
   isDeleted?: boolean;
 };
 
-const initialFakeSessions: FakeSession[] = [
+const initialFakeChats: FakeChat[] = [
   {
-    id: "session-1",
+    id: "chat-1",
     defaultTitle: "Build a login page",
     customTitle: null,
     project: "/Users/test/my-web-app",
@@ -20,7 +20,7 @@ const initialFakeSessions: FakeSession[] = [
     updatedAt: 1700000200000,
   },
   {
-    id: "session-2",
+    id: "chat-2",
     defaultTitle: "Fix database migration",
     customTitle: null,
     project: "/Users/test/backend-api",
@@ -28,7 +28,7 @@ const initialFakeSessions: FakeSession[] = [
     updatedAt: 1700000300000,
   },
   {
-    id: "session-3",
+    id: "chat-3",
     defaultTitle: "Refactor utils",
     customTitle: null,
     project: "/Users/test/my-web-app",
@@ -36,7 +36,7 @@ const initialFakeSessions: FakeSession[] = [
     updatedAt: 1700000150000,
   },
   {
-    id: "session-missing",
+    id: "chat-missing",
     defaultTitle: "Untitled",
     customTitle: null,
     project: "/Users/test/some-project",
@@ -44,7 +44,7 @@ const initialFakeSessions: FakeSession[] = [
     updatedAt: 1699999900000,
   },
   {
-    id: "session-deleted-1",
+    id: "chat-deleted-1",
     defaultTitle: "Old prototype",
     customTitle: null,
     project: "/Users/test/my-web-app",
@@ -54,14 +54,14 @@ const initialFakeSessions: FakeSession[] = [
   },
 ];
 
-export let fakeSessions: FakeSession[] = structuredClone(initialFakeSessions);
+export let fakeChats: FakeChat[] = structuredClone(initialFakeChats);
 
-export function resetFakeSessions(): void {
-  fakeSessions = structuredClone(initialFakeSessions);
+export function resetFakeChats(): void {
+  fakeChats = structuredClone(initialFakeChats);
 }
 
 export const fakeMessages = {
-  "session-1": [
+  "chat-1": [
     {
       role: "user",
       content: "Help me build a login page",
@@ -73,7 +73,7 @@ export const fakeMessages = {
       timestamp: "2024-01-01T00:00:03Z",
     },
   ],
-  "session-2": [
+  "chat-2": [
     {
       role: "user",
       content: "Show me a **bold** example with a [link](https://example.com)",
@@ -90,14 +90,14 @@ export const fakeMessages = {
       timestamp: "2024-01-01T00:00:05Z",
     },
   ],
-  "session-deleted-1": [
+  "chat-deleted-1": [
     {
       role: "user",
       content: "Quick prototype experiment",
       timestamp: "2024-01-01T00:00:08Z",
     },
   ],
-  "session-3": [
+  "chat-3": [
     {
       role: "user",
       content: "Refactor the utils module",
@@ -133,25 +133,25 @@ export const fakeMessages = {
   ],
 };
 
-function projectSession(s: FakeSession) {
-  const { defaultTitle, customTitle, ...rest } = s;
+function projectChat(c: FakeChat) {
+  const { defaultTitle, customTitle, ...rest } = c;
   return { ...rest, title: customTitle ?? defaultTitle };
 }
 
 export const handlers = [
-  http.get("/api/sessions", ({ request }) => {
+  http.get("/api/chats", ({ request }) => {
     const url = new URL(request.url);
     const includeTrashed = url.searchParams.get("includeTrashed") === "true";
     const filtered = includeTrashed
-      ? fakeSessions
-      : fakeSessions.filter((s) => !s.isDeleted);
-    return HttpResponse.json({ sessions: filtered.map(projectSession) });
+      ? fakeChats
+      : fakeChats.filter((c) => !c.isDeleted);
+    return HttpResponse.json({ chats: filtered.map(projectChat) });
   }),
-  http.patch("/api/sessions/:id/title", async ({ params, request }) => {
+  http.patch("/api/chats/:id/title", async ({ params, request }) => {
     const id = params.id as string;
-    const session = fakeSessions.find((s) => s.id === id);
-    if (!session) {
-      return HttpResponse.json({ error: "Session not found" }, { status: 404 });
+    const chat = fakeChats.find((c) => c.id === id);
+    if (!chat) {
+      return HttpResponse.json({ error: "Chat not found" }, { status: 404 });
     }
     const body = (await request.json()) as { title?: unknown };
     if (typeof body?.title !== "string") {
@@ -161,33 +161,33 @@ export const handlers = [
       return HttpResponse.json({ error: "Title too long" }, { status: 400 });
     }
     const trimmed = body.title.trim();
-    session.customTitle = trimmed.length > 0 ? trimmed : null;
+    chat.customTitle = trimmed.length > 0 ? trimmed : null;
     return new HttpResponse(null, { status: 204 });
   }),
-  http.get("/api/sessions/:id", ({ params }) => {
+  http.get("/api/chats/:id", ({ params }) => {
     const id = params.id as string;
     const messages = fakeMessages[id as keyof typeof fakeMessages];
     if (!messages) {
-      return HttpResponse.json({ error: "Session not found" }, { status: 404 });
+      return HttpResponse.json({ error: "Chat not found" }, { status: 404 });
     }
     return HttpResponse.json({ messages });
   }),
-  http.delete("/api/sessions/:id", ({ params }) => {
+  http.delete("/api/chats/:id", ({ params }) => {
     const id = params.id as string;
-    const session = fakeSessions.find((s) => s.id === id);
-    if (!session) {
-      return HttpResponse.json({ error: "Session not found" }, { status: 404 });
+    const chat = fakeChats.find((c) => c.id === id);
+    if (!chat) {
+      return HttpResponse.json({ error: "Chat not found" }, { status: 404 });
     }
-    session.isDeleted = true;
+    chat.isDeleted = true;
     return new HttpResponse(null, { status: 204 });
   }),
-  http.post("/api/sessions/:id/restore", ({ params }) => {
+  http.post("/api/chats/:id/restore", ({ params }) => {
     const id = params.id as string;
-    const session = fakeSessions.find((s) => s.id === id);
-    if (!session) {
-      return HttpResponse.json({ error: "Session not found" }, { status: 404 });
+    const chat = fakeChats.find((c) => c.id === id);
+    if (!chat) {
+      return HttpResponse.json({ error: "Chat not found" }, { status: 404 });
     }
-    session.isDeleted = false;
+    chat.isDeleted = false;
     return new HttpResponse(null, { status: 204 });
   }),
 ];

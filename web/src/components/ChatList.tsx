@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Pencil, RotateCcw, Trash2 } from "lucide-react";
-import type { Session } from "@/types";
+import type { Chat } from "@/types";
 import { EditableTitle } from "./EditableTitle";
 
-interface SessionListProps {
+interface ChatListProps {
   mode?: "main" | "trash";
-  sessions: Session[];
+  chats: Chat[];
   selectedId: string | null;
   editingId?: string | null;
   onEditingIdChange?: (id: string | null) => void;
@@ -38,7 +38,7 @@ function getRelativeTime(timestamp: number): string {
 }
 
 interface ContextMenuState {
-  sessionId: string;
+  chatId: string;
   x: number;
   y: number;
 }
@@ -93,9 +93,9 @@ function ActionTooltip({ label, hint }: { label: string; hint: string }) {
   );
 }
 
-export function SessionList({
+export function ChatList({
   mode = "main",
-  sessions,
+  chats,
   selectedId,
   editingId: editingIdProp,
   onEditingIdChange,
@@ -106,7 +106,7 @@ export function SessionList({
   onBack,
   deletedCount = 0,
   onOpenTrash,
-}: SessionListProps) {
+}: ChatListProps) {
   const [internalEditingId, setInternalEditingId] = useState<string | null>(
     null
   );
@@ -125,9 +125,6 @@ export function SessionList({
     const closeOnEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") setContextMenu(null);
     };
-    // Defer attaching the click listener by one tick so the opening
-    // contextmenu event (which is followed by no native click) doesn't
-    // race a subsequent click handler from the same gesture.
     const id = window.setTimeout(() => {
       document.addEventListener("click", close);
     }, 0);
@@ -139,13 +136,13 @@ export function SessionList({
     };
   }, [contextMenu]);
 
-  const handleContextMenu = (e: React.MouseEvent, sessionId: string) => {
+  const handleContextMenu = (e: React.MouseEvent, chatId: string) => {
     e.preventDefault();
-    setContextMenu({ sessionId, x: e.clientX, y: e.clientY });
+    setContextMenu({ chatId, x: e.clientX, y: e.clientY });
   };
 
   return (
-    <div data-testid="session-list" className="flex h-full flex-col">
+    <div data-testid="chat-list" className="flex h-full flex-col">
       <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border px-4 text-sm">
         {isTrash ? (
           <>
@@ -158,22 +155,20 @@ export function SessionList({
               Back
             </button>
             <span className="font-semibold text-accent-foreground">
-              Trash ({sessions.length})
+              Trash ({chats.length})
             </span>
           </>
         ) : (
           <>
-            <span className="font-semibold text-accent-foreground">
-              Sessions
-            </span>
+            <span className="font-semibold text-accent-foreground">Chats</span>
             <span className="text-xs text-muted-foreground">
-              {sessions.length}
+              {chats.length}
             </span>
           </>
         )}
       </div>
       <div className="flex-1 overflow-y-auto">
-        {sessions.length === 0 ? (
+        {chats.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center px-6 text-center text-sm text-muted-foreground">
             {isTrash ? (
               <>
@@ -181,13 +176,12 @@ export function SessionList({
                   Trash is empty
                 </div>
                 <div className="mt-1 text-xs">
-                  Deleted sessions appear here. They stay until you restore
-                  them.
+                  Deleted chats appear here. They stay until you restore them.
                 </div>
               </>
             ) : (
               <>
-                <div className="font-medium text-foreground">No sessions</div>
+                <div className="font-medium text-foreground">No chats</div>
                 {deletedCount > 0 && onOpenTrash && (
                   <div className="mt-1 text-xs">
                     Check{" "}
@@ -205,9 +199,9 @@ export function SessionList({
             )}
           </div>
         ) : (
-          sessions.map((session) => {
-            const isSelected = session.id === selectedId;
-            const isEditing = editingId === session.id && !!onRenameTitle;
+          chats.map((chat) => {
+            const isSelected = chat.id === selectedId;
+            const isEditing = editingId === chat.id && !!onRenameTitle;
             const rowClassName = `flex w-full flex-col gap-1 border-b border-border px-4 py-3 text-left transition-colors hover:bg-card ${
               isSelected
                 ? "border-l-2 border-l-primary bg-card"
@@ -216,11 +210,11 @@ export function SessionList({
             const titleNode =
               onRenameTitle && !isTrash ? (
                 <EditableTitle
-                  value={session.title}
+                  value={chat.title}
                   editing={isEditing}
-                  onEditStart={() => setEditingId(session.id)}
+                  onEditStart={() => setEditingId(chat.id)}
                   onEditEnd={() => setEditingId(null)}
-                  onSave={(next) => onRenameTitle(session.id, next)}
+                  onSave={(next) => onRenameTitle(chat.id, next)}
                   onDisplayClick={(e) => {
                     if (isSelected) {
                       e.stopPropagation();
@@ -230,36 +224,36 @@ export function SessionList({
                   }}
                   displayClassName={TITLE_DISPLAY_CLASS}
                   inputClassName={TITLE_INPUT_CLASS}
-                  inputAriaLabel="Session title"
+                  inputAriaLabel="Chat title"
                 />
               ) : (
-                <span className={TITLE_DISPLAY_CLASS}>{session.title}</span>
+                <span className={TITLE_DISPLAY_CLASS}>{chat.title}</span>
               );
             const rowContent = (
               <>
                 <div className="min-w-0">{titleNode}</div>
                 <span className="flex items-center justify-between text-xs text-muted-foreground">
                   <span className="truncate">
-                    {getProjectName(session.project)}
+                    {getProjectName(chat.project)}
                   </span>
                   <span className="ml-2 shrink-0">
-                    {getRelativeTime(session.updatedAt)}
+                    {getRelativeTime(chat.updatedAt)}
                   </span>
                 </span>
               </>
             );
             return (
               <div
-                key={session.id}
-                data-testid="session-row"
+                key={chat.id}
+                data-testid="chat-row"
                 className="group relative"
-                onContextMenu={(e) => handleContextMenu(e, session.id)}
+                onContextMenu={(e) => handleContextMenu(e, chat.id)}
               >
                 {isEditing ? (
                   <div className={rowClassName}>{rowContent}</div>
                 ) : (
                   <button
-                    onClick={() => onSelect(session.id)}
+                    onClick={() => onSelect(chat.id)}
                     className={rowClassName}
                   >
                     {rowContent}
@@ -270,8 +264,8 @@ export function SessionList({
                     <span className="group/action relative">
                       <button
                         type="button"
-                        aria-label={`Restore: ${session.title}`}
-                        onClick={() => onRestore(session.id)}
+                        aria-label={`Restore: ${chat.title}`}
+                        onClick={() => onRestore(chat.id)}
                         className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground opacity-0 shadow-sm transition-all hover:border-[#5f7a26] hover:bg-[#1f2e15] hover:text-[#859900] group-hover:opacity-100 focus:opacity-100"
                       >
                         <RotateCcw size={14} aria-hidden="true" />
@@ -283,8 +277,8 @@ export function SessionList({
                       <span className="group/action relative">
                         <button
                           type="button"
-                          aria-label={`Move to trash: ${session.title}`}
-                          onClick={() => onDelete(session.id)}
+                          aria-label={`Move to trash: ${chat.title}`}
+                          onClick={() => onDelete(chat.id)}
                           className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground opacity-0 shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive group-hover:opacity-100 focus:opacity-100"
                         >
                           <Trash2 size={14} aria-hidden="true" />
@@ -311,7 +305,7 @@ export function SessionList({
               label="Rename"
               hint="F2 / ↵"
               onClick={() => {
-                setEditingId(contextMenu.sessionId);
+                setEditingId(contextMenu.chatId);
                 setContextMenu(null);
               }}
             />
@@ -322,7 +316,7 @@ export function SessionList({
               label="Restore"
               hint="⌫"
               onClick={() => {
-                onRestore(contextMenu.sessionId);
+                onRestore(contextMenu.chatId);
                 setContextMenu(null);
               }}
             />
@@ -333,7 +327,7 @@ export function SessionList({
               hint="⌫"
               destructive
               onClick={() => {
-                onDelete(contextMenu.sessionId);
+                onDelete(contextMenu.chatId);
                 setContextMenu(null);
               }}
             />

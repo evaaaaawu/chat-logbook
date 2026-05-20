@@ -18,12 +18,12 @@ test.describe("Virtual scrolling", () => {
     page,
   }) => {
     // Intercept API calls with fake data
-    await page.route(/\/api\/sessions(\?|$)/, (route) =>
+    await page.route(/\/api\/chats(\?|$)/, (route) =>
       route.fulfill({
         json: {
-          sessions: [
+          chats: [
             {
-              id: "large-session",
+              id: "large-chat",
               title: "Large conversation",
               project: "/test/project",
               createdAt: 1700000000000,
@@ -34,7 +34,7 @@ test.describe("Virtual scrolling", () => {
       })
     );
 
-    await page.route(/\/api\/sessions\/large-session(\?|$)/, (route) =>
+    await page.route(/\/api\/chats\/large-chat(\?|$)/, (route) =>
       route.fulfill({
         json: { messages: generateMessages(MESSAGE_COUNT) },
       })
@@ -42,7 +42,7 @@ test.describe("Virtual scrolling", () => {
 
     await page.goto("/");
 
-    // Click the session to load messages
+    // Click the chat to load messages
     await page.getByText("Large conversation").click();
 
     // Wait for at least one message to render

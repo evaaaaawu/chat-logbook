@@ -4,13 +4,13 @@ import { RotateCcw } from "lucide-react";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
-import type { Message, ContentBlock, Session } from "@/types";
+import type { Message, ContentBlock, Chat } from "@/types";
 import { CollapsibleThinking } from "./CollapsibleThinking";
 import { CollapsibleToolCall } from "./CollapsibleToolCall";
 import { EditableTitle } from "./EditableTitle";
 
 interface ConversationViewProps {
-  session: Session | null;
+  chat: Chat | null;
   messages: Message[];
   error?: string | null;
   onRestore?: (id: string) => void;
@@ -20,21 +20,21 @@ interface ConversationViewProps {
 }
 
 function DeletedBanner({
-  sessionId,
+  chatId,
   onRestore,
 }: {
-  sessionId: string;
+  chatId: string;
   onRestore: (id: string) => void;
 }) {
   return (
     <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-md border border-[#a13836] bg-[#3a1d23] px-4 py-2.5 text-sm">
       <span className="text-foreground">
-        <strong className="text-destructive">This session is deleted.</strong>{" "}
-        It won't appear in your main list until restored.
+        <strong className="text-destructive">This chat is deleted.</strong> It
+        won't appear in your main list until restored.
       </span>
       <button
         type="button"
-        onClick={() => onRestore(sessionId)}
+        onClick={() => onRestore(chatId)}
         className="flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
       >
         <RotateCcw size={14} aria-hidden="true" />
@@ -69,12 +69,12 @@ const HEADER_TITLE_INPUT_CLASS =
   "min-w-[12ch] max-w-full rounded border border-border bg-transparent px-1.5 py-0.5 text-sm font-semibold text-accent-foreground outline-none focus:border-primary [field-sizing:content]";
 
 function ConversationHeader({
-  session,
+  chat,
   editing,
   onEditingChange,
   onRenameTitle,
 }: {
-  session: Session | null;
+  chat: Chat | null;
   editing: boolean;
   onEditingChange: (next: boolean) => void;
   onRenameTitle?: (id: string, title: string) => void;
@@ -84,29 +84,26 @@ function ConversationHeader({
       data-testid="conversation-header"
       className="flex h-12 shrink-0 items-center gap-4 border-b border-border px-5"
     >
-      {session && (
+      {chat && (
         <>
           <div className="min-w-0 flex-1">
             {onRenameTitle ? (
               <EditableTitle
-                value={session.title}
+                value={chat.title}
                 editing={editing}
                 onEditStart={() => onEditingChange(true)}
                 onEditEnd={() => onEditingChange(false)}
-                onSave={(next) => onRenameTitle(session.id, next)}
+                onSave={(next) => onRenameTitle(chat.id, next)}
                 displayClassName={HEADER_TITLE_DISPLAY_CLASS}
                 inputClassName={HEADER_TITLE_INPUT_CLASS}
-                inputAriaLabel="Session title"
+                inputAriaLabel="Chat title"
               />
             ) : (
-              <span className={HEADER_TITLE_DISPLAY_CLASS}>
-                {session.title}
-              </span>
+              <span className={HEADER_TITLE_DISPLAY_CLASS}>{chat.title}</span>
             )}
           </div>
           <div className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
-            {getProjectName(session.project)} ·{" "}
-            {getRelativeTime(session.updatedAt)}
+            {getProjectName(chat.project)} · {getRelativeTime(chat.updatedAt)}
           </div>
         </>
       )}
@@ -166,7 +163,7 @@ function MessageBubble({ message }: { message: Message }) {
 }
 
 export function ConversationView({
-  session,
+  chat,
   messages,
   error,
   onRestore,
@@ -193,13 +190,13 @@ export function ConversationView({
   return (
     <div className="flex h-full flex-col">
       <ConversationHeader
-        session={session}
+        chat={chat}
         editing={headerEditing}
         onEditingChange={setHeaderEditing}
         onRenameTitle={onRenameTitle}
       />
-      {session?.isDeleted && onRestore && (
-        <DeletedBanner sessionId={session.id} onRestore={onRestore} />
+      {chat?.isDeleted && onRestore && (
+        <DeletedBanner chatId={chat.id} onRestore={onRestore} />
       )}
       {error ? (
         <div
@@ -213,7 +210,7 @@ export function ConversationView({
           data-testid="conversation-panel"
           className="flex flex-1 items-center justify-center text-sm text-muted-foreground"
         >
-          Select a session to view the conversation
+          Select a chat to view the conversation
         </div>
       ) : (
         <div

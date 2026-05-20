@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Message } from "@/types";
 
-export function useMessages(sessionId: string | null): {
+export function useMessages(chatId: string | null): {
   messages: Message[];
   loading: boolean;
   error: string | null;
@@ -11,13 +11,13 @@ export function useMessages(sessionId: string | null): {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!chatId) return;
 
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    fetch(`/api/sessions/${sessionId}?includeTrashed=true`)
+    fetch(`/api/chats/${chatId}?includeTrashed=true`)
       .then((res) => {
         if (!res.ok) {
           return res.json().then((body: { error?: string }) => {
@@ -35,9 +35,7 @@ export function useMessages(sessionId: string | null): {
       .catch((err: unknown) => {
         if (!cancelled) {
           setMessages([]);
-          setError(
-            err instanceof Error ? err.message : "Failed to load session"
-          );
+          setError(err instanceof Error ? err.message : "Failed to load chat");
           setLoading(false);
         }
       });
@@ -45,11 +43,11 @@ export function useMessages(sessionId: string | null): {
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [chatId]);
 
   return {
-    messages: sessionId ? messages : [],
+    messages: chatId ? messages : [],
     loading,
-    error: sessionId ? error : null,
+    error: chatId ? error : null,
   };
 }

@@ -10,8 +10,8 @@ import {
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { eq } from "drizzle-orm";
 import * as schema from "./schema.js";
-import { archiveMeta, schemaVersion, sessions } from "./schema.js";
-import { generateShortCode } from "./short-code.js";
+import { archiveMeta, chats, schemaVersion } from "./schema.js";
+import { generateChatId } from "./chat-id.js";
 
 export type ArchiveDb = BetterSQLite3Database<typeof schema>;
 
@@ -37,7 +37,7 @@ export interface ArchiveRepository {
   readonly db: ArchiveDb;
   getArchiveUuid(): string;
   getAppliedMigrations(): AppliedMigration[];
-  generateShortCode(): string;
+  generateChatId(): string;
   close(): void;
 }
 
@@ -95,13 +95,13 @@ export function createArchiveRepository({
         .all()
         .map((r) => ({ version: r.version, appliedAt: r.appliedAt }));
     },
-    generateShortCode() {
-      return generateShortCode({
+    generateChatId() {
+      return generateChatId({
         isTaken: (candidate) =>
           db
-            .select({ id: sessions.id })
-            .from(sessions)
-            .where(eq(sessions.shortCode, candidate))
+            .select({ id: chats.id })
+            .from(chats)
+            .where(eq(chats.chatId, candidate))
             .get() !== undefined,
       });
     },

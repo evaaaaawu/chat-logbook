@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import { ClaudeCodePlugin } from "./plugin.js";
-import type { RawRecord, SessionRef } from "../types.js";
+import type { RawRecord, ChatRef } from "../types.js";
 
 const plugin = new ClaudeCodePlugin();
 const homeDir = path.join(import.meta.dirname, "__fixtures__", "home");
@@ -16,7 +16,7 @@ async function collect<T>(iter: AsyncIterable<T>): Promise<T[]> {
 
 function rawRecord(payload: unknown): RawRecord {
   return {
-    sessionId: "session-1",
+    sourceId: "session-1",
     sourcePath: "/fake/session-1.jsonl",
     sourceLocator: "L1",
     payload,
@@ -24,11 +24,11 @@ function rawRecord(payload: unknown): RawRecord {
 }
 
 describe("ClaudeCodePlugin.discover", () => {
-  it("yields one SessionRef per jsonl file under ~/.claude/projects/*/", async () => {
+  it("yields one ChatRef per jsonl file under ~/.claude/projects/*/", async () => {
     const refs = await collect(plugin.discover({ homeDir }));
 
     expect(refs).toHaveLength(2);
-    const byId = new Map(refs.map((r) => [r.sessionId, r] as const));
+    const byId = new Map(refs.map((r) => [r.sourceId, r] as const));
 
     const s1 = byId.get("session-1")!;
     expect(s1.sourcePath).toBe(
@@ -134,8 +134,8 @@ describe("ClaudeCodePlugin.discover", () => {
 
 describe("ClaudeCodePlugin.extractRaw", () => {
   it("yields one RawRecord per non-empty line", async () => {
-    const ref: SessionRef = {
-      sessionId: "session-2",
+    const ref: ChatRef = {
+      sourceId: "session-2",
       sourcePath: path.join(
         homeDir,
         ".claude/projects/project-b/session-2.jsonl"
@@ -146,7 +146,7 @@ describe("ClaudeCodePlugin.extractRaw", () => {
     const records = await collect(plugin.extractRaw(ref));
 
     expect(records).toHaveLength(2);
-    expect(records[0].sessionId).toBe("session-2");
+    expect(records[0].sourceId).toBe("session-2");
     expect(records[0].sourcePath).toBe(ref.sourcePath);
     expect(records[0].sourceLocator).toBe("L1");
     expect((records[0].payload as { uuid: string }).uuid).toBe("msg-b1");

@@ -15,7 +15,7 @@ Today the codebase implements one store under `~/.chat-logbook/`:
 
 `archive.db` and `index.db` described below are planned, not yet
 implemented. Source directories under `~/.claude/` are read directly
-during a session.
+while the app is running.
 
 ## Four stores (target architecture)
 
@@ -36,7 +36,7 @@ The product is designed around four separate stores. Do not merge them.
 2. **`~/.chat-logbook/data.db`** — user-added metadata: custom titles,
    tags, annotations, highlights, soft-delete flags, message overrides
    (when the edit feature is wired up). User-owned and backup-worthy.
-   Keys against chat-logbook's internal session id, not the vendor's.
+   Keys against chat-logbook's internal chat `id` (UUID), not the vendor's.
 
 3. **`~/.chat-logbook/archive.db`** — derived snapshot of conversations
    read from source. Two layers:
@@ -63,8 +63,8 @@ plugin per agent, each conforming to a narrow three-method interface:
 export interface AgentPlugin {
   id: string; // 'claude-code', 'codex', 'aider', 'opencode'
   displayName: string;
-  discover(env: PluginEnv): AsyncIterable<SessionRef>;
-  extractRaw(ref: SessionRef): AsyncIterable<RawRecord>;
+  discover(env: PluginEnv): AsyncIterable<ChatRef>;
+  extractRaw(ref: ChatRef): AsyncIterable<RawRecord>;
   normalize(raw: RawRecord): CanonicalMessage | null;
 }
 ```
@@ -85,17 +85,26 @@ Two complementary modes, both inside the same Node.js process:
   `add` and `change` trigger incremental ingest. `unlink` records an
   audit row and never deletes archive rows (see Archive contract).
 
-Idempotency key: `(agent, session_id, payload_hash)`. Re-runs are
+Idempotency key: `(agent, source_id, payload_hash)`. Re-runs are
 no-ops. Source-side edits, truncations, or path collisions append new
 raw rows; the canonical layer applies last-write-wins by `ts`.
 
 ## Reading model
 
 API routes read from `archive.db.messages` (joined with
-`archive.db.sessions` for chat-logbook's internal session id), not
-from source files. Parsing happens at ingestion time, not at serve
-time — meaning parser bugs are fixed by re-ingesting affected rows,
-not by changing the read path.
+`archive.db.chats` for chat-logbook's internal chat `id`), not from
+source files. Parsing happens at ingestion time, not at serve time —
+meaning parser bugs are fixed by re-ingesting affected rows, not by
+changing the read path.
+
+### Two ids per chat
+
+- `chats.id` — internal UUID, primary key, never exposed to users.
+  Used as the join key from `data.db.chats_meta` and as the stable
+  identity across vendor source-id collisions.
+- `chats.chat_id` — short, user-facing identifier (Crockford
+  base-32, 6 chars). What we'd surface in URLs and short references.
+  Formerly named `short_code`.
 
 ## Archive contract
 
@@ -106,7 +115,7 @@ gone, archive rows are the only copy.
   auto-cleanup, file unlink, path collisions — none of these may
   cascade into archive deletion.
 - **Only an explicit user purge action may delete archive rows.** Soft
-  delete (Trash) sets `data.db.sessions_meta.is_deleted` and does not
+  delete (Trash) sets `data.db.chats_meta.is_deleted` and does not
   touch archive. Hard delete (Purge) is the single exception, requires
   user confirmation, and writes an `ingestion_events('user_purged')`
   audit row that is itself never deleted.
@@ -118,10 +127,18 @@ gone, archive rows are the only copy.
   additive when possible, no app-internal columns. Vendor-specific
   quirks live inside `raw_payload`.
 
+  **One-time rename in v0.8.0:** the `session → chat` rename (`sessions`
+  table → `chats`, plus column renames `short_code → chat_id`,
+  `source_session_id → source_id`, `session_id → source_id` on
+  child tables) is a deliberate one-time exception to the "additive
+  only" rule. The product supports multiple agents whose per-conversation
+  unit isn't called a "session" — picking the right noun before 1.0 is
+  worth the break. Future schema changes should remain additive.
+
 ## Visibility model
 
 Visibility is enforced at the read API, not at storage. `is_deleted`,
-trash, and any future visibility flag live in `data.db.sessions_meta`
+trash, and any future visibility flag live in `data.db.chats_meta`
 and are applied as a JOIN at query time. `archive.db`, `index.db`, and
 ingestion code stay unaware of them. This keeps storage simple and
 guarantees one place can never disagree with another.
