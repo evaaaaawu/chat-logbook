@@ -406,8 +406,11 @@ describe("Empty states", () => {
           chats: [
             {
               id: "chat-1",
+              chatId: "CHAT01",
+              agent: "claude-code",
               title: "Build a login page",
               project: "/Users/test/my-web-app",
+              sourceFilePath: null,
               createdAt: 1700000000000,
               updatedAt: 1700000200000,
             },
@@ -433,8 +436,11 @@ describe("Empty states", () => {
           chats: [
             {
               id: "chat-deleted-only",
+              chatId: "CHATDX",
+              agent: "claude-code",
               title: "Only deleted",
               project: "/Users/test/p",
+              sourceFilePath: null,
               createdAt: 1,
               updatedAt: 2,
               isDeleted: true,

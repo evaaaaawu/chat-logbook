@@ -13,8 +13,11 @@ import {
 
 interface ChatResponse {
   id: string;
+  chatId: string;
+  agent: string;
   title: string;
   project: string;
+  sourceFilePath: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -88,6 +91,29 @@ function seedMessage(
       text: opts.text,
       blocks: opts.blocks,
       rawId: rawRow.id,
+    })
+    .run();
+}
+
+function seedRawMessage(
+  archive: ReturnType<typeof createArchiveRepository>,
+  opts: {
+    sourceId: string;
+    sourcePath: string;
+    payloadHash: string;
+    ingestedAt: Date;
+  }
+): void {
+  archive.db
+    .insert(archiveRawMessages)
+    .values({
+      agent: "claude-code",
+      sourceId: opts.sourceId,
+      sourcePath: opts.sourcePath,
+      sourceLocator: `${opts.payloadHash}:0`,
+      rawPayload: JSON.stringify({ hash: opts.payloadHash }),
+      payloadHash: opts.payloadHash,
+      ingestedAt: opts.ingestedAt,
     })
     .run();
 }
@@ -216,7 +242,7 @@ describe("GET /api/chats (archive-backed)", () => {
     expect(session?.title).toBe("Untitled");
   });
 
-  it("sets updatedAt to MAX(messages.ts) when messages exist", async () => {
+  it("sets createdAt to MIN(messages.ts) and updatedAt to MAX(messages.ts) when messages exist", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
@@ -247,10 +273,10 @@ describe("GET /api/chats (archive-backed)", () => {
     const body = (await res.json()) as { chats: ChatResponse[] };
     const session = body.chats.find((s) => s.id === "session-1");
     expect(session?.updatedAt).toBe(1700000500000);
-    expect(session?.createdAt).toBe(1700000000000);
+    expect(session?.createdAt).toBe(1700000100000);
   });
 
-  it("falls back updatedAt to firstSeenAt when there are no messages", async () => {
+  it("falls back createdAt and updatedAt to firstSeenAt when there are no messages", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
@@ -265,6 +291,88 @@ describe("GET /api/chats (archive-backed)", () => {
     const body = (await res.json()) as { chats: ChatResponse[] };
     const session = body.chats.find((s) => s.id === "session-1");
     expect(session?.updatedAt).toBe(1700000000000);
+    expect(session?.createdAt).toBe(1700000000000);
+  });
+
+  it("returns chatId from chats.chat_id (short code)", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      internalId: "internal-uuid-1",
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+
+    const app = createApp({ archive, metadata });
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
+    // seedChat assigns chatId = internalId.slice(0, 6).toUpperCase()
+    expect(session?.chatId).toBe("INTERN");
+  });
+
+  it("returns sourceFilePath from the most-recently-ingested raw row", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      internalId: "internal-uuid-1",
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedRawMessage(archive, {
+      sourceId: "session-1",
+      sourcePath: "/old/path.jsonl",
+      payloadHash: "hash-old",
+      ingestedAt: new Date(1700000100000),
+    });
+    seedRawMessage(archive, {
+      sourceId: "session-1",
+      sourcePath: "/new/path.jsonl",
+      payloadHash: "hash-new",
+      ingestedAt: new Date(1700000900000),
+    });
+
+    const app = createApp({ archive, metadata });
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
+    expect(session?.sourceFilePath).toBe("/new/path.jsonl");
+  });
+
+  it("returns sourceFilePath as null when no raw rows exist for the chat", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      internalId: "internal-uuid-1",
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+
+    const app = createApp({ archive, metadata });
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
+    expect(session?.sourceFilePath).toBeNull();
+  });
+
+  it("returns agent as the raw agent id from chats.agent", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      internalId: "internal-uuid-1",
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+
+    const app = createApp({ archive, metadata });
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
+    expect(session?.agent).toBe("claude-code");
   });
 
   it("falls back to empty string when project is null", async () => {

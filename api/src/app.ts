@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { serveStatic } from "@hono/node-server/serve-static";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { ArchiveRepository } from "./archive/repository.js";
 import {
   chats as archiveChats,
   messages as archiveMessages,
+  rawMessages as archiveRawMessages,
 } from "./archive/schema.js";
 import type { MetadataRepository } from "./metadata/repository.js";
 import { loadChatVisibility } from "./visibility.js";
@@ -17,8 +18,11 @@ interface AppOptions {
 
 interface ChatResponse {
   id: string;
+  chatId: string;
+  agent: string;
   title: string;
   project: string;
+  sourceFilePath: string | null;
   createdAt: number;
   updatedAt: number;
   isDeleted?: boolean;
@@ -77,8 +81,24 @@ export function createApp({ archive, metadata, webDistDir }: AppOptions) {
       if (!visibility.isVisible(row.id)) continue;
       const isDeleted = visibility.isTrashed(row.id);
 
-      const lastMessage = archive.db
-        .select({ ts: archiveMessages.ts })
+      const latestRaw = archive.db
+        .select({ sourcePath: archiveRawMessages.sourcePath })
+        .from(archiveRawMessages)
+        .where(
+          and(
+            eq(archiveRawMessages.agent, CLAUDE_CODE_AGENT),
+            eq(archiveRawMessages.sourceId, row.sourceId)
+          )
+        )
+        .orderBy(desc(archiveRawMessages.ingestedAt))
+        .limit(1)
+        .get();
+
+      const tsRange = archive.db
+        .select({
+          minTs: sql<number | null>`min(${archiveMessages.ts})`,
+          maxTs: sql<number | null>`max(${archiveMessages.ts})`,
+        })
         .from(archiveMessages)
         .where(
           and(
@@ -86,18 +106,18 @@ export function createApp({ archive, metadata, webDistDir }: AppOptions) {
             eq(archiveMessages.sourceId, row.sourceId)
           )
         )
-        .orderBy(desc(archiveMessages.ts))
-        .limit(1)
         .get();
 
+      const firstSeenAtMs = row.firstSeenAt.getTime();
       const chat: ChatResponse = {
         id: row.sourceId,
+        chatId: row.chatId,
+        agent: row.agent,
         title: deriveTitle(archive, metadata, row),
         project: row.project ?? "",
-        createdAt: row.firstSeenAt.getTime(),
-        updatedAt: lastMessage
-          ? lastMessage.ts.getTime()
-          : row.firstSeenAt.getTime(),
+        sourceFilePath: latestRaw?.sourcePath ?? null,
+        createdAt: tsRange?.minTs ?? firstSeenAtMs,
+        updatedAt: tsRange?.maxTs ?? firstSeenAtMs,
       };
       if (isDeleted) chat.isDeleted = true;
       chats.push(chat);

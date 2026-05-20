@@ -2,9 +2,12 @@ import { http, HttpResponse } from "msw";
 
 type FakeChat = {
   id: string;
+  chatId: string;
+  agent: string;
   defaultTitle: string;
   customTitle: string | null;
   project: string;
+  sourceFilePath: string | null;
   createdAt: number;
   updatedAt: number;
   isDeleted?: boolean;
@@ -13,41 +16,57 @@ type FakeChat = {
 const initialFakeChats: FakeChat[] = [
   {
     id: "chat-1",
+    chatId: "CHAT01",
+    agent: "claude-code",
     defaultTitle: "Build a login page",
     customTitle: null,
     project: "/Users/test/my-web-app",
+    sourceFilePath: "/Users/test/.claude/projects/my-web-app/chat-1.jsonl",
     createdAt: 1700000000000,
     updatedAt: 1700000200000,
   },
   {
     id: "chat-2",
+    chatId: "CHAT02",
+    agent: "claude-code",
     defaultTitle: "Fix database migration",
     customTitle: null,
     project: "/Users/test/backend-api",
+    sourceFilePath: "/Users/test/.claude/projects/backend-api/chat-2.jsonl",
     createdAt: 1700000100000,
     updatedAt: 1700000300000,
   },
   {
     id: "chat-3",
+    chatId: "CHAT03",
+    agent: "claude-code",
     defaultTitle: "Refactor utils",
     customTitle: null,
     project: "/Users/test/my-web-app",
+    sourceFilePath: "/Users/test/.claude/projects/my-web-app/chat-3.jsonl",
     createdAt: 1700000050000,
     updatedAt: 1700000150000,
   },
   {
     id: "chat-missing",
+    chatId: "CHATMI",
+    agent: "claude-code",
     defaultTitle: "Untitled",
     customTitle: null,
     project: "/Users/test/some-project",
+    sourceFilePath: null,
     createdAt: 1699999900000,
     updatedAt: 1699999900000,
   },
   {
     id: "chat-deleted-1",
+    chatId: "CHATDE",
+    agent: "claude-code",
     defaultTitle: "Old prototype",
     customTitle: null,
     project: "/Users/test/my-web-app",
+    sourceFilePath:
+      "/Users/test/.claude/projects/my-web-app/chat-deleted-1.jsonl",
     createdAt: 1699999000000,
     updatedAt: 1699999500000,
     isDeleted: true,
