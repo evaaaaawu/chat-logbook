@@ -43,62 +43,69 @@ afterEach(() => {
 });
 
 describe("startWatcher", () => {
-  it("ingests appended content to an existing source file (change event)", async () => {
-    const archive = createArchiveRepository({ dataDir: env.dataDir });
-    const plugins = [new ClaudeCodePlugin()];
+  // Uses chokidar polling in a tmpdir under parallel test load — the
+  // detect → awaitWriteFinish → debounce → ingest chain can stack past
+  // vitest's 5s default when api + web suites contend for I/O.
+  it(
+    "ingests appended content to an existing source file (change event)",
+    { timeout: 15_000 },
+    async () => {
+      const archive = createArchiveRepository({ dataDir: env.dataDir });
+      const plugins = [new ClaudeCodePlugin()];
 
-    // Seed archive via on-app-open scan first; watcher is for live updates.
-    await runIngestion({ plugins, archive, env: { homeDir: env.homeDir } });
-    const rawBefore = archive.db.select().from(rawMessages).all().length;
+      // Seed archive via on-app-open scan first; watcher is for live updates.
+      await runIngestion({ plugins, archive, env: { homeDir: env.homeDir } });
+      const rawBefore = archive.db.select().from(rawMessages).all().length;
 
-    const watcher = startWatcher({
-      plugins,
-      archive,
-      env: { homeDir: env.homeDir },
-      chokidarOptions: { usePolling: true, interval: 25 },
-      debounceMs: 25,
-    });
-    await watcher.ready;
-
-    try {
-      const sourceFile = path.join(
-        env.homeDir,
-        ".claude",
-        "projects",
-        "project-a",
-        "session-1.jsonl"
-      );
-      const newLine = JSON.stringify({
-        type: "user",
-        message: { role: "user", content: "live appended message" },
-        isMeta: false,
-        uuid: "msg-live-1",
-        timestamp: "2024-01-03T00:00:00Z",
-        sessionId: "session-1",
-        isSidechain: false,
+      const watcher = startWatcher({
+        plugins,
+        archive,
+        env: { homeDir: env.homeDir },
+        chokidarOptions: { usePolling: true, interval: 25 },
+        debounceMs: 25,
       });
-      fs.appendFileSync(sourceFile, newLine + "\n");
-      const future = new Date(Date.now() + 60_000);
-      fs.utimesSync(sourceFile, future, future);
+      await watcher.ready;
 
-      await vi.waitFor(
-        () => {
-          const rawAfter = archive.db.select().from(rawMessages).all().length;
-          expect(rawAfter).toBe(rawBefore + 1);
-          const msg = archive.db
-            .select()
-            .from(messages)
-            .all()
-            .find((m) => m.messageId === "msg-live-1");
-          expect(msg).toBeDefined();
-        },
-        { timeout: 5000, interval: 50 }
-      );
-    } finally {
-      await watcher.close();
-      archive.close();
+      try {
+        const sourceFile = path.join(
+          env.homeDir,
+          ".claude",
+          "projects",
+          "project-a",
+          "session-1.jsonl"
+        );
+        const newLine = JSON.stringify({
+          type: "user",
+          message: { role: "user", content: "live appended message" },
+          isMeta: false,
+          uuid: "msg-live-1",
+          timestamp: "2024-01-03T00:00:00Z",
+          sessionId: "session-1",
+          isSidechain: false,
+        });
+        fs.appendFileSync(sourceFile, newLine + "\n");
+        const future = new Date(Date.now() + 60_000);
+        fs.utimesSync(sourceFile, future, future);
+
+        await vi.waitFor(
+          () => {
+            const rawAfter = archive.db.select().from(rawMessages).all().length;
+            expect(rawAfter).toBe(rawBefore + 1);
+            const msg = archive.db
+              .select()
+              .from(messages)
+              .all()
+              .find((m) => m.messageId === "msg-live-1");
+            expect(msg).toBeDefined();
+          },
+          { timeout: 5000, interval: 50 }
+        );
+      } finally {
+        await watcher.close();
+        archive.close();
+      }
     }
-  });
+  );
 
   it("records an unlink_observed audit row without deleting archive rows", async () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
