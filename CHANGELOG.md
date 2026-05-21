@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-05-21
+
+Each chat now has a metadata popover. Click the ⓘ at the right of the conversation header to see when the chat started and was last updated, which agent it came from, the full project path on disk, and the chat's IDs and source file — with one-click copy for the path and the IDs.
+
+### Added
+
+- Chat metadata popover behind the ⓘ button in the conversation header. Shows created and updated times (formatted `YYYY-MM-DD HH:mm` with a relative suffix like `· 3 days ago`), the AI agent name, the full project working directory, the chat ID, the source ID, and the source file path.
+- Click-to-copy on the four path / identifier rows. Hovering a row reveals a copy icon; clicking copies the full untruncated value and shows an inline `Copied` confirmation that fades after ~1.5s.
+- The popover stays out of the way of existing keyboard shortcuts. `Tab` reaches the trigger, `Enter` or `Space` opens it, `Esc` closes only the popover (so pressing `Esc` from inside Trash no longer exits Trash by accident).
+
+### Changed
+
+- A chat's "created" time is now the timestamp of its first message rather than when chat-logbook first saw the file. "Updated" is the timestamp of its most recent message. Chats with no messages still fall back to the original first-seen time.
+- The chat list header now shows the project basename (e.g. `chat-logbook`); the full path (e.g. `/Users/you/Documents/chat-logbook`) appears in the popover.
+
+### Upgrade notes
+
+- A schema migration adds a `project_path` column to `~/.chat-logbook/archive.db`. It runs automatically on first launch; no action needed. Existing chats fill in the full path the next time chat-logbook scans their source JSONL.
+
 ## [0.8.0] - 2026-05-20
 
 We renamed "session" to "chat" everywhere — in the UI, in the local storage schema, and in the HTTP routes. The product supports multiple AI agents and not all of them call a conversation a "session"; "chat" is the cross-agent word and matches the product name. This is the only major thing in this release. Your existing data migrates automatically on first launch.

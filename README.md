@@ -69,6 +69,10 @@ The full problem statement, user stories, and direction live in the
 - **Live updates.** While Claude Code is actively writing to a chat,
   new messages appear in chat-logbook within seconds — no restart
   needed.
+- **Chat metadata at a glance.** A ⓘ button on the conversation
+  header opens a popover showing when the chat started, when it was
+  last updated, the agent, the project working directory, and the
+  chat's IDs — with one-click copy.
 
 ## Quick start
 
