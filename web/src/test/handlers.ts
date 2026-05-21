@@ -7,6 +7,7 @@ type FakeChat = {
   defaultTitle: string;
   customTitle: string | null;
   project: string;
+  projectPath: string | null;
   sourceFilePath: string | null;
   createdAt: number;
   updatedAt: number;
@@ -20,7 +21,8 @@ const initialFakeChats: FakeChat[] = [
     agent: "claude-code",
     defaultTitle: "Build a login page",
     customTitle: null,
-    project: "/Users/test/my-web-app",
+    project: "my-web-app",
+    projectPath: "/Users/test/my-web-app",
     sourceFilePath: "/Users/test/.claude/projects/my-web-app/chat-1.jsonl",
     createdAt: 1700000000000,
     updatedAt: 1700000200000,
@@ -31,7 +33,8 @@ const initialFakeChats: FakeChat[] = [
     agent: "claude-code",
     defaultTitle: "Fix database migration",
     customTitle: null,
-    project: "/Users/test/backend-api",
+    project: "backend-api",
+    projectPath: "/Users/test/backend-api",
     sourceFilePath: "/Users/test/.claude/projects/backend-api/chat-2.jsonl",
     createdAt: 1700000100000,
     updatedAt: 1700000300000,
@@ -42,7 +45,8 @@ const initialFakeChats: FakeChat[] = [
     agent: "claude-code",
     defaultTitle: "Refactor utils",
     customTitle: null,
-    project: "/Users/test/my-web-app",
+    project: "my-web-app",
+    projectPath: "/Users/test/my-web-app",
     sourceFilePath: "/Users/test/.claude/projects/my-web-app/chat-3.jsonl",
     createdAt: 1700000050000,
     updatedAt: 1700000150000,
@@ -53,7 +57,8 @@ const initialFakeChats: FakeChat[] = [
     agent: "claude-code",
     defaultTitle: "Untitled",
     customTitle: null,
-    project: "/Users/test/some-project",
+    project: "some-project",
+    projectPath: "/Users/test/some-project",
     sourceFilePath: null,
     createdAt: 1699999900000,
     updatedAt: 1699999900000,
@@ -64,7 +69,8 @@ const initialFakeChats: FakeChat[] = [
     agent: "claude-code",
     defaultTitle: "Old prototype",
     customTitle: null,
-    project: "/Users/test/my-web-app",
+    project: "my-web-app",
+    projectPath: "/Users/test/my-web-app",
     sourceFilePath:
       "/Users/test/.claude/projects/my-web-app/chat-deleted-1.jsonl",
     createdAt: 1699999000000,

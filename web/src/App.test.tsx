@@ -131,6 +131,75 @@ describe("Chat metadata popover", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the full projectPath (not just basename) when provided", async () => {
+    server.use(
+      http.get("/api/chats", () =>
+        HttpResponse.json({
+          chats: [
+            {
+              id: "chat-x",
+              chatId: "CHATXX",
+              agent: "claude-code",
+              title: "Full path chat",
+              project: "chat-logbook",
+              projectPath: "/Users/evaaaaawu/Documents/chat-logbook",
+              sourceFilePath: null,
+              createdAt: 1700000000000,
+              updatedAt: 1700000000000,
+            },
+          ],
+        })
+      )
+    );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Full path chat"));
+    await user.click(await screen.findByRole("button", { name: /chat info/i }));
+
+    const popover = await screen.findByTestId("chat-metadata-popover");
+    const projectRow = within(popover).getByText("Project").parentElement!;
+    expect(
+      within(projectRow).getByTitle("/Users/evaaaaawu/Documents/chat-logbook")
+    ).toBeInTheDocument();
+    expect(
+      within(projectRow).getByText("/Users/evaaaaawu/Documents/chat-logbook")
+    ).toBeInTheDocument();
+  });
+
+  it("falls back to project basename when projectPath is null", async () => {
+    server.use(
+      http.get("/api/chats", () =>
+        HttpResponse.json({
+          chats: [
+            {
+              id: "chat-y",
+              chatId: "CHATYY",
+              agent: "claude-code",
+              title: "Basename fallback chat",
+              project: "legacy-basename",
+              projectPath: null,
+              sourceFilePath: null,
+              createdAt: 1700000000000,
+              updatedAt: 1700000000000,
+            },
+          ],
+        })
+      )
+    );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Basename fallback chat"));
+    await user.click(await screen.findByRole("button", { name: /chat info/i }));
+
+    const popover = await screen.findByTestId("chat-metadata-popover");
+    const projectRow = within(popover).getByText("Project").parentElement!;
+    expect(within(projectRow).getByText("legacy-basename")).toBeInTheDocument();
+  });
+
   it("renders — when project is empty", async () => {
     server.use(
       http.get("/api/chats", () =>

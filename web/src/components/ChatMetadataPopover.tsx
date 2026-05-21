@@ -181,16 +181,19 @@ export function ChatMetadataPopover({ chat }: ChatMetadataPopoverProps) {
             label="AI Agent"
             value={getAgentDisplayName(chat.agent)}
           />
-          {chat.project ? (
-            <CopyableField
-              label="Project"
-              display={<TruncatedPath value={chat.project} />}
-              copyValue={chat.project}
-              copyAriaLabel="Copy project path"
-            />
-          ) : (
-            <PlainField label="Project" value={EMPTY} />
-          )}
+          {(() => {
+            const projectValue = chat.projectPath ?? chat.project;
+            return projectValue ? (
+              <CopyableField
+                label="Project"
+                display={<TruncatedPath value={projectValue} />}
+                copyValue={projectValue}
+                copyAriaLabel="Copy project path"
+              />
+            ) : (
+              <PlainField label="Project" value={EMPTY} />
+            );
+          })()}
         </section>
         <section className="border-t border-border px-3 py-2">
           <SectionLabel>Identifiers & location</SectionLabel>
