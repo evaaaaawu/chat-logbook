@@ -24,8 +24,11 @@ test.describe("Virtual scrolling", () => {
           chats: [
             {
               id: "large-chat",
+              chatId: "LARGEC",
+              agent: "claude-code",
               title: "Large conversation",
               project: "/test/project",
+              sourceFilePath: null,
               createdAt: 1700000000000,
               updatedAt: 1700000000000 + MESSAGE_COUNT * 1000,
             },

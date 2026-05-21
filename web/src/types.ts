@@ -1,7 +1,10 @@
 export interface Chat {
   id: string;
+  chatId: string;
+  agent: string;
   title: string;
   project: string;
+  sourceFilePath: string | null;
   createdAt: number;
   updatedAt: number;
   isDeleted?: boolean;
