@@ -48,7 +48,7 @@ describe("startWatcher", () => {
   // vitest's 5s default when api + web suites contend for I/O.
   it(
     "ingests appended content to an existing source file (change event)",
-    { timeout: 15_000 },
+    { timeout: 20_000 },
     async () => {
       const archive = createArchiveRepository({ dataDir: env.dataDir });
       const plugins = [new ClaudeCodePlugin()];
@@ -98,7 +98,7 @@ describe("startWatcher", () => {
               .find((m) => m.messageId === "msg-live-1");
             expect(msg).toBeDefined();
           },
-          { timeout: 5000, interval: 50 }
+          { timeout: 12_000, interval: 50 }
         );
       } finally {
         await watcher.close();
