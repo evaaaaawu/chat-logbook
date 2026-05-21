@@ -1,0 +1,1 @@
+ALTER TABLE `chats` ADD `project_path` text;

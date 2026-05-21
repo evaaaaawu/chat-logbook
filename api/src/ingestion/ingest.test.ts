@@ -65,6 +65,7 @@ describe("runIngestion", () => {
 
     const session1 = chatRows.find((s) => s.sourceId === "session-1");
     expect(session1?.project).toBe("project-a");
+    expect(session1?.projectPath).toBe("/Users/test/project-a");
 
     archive.close();
   });
@@ -362,6 +363,7 @@ describe("runIngestion", () => {
       .all()
       .find((s) => s.sourceId === "late");
     expect(after?.project).toBe("late-app");
+    expect(after?.projectPath).toBe("/Users/test/late-app");
 
     archive.close();
   });

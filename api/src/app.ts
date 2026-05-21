@@ -22,6 +22,7 @@ interface ChatResponse {
   agent: string;
   title: string;
   project: string;
+  projectPath: string | null;
   sourceFilePath: string | null;
   createdAt: number;
   updatedAt: number;
@@ -115,6 +116,7 @@ export function createApp({ archive, metadata, webDistDir }: AppOptions) {
         agent: row.agent,
         title: deriveTitle(archive, metadata, row),
         project: row.project ?? "",
+        projectPath: row.projectPath ?? null,
         sourceFilePath: latestRaw?.sourcePath ?? null,
         createdAt: tsRange?.minTs ?? firstSeenAtMs,
         updatedAt: tsRange?.maxTs ?? firstSeenAtMs,

@@ -17,6 +17,7 @@ interface ChatResponse {
   agent: string;
   title: string;
   project: string;
+  projectPath: string | null;
   sourceFilePath: string | null;
   createdAt: number;
   updatedAt: number;
@@ -373,6 +374,49 @@ describe("GET /api/chats (archive-backed)", () => {
     const body = (await res.json()) as { chats: ChatResponse[] };
     const session = body.chats.find((s) => s.id === "session-1");
     expect(session?.agent).toBe("claude-code");
+  });
+
+  it("returns projectPath with the full cwd when set on the archive row", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    archive.db
+      .insert(archiveChats)
+      .values({
+        id: "internal-uuid-1",
+        chatId: "PPATH1",
+        agent: "claude-code",
+        sourceId: "session-1",
+        firstSeenAt: new Date(1700000000000),
+        project: "chat-logbook",
+        projectPath: "/Users/evaaaaawu/Documents/chat-logbook",
+      })
+      .run();
+
+    const app = createApp({ archive, metadata });
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
+    expect(session?.projectPath).toBe(
+      "/Users/evaaaaawu/Documents/chat-logbook"
+    );
+  });
+
+  it("returns projectPath as null when no cwd was discoverable", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      internalId: "internal-uuid-1",
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+
+    const app = createApp({ archive, metadata });
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    const session = body.chats.find((s) => s.id === "session-1");
+    expect(session?.projectPath).toBeNull();
   });
 
   it("falls back to empty string when project is null", async () => {

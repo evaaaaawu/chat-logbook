@@ -82,6 +82,12 @@ describe("ClaudeCodePlugin.discover", () => {
       expect(refs).toHaveLength(1);
       expect(refs[0].project).toBe("my-app");
     });
+
+    it("exposes the full cwd as projectPath", async () => {
+      const refs = await collect(plugin.discover({ homeDir: tmpHome }));
+      expect(refs).toHaveLength(1);
+      expect(refs[0].projectPath).toBe("/Users/test/my-app");
+    });
   });
 
   describe("when the first cwd line sits beyond the first 64KB", () => {
