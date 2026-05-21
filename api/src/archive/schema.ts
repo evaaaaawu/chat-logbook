@@ -25,6 +25,7 @@ export const chats = sqliteTable(
     sourceId: text("source_id").notNull(),
     firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).notNull(),
     project: text("project"),
+    projectPath: text("project_path"),
   },
   (t) => [uniqueIndex("chats_agent_source_idx").on(t.agent, t.sourceId)]
 );

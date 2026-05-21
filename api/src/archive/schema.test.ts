@@ -70,6 +70,31 @@ describe("chats table", () => {
     ).toThrow();
   });
 
+  it("round-trips project_path alongside project", () => {
+    const now = new Date();
+    repo.db
+      .insert(chats)
+      .values({
+        id: "22222222-2222-4222-8222-222222222222",
+        chatId: "pth111",
+        agent: "claude-code",
+        sourceId: "src-pp",
+        firstSeenAt: now,
+        project: "my-app",
+        projectPath: "/Users/test/my-app",
+      })
+      .run();
+
+    const row = repo.db
+      .select()
+      .from(chats)
+      .where(eq(chats.id, "22222222-2222-4222-8222-222222222222"))
+      .get();
+
+    expect(row?.project).toBe("my-app");
+    expect(row?.projectPath).toBe("/Users/test/my-app");
+  });
+
   it("rejects duplicate chat_id", () => {
     const now = new Date();
     repo.db

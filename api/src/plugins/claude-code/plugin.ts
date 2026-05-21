@@ -33,6 +33,7 @@ export class ClaudeCodePlugin implements AgentPlugin {
           sourcePath,
           watchPaths: [sourcePath],
           project: cwd ? path.basename(cwd) : undefined,
+          projectPath: cwd ?? undefined,
         };
       }
     }

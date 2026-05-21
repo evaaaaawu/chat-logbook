@@ -7,6 +7,7 @@ export interface ChatRef {
   sourcePath: string;
   watchPaths: string[];
   project?: string;
+  projectPath?: string;
 }
 
 export interface RawRecord {

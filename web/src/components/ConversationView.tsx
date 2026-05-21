@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 import type { Message, ContentBlock, Chat } from "@/types";
 import { CollapsibleThinking } from "./CollapsibleThinking";
 import { CollapsibleToolCall } from "./CollapsibleToolCall";
+import { ChatMetadataPopover } from "./ChatMetadataPopover";
 import { EditableTitle } from "./EditableTitle";
 
 interface ConversationViewProps {
@@ -105,6 +106,7 @@ function ConversationHeader({
           <div className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
             {getProjectName(chat.project)} · {getRelativeTime(chat.updatedAt)}
           </div>
+          <ChatMetadataPopover key={chat.id} chat={chat} />
         </>
       )}
     </div>

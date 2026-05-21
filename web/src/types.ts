@@ -4,6 +4,7 @@ export interface Chat {
   agent: string;
   title: string;
   project: string;
+  projectPath: string | null;
   sourceFilePath: string | null;
   createdAt: number;
   updatedAt: number;

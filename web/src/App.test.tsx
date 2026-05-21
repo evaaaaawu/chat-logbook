@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import App from "./App";
 import { server } from "./test/server";
 
@@ -57,6 +57,277 @@ describe("Conversation header", () => {
     const header = await screen.findByTestId("conversation-header");
     expect(within(header).getByText("Build a login page")).toBeInTheDocument();
     expect(within(header).getByText(/my-web-app/)).toBeInTheDocument();
+  });
+});
+
+describe("Chat metadata popover", () => {
+  it("hides the ⓘ trigger when no chat is selected, shows it after selecting one", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+
+    expect(
+      screen.queryByRole("button", { name: /chat info/i })
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByText("Build a login page"));
+
+    const header = await screen.findByTestId("conversation-header");
+    expect(
+      within(header).getByRole("button", { name: /chat info/i })
+    ).toBeInTheDocument();
+  });
+
+  it("opens the popover on trigger click and closes on Esc", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+
+    const trigger = await screen.findByRole("button", { name: /chat info/i });
+    await user.click(trigger);
+
+    expect(await screen.findByTestId("chat-metadata-popover")).toBeVisible();
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("chat-metadata-popover")
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("renders chat id, source id, and AI agent display name", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+    await user.click(await screen.findByRole("button", { name: /chat info/i }));
+
+    const popover = await screen.findByTestId("chat-metadata-popover");
+    expect(within(popover).getByText("CHAT01")).toBeInTheDocument();
+    expect(within(popover).getByText("chat-1")).toBeInTheDocument();
+    expect(within(popover).getByText("Claude Code")).toBeInTheDocument();
+    expect(within(popover).queryByText("claude-code")).not.toBeInTheDocument();
+  });
+
+  it("renders project and source file path with full value in title tooltip", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+    await user.click(await screen.findByRole("button", { name: /chat info/i }));
+
+    const popover = await screen.findByTestId("chat-metadata-popover");
+    expect(
+      within(popover).getByTitle("/Users/test/my-web-app")
+    ).toBeInTheDocument();
+    expect(
+      within(popover).getByTitle(
+        "/Users/test/.claude/projects/my-web-app/chat-1.jsonl"
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("renders the full projectPath (not just basename) when provided", async () => {
+    server.use(
+      http.get("/api/chats", () =>
+        HttpResponse.json({
+          chats: [
+            {
+              id: "chat-x",
+              chatId: "CHATXX",
+              agent: "claude-code",
+              title: "Full path chat",
+              project: "chat-logbook",
+              projectPath: "/Users/evaaaaawu/Documents/chat-logbook",
+              sourceFilePath: null,
+              createdAt: 1700000000000,
+              updatedAt: 1700000000000,
+            },
+          ],
+        })
+      )
+    );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Full path chat"));
+    await user.click(await screen.findByRole("button", { name: /chat info/i }));
+
+    const popover = await screen.findByTestId("chat-metadata-popover");
+    const projectRow = within(popover).getByText("Project").parentElement!;
+    expect(
+      within(projectRow).getByTitle("/Users/evaaaaawu/Documents/chat-logbook")
+    ).toBeInTheDocument();
+    expect(
+      within(projectRow).getByText("/Users/evaaaaawu/Documents/chat-logbook")
+    ).toBeInTheDocument();
+  });
+
+  it("falls back to project basename when projectPath is null", async () => {
+    server.use(
+      http.get("/api/chats", () =>
+        HttpResponse.json({
+          chats: [
+            {
+              id: "chat-y",
+              chatId: "CHATYY",
+              agent: "claude-code",
+              title: "Basename fallback chat",
+              project: "legacy-basename",
+              projectPath: null,
+              sourceFilePath: null,
+              createdAt: 1700000000000,
+              updatedAt: 1700000000000,
+            },
+          ],
+        })
+      )
+    );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Basename fallback chat"));
+    await user.click(await screen.findByRole("button", { name: /chat info/i }));
+
+    const popover = await screen.findByTestId("chat-metadata-popover");
+    const projectRow = within(popover).getByText("Project").parentElement!;
+    expect(within(projectRow).getByText("legacy-basename")).toBeInTheDocument();
+  });
+
+  it("renders — when project is empty", async () => {
+    server.use(
+      http.get("/api/chats", () =>
+        HttpResponse.json({
+          chats: [
+            {
+              id: "chat-x",
+              chatId: "CHATXX",
+              agent: "claude-code",
+              title: "No project chat",
+              project: "",
+              sourceFilePath: null,
+              createdAt: 1700000000000,
+              updatedAt: 1700000000000,
+            },
+          ],
+        })
+      )
+    );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("No project chat"));
+    await user.click(await screen.findByRole("button", { name: /chat info/i }));
+
+    const popover = await screen.findByTestId("chat-metadata-popover");
+    const projectRow = within(popover).getByText("Project").parentElement!;
+    expect(within(projectRow).getByText("—")).toBeInTheDocument();
+  });
+
+  it("renders created and updated timestamps as YYYY-MM-DD HH:mm", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+    await user.click(await screen.findByRole("button", { name: /chat info/i }));
+
+    const popover = await screen.findByTestId("chat-metadata-popover");
+    const datePattern = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/;
+    const matches = within(popover)
+      .getAllByText(datePattern)
+      .map((el) => el.textContent);
+    expect(matches.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("copies the full untruncated value to clipboard and shows Copied feedback", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      render(<App />);
+
+      await user.click(await screen.findByText("Build a login page"));
+      await user.click(
+        await screen.findByRole("button", { name: /chat info/i })
+      );
+
+      const popover = await screen.findByTestId("chat-metadata-popover");
+      const copyPath = within(popover).getByRole("button", {
+        name: /copy source path/i,
+      });
+      await user.click(copyPath);
+
+      expect(writeText).toHaveBeenCalledWith(
+        "/Users/test/.claude/projects/my-web-app/chat-1.jsonl"
+      );
+      expect(within(popover).getByText("Copied")).toBeInTheDocument();
+
+      vi.advanceTimersByTime(1600);
+
+      await waitFor(() => {
+        expect(within(popover).queryByText("Copied")).not.toBeInTheDocument();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("in Trash mode, Esc closes the popover but does not exit Trash", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+
+    await user.click(screen.getByTestId("trash-link"));
+
+    const deletedRow = await screen.findByText("Old prototype");
+    await user.click(deletedRow);
+
+    await user.click(await screen.findByRole("button", { name: /chat info/i }));
+    expect(await screen.findByTestId("chat-metadata-popover")).toBeVisible();
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("chat-metadata-popover")
+      ).not.toBeInTheDocument();
+    });
+
+    // Still in Trash: deleted chat is still in the list
+    expect(
+      within(screen.getByTestId("chat-list")).getByText("Old prototype")
+    ).toBeInTheDocument();
+  });
+
+  it("closes the popover when switching to a different chat", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+    await user.click(await screen.findByRole("button", { name: /chat info/i }));
+    expect(await screen.findByTestId("chat-metadata-popover")).toBeVisible();
+
+    await user.click(screen.getByText("Fix database migration"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("chat-metadata-popover")
+      ).not.toBeInTheDocument();
+    });
   });
 });
 

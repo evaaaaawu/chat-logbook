@@ -53,7 +53,14 @@ export async function runIngestion(opts: IngestOptions): Promise<IngestResult> {
         )
         .get();
 
-      ensureChat(opts.archive, plugin.id, ref.sourceId, now(), ref.project);
+      ensureChat(
+        opts.archive,
+        plugin.id,
+        ref.sourceId,
+        now(),
+        ref.project,
+        ref.projectPath
+      );
 
       if (
         stat &&
@@ -189,7 +196,8 @@ function ensureChat(
   agent: string,
   sourceId: string,
   firstSeenAt: Date,
-  project: string | undefined
+  project: string | undefined,
+  projectPath: string | undefined
 ): string {
   const existing = archive.db
     .select()
@@ -197,10 +205,15 @@ function ensureChat(
     .where(and(eq(chats.agent, agent), eq(chats.sourceId, sourceId)))
     .get();
   if (existing) {
-    if (project && existing.project !== project) {
+    const updates: { project?: string; projectPath?: string } = {};
+    if (project && existing.project !== project) updates.project = project;
+    if (projectPath && existing.projectPath !== projectPath) {
+      updates.projectPath = projectPath;
+    }
+    if (Object.keys(updates).length > 0) {
       archive.db
         .update(chats)
-        .set({ project })
+        .set(updates)
         .where(eq(chats.id, existing.id))
         .run();
     }
@@ -218,6 +231,7 @@ function ensureChat(
       sourceId,
       firstSeenAt,
       project: project ?? null,
+      projectPath: projectPath ?? null,
     })
     .run();
   return id;
