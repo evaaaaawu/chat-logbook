@@ -13,16 +13,23 @@ export interface VisibilityOptions {
 export interface ChatVisibility {
   isTrashed(internalId: string): boolean;
   isVisible(internalId: string): boolean;
+  /** Soft-delete time in ms, or null when the chat is not trashed. */
+  deletedAt(internalId: string): number | null;
 }
 
 export function loadChatVisibility(
   metadata: MetadataRepository,
   opts: VisibilityOptions
 ): ChatVisibility {
-  const trashed = new Set(metadata.listDeletedIds());
+  const deleted = metadata.listDeleted();
+  const trashed = new Set(deleted.map((r) => r.id));
+  const deletedAtById = new Map(
+    deleted.map((r) => [r.id, r.deletedAt?.getTime() ?? null] as const)
+  );
   const showTrashed = opts.includeTrashed === true;
   return {
     isTrashed: (internalId) => trashed.has(internalId),
     isVisible: (internalId) => showTrashed || !trashed.has(internalId),
+    deletedAt: (internalId) => deletedAtById.get(internalId) ?? null,
   };
 }

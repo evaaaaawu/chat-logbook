@@ -26,6 +26,7 @@ interface ChatResponse {
   sourceFilePath: string | null;
   createdAt: number;
   updatedAt: number;
+  deletedAt: number | null;
   isDeleted?: boolean;
 }
 
@@ -120,6 +121,7 @@ export function createApp({ archive, metadata, webDistDir }: AppOptions) {
         sourceFilePath: latestRaw?.sourcePath ?? null,
         createdAt: tsRange?.minTs ?? firstSeenAtMs,
         updatedAt: tsRange?.maxTs ?? firstSeenAtMs,
+        deletedAt: visibility.deletedAt(row.id),
       };
       if (isDeleted) chat.isDeleted = true;
       chats.push(chat);
