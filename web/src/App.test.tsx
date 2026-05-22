@@ -47,6 +47,169 @@ describe("Chat list", () => {
   });
 });
 
+describe("Chat List sort", () => {
+  it("opens a sort popover listing Title, Created time, and Updated time", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+
+    const list = screen.getByTestId("chat-list");
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+
+    const popover = await screen.findByTestId("chat-sort-popover");
+    expect(within(popover).getByText("Title")).toBeInTheDocument();
+    expect(within(popover).getByText("Created time")).toBeInTheDocument();
+    expect(within(popover).getByText("Updated time")).toBeInTheDocument();
+  });
+
+  it("re-sorts the list A-Z when Title is selected", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+
+    const list = screen.getByTestId("chat-list");
+    // Default (Updated time · Newest first): Fix database migration is first.
+    expect(within(list).getAllByTestId("chat-row")[0].textContent).toContain(
+      "Fix database migration"
+    );
+
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+    const popover = await screen.findByTestId("chat-sort-popover");
+    await user.click(within(popover).getByText("Title"));
+
+    // Title A-Z: Build a login page first, Untitled (empty-ish) reorders down.
+    const rows = within(list).getAllByTestId("chat-row");
+    expect(rows[0].textContent).toContain("Build a login page");
+    expect(rows[1].textContent).toContain("Fix database migration");
+    expect(rows[2].textContent).toContain("Refactor utils");
+  });
+
+  it("toggles direction by re-clicking the active axis and re-sorts", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+
+    const list = screen.getByTestId("chat-list");
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+    const popover = await screen.findByTestId("chat-sort-popover");
+
+    // First click selects Title (A-Z); the direction label reads A-Z.
+    await user.click(within(popover).getByText("Title"));
+    expect(within(popover).getByText("A-Z")).toBeInTheDocument();
+
+    // Re-clicking the already-active axis flips its direction.
+    await user.click(within(popover).getByText("Title"));
+
+    // Z-A: the label flips and the order reverses ("Untitled" is a real title,
+    // so it leads in Z-A; "Build a login page" sinks to the bottom).
+    expect(within(popover).getByText("Z-A")).toBeInTheDocument();
+    const rows = within(list).getAllByTestId("chat-row");
+    expect(rows[0].textContent).toContain("Untitled");
+    expect(rows[3].textContent).toContain("Build a login page");
+  });
+
+  it("persists the sort preference across a reload", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<App />);
+
+    await screen.findByText("Build a login page");
+    let list = screen.getByTestId("chat-list");
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+    const popover = await screen.findByTestId("chat-sort-popover");
+    await user.click(within(popover).getByText("Title"));
+
+    unmount();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+    list = screen.getByTestId("chat-list");
+    const rows = within(list).getAllByTestId("chat-row");
+    expect(rows[0].textContent).toContain("Build a login page");
+  });
+
+  it("tints the sort icon primary cyan only when the sort is non-default", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+
+    const list = screen.getByTestId("chat-list");
+    const trigger = within(list).getByRole("button", { name: /sort/i });
+
+    // Default (Updated time · Newest first): muted, not cyan.
+    expect(trigger.className).toMatch(/text-muted-foreground/);
+    expect(trigger.className).not.toMatch(/text-primary/);
+
+    await user.click(trigger);
+    const popover = await screen.findByTestId("chat-sort-popover");
+    await user.click(within(popover).getByText("Title"));
+
+    // Non-default: cyan.
+    expect(trigger.className).toMatch(/text-primary/);
+  });
+
+  it("remembers each axis's direction when switching between axes", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+    const list = screen.getByTestId("chat-list");
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+    const popover = await screen.findByTestId("chat-sort-popover");
+
+    // Title: select, then re-click to flip to Z-A.
+    await user.click(within(popover).getByText("Title"));
+    await user.click(within(popover).getByText("Title"));
+    expect(within(popover).getByText("Z-A")).toBeInTheDocument();
+
+    // Updated time: its own untouched default (Newest first).
+    await user.click(within(popover).getByText("Updated time"));
+    expect(within(popover).getByText("Newest first")).toBeInTheDocument();
+
+    // Back to Title: the Z-A choice is restored (a plain select, not a flip).
+    await user.click(within(popover).getByText("Title"));
+    expect(within(popover).getByText("Z-A")).toBeInTheDocument();
+  });
+
+  it("scrolls the selected chat into view after a sort change", async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+    scrollIntoView.mockClear();
+
+    const list = screen.getByTestId("chat-list");
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+    const popover = await screen.findByTestId("chat-sort-popover");
+    await user.click(within(popover).getByText("Title"));
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+  });
+
+  it("scrolls the list to top after a sort change when nothing is selected", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+
+    const scroller = screen.getByTestId("chat-scroll");
+    scroller.scrollTop = 100;
+
+    const list = screen.getByTestId("chat-list");
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+    const popover = await screen.findByTestId("chat-sort-popover");
+    await user.click(within(popover).getByText("Title"));
+
+    expect(scroller.scrollTop).toBe(0);
+  });
+});
+
 describe("Conversation header", () => {
   it("shows the session title and project after selecting a session", async () => {
     const user = userEvent.setup();

@@ -1,9 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useChats } from "@/hooks/useChats";
 import { useMessages } from "@/hooks/useMessages";
 import { useToast } from "@/hooks/useToast";
+import { useSortPreference } from "@/hooks/useSortPreference";
+import { sortChats } from "@/lib/sortChats";
+import {
+  CHAT_DIRECTION_LABELS,
+  CHAT_SORT_AXES,
+  CHAT_SORT_CONFIG,
+} from "@/lib/chatSort";
 import { FilterPanel } from "@/components/FilterPanel";
 import { ChatList } from "@/components/ChatList";
+import { SortControl } from "@/components/SortControl";
 import { ConversationView } from "@/components/ConversationView";
 import { Toast } from "@/components/Toast";
 import {
@@ -22,7 +30,16 @@ function App() {
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const { messages, error } = useMessages(selectedId);
   const { toast, showToast, dismissToast } = useToast();
-  const mainChats = chats.filter((c) => !c.isDeleted);
+  const sort = useSortPreference(CHAT_SORT_CONFIG);
+  const mainChats = useMemo(
+    () =>
+      sortChats(
+        chats.filter((c) => !c.isDeleted),
+        sort.field,
+        sort.direction
+      ),
+    [chats, sort.field, sort.direction]
+  );
   const deletedChats = chats.filter((c) => c.isDeleted);
   const visibleChats = mode === "trash" ? deletedChats : mainChats;
   const selectedChat = chats.find((c) => c.id === selectedId) ?? null;
@@ -129,6 +146,19 @@ function App() {
             onBack={() => setMode("main")}
             deletedCount={deletedChats.length}
             onOpenTrash={() => setMode("trash")}
+            sortSignature={`${sort.field}:${sort.direction}`}
+            sortControl={
+              <SortControl
+                testId="chat-sort-popover"
+                axes={CHAT_SORT_AXES}
+                field={sort.field}
+                direction={sort.direction}
+                isDefault={sort.isDefault}
+                directionLabels={CHAT_DIRECTION_LABELS}
+                onSelectField={sort.selectField}
+                onToggleDirection={sort.toggleDirection}
+              />
+            }
           />
         </ResizablePanel>
         <ResizableHandle />

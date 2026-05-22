@@ -58,5 +58,6 @@ afterEach(() => {
   cleanup();
   server.resetHandlers();
   resetFakeChats();
+  localStorage.clear();
 });
 afterAll(() => server.close());
