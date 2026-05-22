@@ -11,6 +11,7 @@ type FakeChat = {
   sourceFilePath: string | null;
   createdAt: number;
   updatedAt: number;
+  deletedAt?: number | null;
   isDeleted?: boolean;
 };
 
@@ -75,6 +76,24 @@ const initialFakeChats: FakeChat[] = [
       "/Users/test/.claude/projects/my-web-app/chat-deleted-1.jsonl",
     createdAt: 1699999000000,
     updatedAt: 1699999500000,
+    deletedAt: 1700000200000,
+    isDeleted: true,
+  },
+  {
+    id: "chat-deleted-2",
+    chatId: "CHATD2",
+    agent: "claude-code",
+    defaultTitle: "Newer experiment",
+    customTitle: null,
+    project: "my-web-app",
+    projectPath: "/Users/test/my-web-app",
+    sourceFilePath:
+      "/Users/test/.claude/projects/my-web-app/chat-deleted-2.jsonl",
+    createdAt: 1699999100000,
+    // Updated more recently than chat-deleted-1, but deleted earlier — so
+    // sorting by Updated time vs Deleted time yields a different order.
+    updatedAt: 1699999800000,
+    deletedAt: 1700000100000,
     isDeleted: true,
   },
 ];
@@ -204,6 +223,7 @@ export const handlers = [
       return HttpResponse.json({ error: "Chat not found" }, { status: 404 });
     }
     chat.isDeleted = true;
+    chat.deletedAt = Date.now();
     return new HttpResponse(null, { status: 204 });
   }),
   http.post("/api/chats/:id/restore", ({ params }) => {
@@ -213,6 +233,7 @@ export const handlers = [
       return HttpResponse.json({ error: "Chat not found" }, { status: 404 });
     }
     chat.isDeleted = false;
+    chat.deletedAt = null;
     return new HttpResponse(null, { status: 204 });
   }),
 ];

@@ -171,9 +171,7 @@ export function ChatList({
               <ArrowLeft size={14} aria-hidden="true" />
               Back
             </button>
-            <span className="font-semibold text-accent-foreground">
-              Trash ({chats.length})
-            </span>
+            {sortControl}
           </>
         ) : (
           <>

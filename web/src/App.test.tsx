@@ -502,7 +502,113 @@ describe("Trash link in filter panel", () => {
 
     const trashLink = await screen.findByTestId("trash-link");
     expect(within(trashLink).getByText(/trash/i)).toBeInTheDocument();
-    expect(within(trashLink).getByText("1")).toBeInTheDocument();
+    expect(within(trashLink).getByText("2")).toBeInTheDocument();
+  });
+});
+
+describe("Trash sort", () => {
+  it("offers Title, Created, Updated, and Deleted time with Deleted last", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+    await user.click(screen.getByTestId("trash-link"));
+
+    const list = screen.getByTestId("chat-list");
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+
+    const popover = await screen.findByTestId("trash-sort-popover");
+    const labels = within(popover)
+      .getAllByRole("button")
+      .map((b) => b.textContent?.trim());
+    expect(labels).toEqual([
+      "Title",
+      "Created time",
+      "Updated time",
+      "Deleted time",
+    ]);
+  });
+
+  it("defaults to Deleted time, newest first", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+    await user.click(screen.getByTestId("trash-link"));
+
+    const list = screen.getByTestId("chat-list");
+    // chat-deleted-1 deletedAt 1700000200000 > chat-deleted-2 1700000100000
+    const rows = within(list).getAllByTestId("chat-row");
+    expect(rows[0].textContent).toContain("Old prototype");
+    expect(rows[1].textContent).toContain("Newer experiment");
+
+    // The active axis reads "Deleted time" with the "Newest first" label.
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+    const popover = await screen.findByTestId("trash-sort-popover");
+    expect(within(popover).getByText("Newest first")).toBeInTheDocument();
+  });
+
+  it("reorders by Updated time when that axis is selected", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+    await user.click(screen.getByTestId("trash-link"));
+
+    const list = screen.getByTestId("chat-list");
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+    const popover = await screen.findByTestId("trash-sort-popover");
+    await user.click(within(popover).getByText("Updated time"));
+
+    // Updated time desc: chat-deleted-2 (1699999800000) before chat-deleted-1.
+    const rows = within(list).getAllByTestId("chat-row");
+    expect(rows[0].textContent).toContain("Newer experiment");
+    expect(rows[1].textContent).toContain("Old prototype");
+  });
+
+  it("no longer shows the 'Trash (N)' text label in the header", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+    await user.click(screen.getByTestId("trash-link"));
+
+    await screen.findByText("Old prototype");
+    expect(screen.queryByText(/^Trash \(\d+\)$/)).not.toBeInTheDocument();
+    const list = screen.getByTestId("chat-list");
+    expect(
+      within(list).getByRole("button", { name: /back/i })
+    ).toBeInTheDocument();
+    expect(
+      within(list).getByRole("button", { name: /sort/i })
+    ).toBeInTheDocument();
+  });
+
+  it("persists the Trash sort independently of the Chats list sort", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+    await user.click(screen.getByTestId("trash-link"));
+
+    const list = screen.getByTestId("chat-list");
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+    const popover = await screen.findByTestId("trash-sort-popover");
+    await user.click(within(popover).getByText("Title"));
+
+    // Trash preference is stored under its own key; the Chats key is untouched.
+    const trashPref = JSON.parse(
+      localStorage.getItem("chatlogbook.sort.trash") ?? "{}"
+    );
+    expect(trashPref.field).toBe("title");
+    expect(localStorage.getItem("chatlogbook.sort.chats")).toBeNull();
+
+    // Back in the Chats list, the default Updated-time order still holds.
+    await user.click(within(list).getByRole("button", { name: /back/i }));
+    const mainRows = within(screen.getByTestId("chat-list")).getAllByTestId(
+      "chat-row"
+    );
+    expect(mainRows[0].textContent).toContain("Fix database migration");
   });
 });
 
@@ -529,9 +635,9 @@ describe("Soft delete from chat list", () => {
       ).not.toBeInTheDocument();
     });
 
-    // Trash count: 1 → 2
+    // Trash count: 2 → 3
     const trashLink = screen.getByTestId("trash-link");
-    expect(within(trashLink).getByText("2")).toBeInTheDocument();
+    expect(within(trashLink).getByText("3")).toBeInTheDocument();
   });
 });
 
@@ -585,7 +691,7 @@ describe("Undo toast on delete", () => {
     });
 
     const trashLink = screen.getByTestId("trash-link");
-    expect(within(trashLink).getByText("1")).toBeInTheDocument();
+    expect(within(trashLink).getByText("2")).toBeInTheDocument();
   });
 });
 
@@ -633,7 +739,6 @@ describe("Enter Trash mode", () => {
     await user.click(screen.getByTestId("trash-link"));
 
     const list = screen.getByTestId("chat-list");
-    expect(within(list).getByText(/trash \(1\)/i)).toBeInTheDocument();
     expect(within(list).getByText("Old prototype")).toBeInTheDocument();
     expect(
       within(list).queryByText("Build a login page")
@@ -751,7 +856,9 @@ describe("Trash mode triggers: hover button, Backspace, Esc", () => {
     await user.click(screen.getByTestId("trash-link"));
 
     const list = screen.getByTestId("chat-list");
-    expect(within(list).getByText(/trash/i)).toBeInTheDocument();
+    expect(
+      within(list).getByRole("button", { name: /back/i })
+    ).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
 

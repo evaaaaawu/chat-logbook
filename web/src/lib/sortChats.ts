@@ -1,7 +1,14 @@
 import type { Chat } from "@/types";
 
-export type SortField = "title" | "createdAt" | "updatedAt";
+export type SortField = "title" | "createdAt" | "updatedAt" | "deletedAt";
 export type SortDirection = "asc" | "desc";
+
+// A missing deletedAt (active chat) sorts as the oldest possible time, so it
+// never floats above chats with a real deletion timestamp under desc.
+function timeField(chat: Chat, field: Exclude<SortField, "title">): number {
+  if (field === "deletedAt") return chat.deletedAt ?? 0;
+  return chat[field];
+}
 
 function isEmptyTitle(title: string | null | undefined): boolean {
   return title == null || title.trim() === "";
@@ -26,7 +33,7 @@ function comparePrimary(
   direction: SortDirection
 ): number {
   if (field === "title") return compareTitle(a, b, direction);
-  const cmp = a[field] - b[field];
+  const cmp = timeField(a, field) - timeField(b, field);
   return direction === "asc" ? cmp : -cmp;
 }
 

@@ -8,6 +8,9 @@ import {
   CHAT_DIRECTION_LABELS,
   CHAT_SORT_AXES,
   CHAT_SORT_CONFIG,
+  TRASH_DIRECTION_LABELS,
+  TRASH_SORT_AXES,
+  TRASH_SORT_CONFIG,
 } from "@/lib/chatSort";
 import { FilterPanel } from "@/components/FilterPanel";
 import { ChatList } from "@/components/ChatList";
@@ -31,6 +34,7 @@ function App() {
   const { messages, error } = useMessages(selectedId);
   const { toast, showToast, dismissToast } = useToast();
   const sort = useSortPreference(CHAT_SORT_CONFIG);
+  const trashSort = useSortPreference(TRASH_SORT_CONFIG);
   const mainChats = useMemo(
     () =>
       sortChats(
@@ -40,8 +44,17 @@ function App() {
       ),
     [chats, sort.field, sort.direction]
   );
-  const deletedChats = chats.filter((c) => c.isDeleted);
+  const deletedChats = useMemo(
+    () =>
+      sortChats(
+        chats.filter((c) => c.isDeleted),
+        trashSort.field,
+        trashSort.direction
+      ),
+    [chats, trashSort.field, trashSort.direction]
+  );
   const visibleChats = mode === "trash" ? deletedChats : mainChats;
+  const activeSort = mode === "trash" ? trashSort : sort;
   const selectedChat = chats.find((c) => c.id === selectedId) ?? null;
 
   const handleRestore = (id: string) => {
@@ -146,18 +159,31 @@ function App() {
             onBack={() => setMode("main")}
             deletedCount={deletedChats.length}
             onOpenTrash={() => setMode("trash")}
-            sortSignature={`${sort.field}:${sort.direction}`}
+            sortSignature={`${mode}:${activeSort.field}:${activeSort.direction}`}
             sortControl={
-              <SortControl
-                testId="chat-sort-popover"
-                axes={CHAT_SORT_AXES}
-                field={sort.field}
-                direction={sort.direction}
-                isDefault={sort.isDefault}
-                directionLabels={CHAT_DIRECTION_LABELS}
-                onSelectField={sort.selectField}
-                onToggleDirection={sort.toggleDirection}
-              />
+              mode === "trash" ? (
+                <SortControl
+                  testId="trash-sort-popover"
+                  axes={TRASH_SORT_AXES}
+                  field={trashSort.field}
+                  direction={trashSort.direction}
+                  isDefault={trashSort.isDefault}
+                  directionLabels={TRASH_DIRECTION_LABELS}
+                  onSelectField={trashSort.selectField}
+                  onToggleDirection={trashSort.toggleDirection}
+                />
+              ) : (
+                <SortControl
+                  testId="chat-sort-popover"
+                  axes={CHAT_SORT_AXES}
+                  field={sort.field}
+                  direction={sort.direction}
+                  isDefault={sort.isDefault}
+                  directionLabels={CHAT_DIRECTION_LABELS}
+                  onSelectField={sort.selectField}
+                  onToggleDirection={sort.toggleDirection}
+                />
+              )
             }
           />
         </ResizablePanel>
