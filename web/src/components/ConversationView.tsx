@@ -182,6 +182,13 @@ export function ConversationView({
   };
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // TanStack Virtual's useVirtualizer returns functions (e.g. measureElement)
+  // that the React Compiler cannot memoize without risking stale UI, so the
+  // compiler intentionally skips memoizing this component. This is expected and
+  // safe here: the virtualizer values are consumed locally and not passed into
+  // other memoized components/hooks. The warning cannot be compiled away, so we
+  // silence it at the call site rather than disabling the rule globally.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => scrollContainerRef.current,
