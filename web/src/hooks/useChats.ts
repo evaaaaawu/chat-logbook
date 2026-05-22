@@ -20,10 +20,20 @@ export function useChats(): UseChatsResult {
   }, []);
 
   useEffect(() => {
-    fetchChats()
+    let cancelled = false;
+    fetch("/api/chats?includeTrashed=true")
+      .then((res) => res.json() as Promise<{ chats: Chat[] }>)
+      .then((data) => {
+        if (!cancelled) setChats(data.chats);
+      })
       .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [fetchChats]);
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const softDelete = useCallback(async (id: string) => {
     setChats((prev) =>
