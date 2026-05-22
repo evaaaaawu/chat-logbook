@@ -9,10 +9,6 @@ interface UseChatsResult {
   setTitle: (id: string, title: string) => Promise<void>;
 }
 
-function sortByUpdatedDesc(chats: Chat[]): Chat[] {
-  return [...chats].sort((a, b) => b.updatedAt - a.updatedAt);
-}
-
 export function useChats(): UseChatsResult {
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,7 +16,7 @@ export function useChats(): UseChatsResult {
   const fetchChats = useCallback(async () => {
     const res = await fetch("/api/chats?includeTrashed=true");
     const data = (await res.json()) as { chats: Chat[] };
-    setChats(sortByUpdatedDesc(data.chats));
+    setChats(data.chats);
   }, []);
 
   useEffect(() => {

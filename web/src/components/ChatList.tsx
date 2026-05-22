@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import type { Chat } from "@/types";
 import { EditableTitle } from "./EditableTitle";
@@ -16,6 +16,9 @@ interface ChatListProps {
   onBack?: () => void;
   deletedCount?: number;
   onOpenTrash?: () => void;
+  sortControl?: React.ReactNode;
+  /** Changes whenever the active sort changes; drives keep-selection-visible scrolling. */
+  sortSignature?: string;
 }
 
 function getProjectName(projectPath: string): string {
@@ -44,7 +47,7 @@ interface ContextMenuState {
 }
 
 const TITLE_DISPLAY_CLASS =
-  "inline-block max-w-full truncate align-middle rounded px-1.5 py-0.5 -mx-1.5 text-sm font-medium text-accent-foreground cursor-text transition-colors group-hover:bg-white/[0.04]";
+  "inline-block max-w-full truncate align-middle rounded px-1.5 py-0.5 -mx-1.5 text-sm font-medium text-accent-foreground cursor-text transition-colors group-hover:bg-white/4";
 const TITLE_INPUT_CLASS =
   "min-w-[12ch] max-w-full rounded border border-border bg-transparent px-1.5 py-0.5 text-sm font-medium text-accent-foreground outline-none focus:border-primary [field-sizing:content]";
 
@@ -67,9 +70,7 @@ function MenuItem({
       role="menuitem"
       onClick={onClick}
       className={`flex w-full items-center justify-between gap-6 rounded-md px-3 py-1.5 text-left transition-colors ${
-        destructive
-          ? "text-destructive hover:bg-[#3a1d23]"
-          : "hover:bg-white/[0.06]"
+        destructive ? "text-destructive hover:bg-[#3a1d23]" : "hover:bg-white/6"
       }`}
     >
       <span className="flex items-center gap-2">
@@ -106,6 +107,8 @@ export function ChatList({
   onBack,
   deletedCount = 0,
   onOpenTrash,
+  sortControl,
+  sortSignature,
 }: ChatListProps) {
   const [internalEditingId, setInternalEditingId] = useState<string | null>(
     null
@@ -118,6 +121,20 @@ export function ChatList({
   };
   const isTrash = mode === "trash";
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const selectedRowRef = useRef<HTMLDivElement>(null);
+  const prevSortSignature = useRef(sortSignature);
+
+  // Keep the selected chat visible after a sort change; otherwise scroll to top.
+  useEffect(() => {
+    if (prevSortSignature.current === sortSignature) return;
+    prevSortSignature.current = sortSignature;
+    if (selectedId && selectedRowRef.current) {
+      selectedRowRef.current.scrollIntoView?.({ block: "nearest" });
+    } else if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [sortSignature, selectedId]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -160,14 +177,23 @@ export function ChatList({
           </>
         ) : (
           <>
-            <span className="font-semibold text-accent-foreground">Chats</span>
-            <span className="text-xs text-muted-foreground">
-              {chats.length}
+            <span className="flex items-center gap-2">
+              <span className="font-semibold text-accent-foreground">
+                Chats
+              </span>
+              <span className="rounded-full bg-card px-2 text-xs font-semibold tabular-nums text-muted-foreground">
+                {chats.length}
+              </span>
             </span>
+            {sortControl}
           </>
         )}
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div
+        ref={scrollContainerRef}
+        data-testid="chat-scroll"
+        className="flex-1 overflow-y-auto"
+      >
         {chats.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center px-6 text-center text-sm text-muted-foreground">
             {isTrash ? (
@@ -245,6 +271,7 @@ export function ChatList({
             return (
               <div
                 key={chat.id}
+                ref={isSelected ? selectedRowRef : undefined}
                 data-testid="chat-row"
                 className="group relative"
                 onContextMenu={(e) => handleContextMenu(e, chat.id)}
@@ -296,7 +323,7 @@ export function ChatList({
       {contextMenu && (
         <div
           role="menu"
-          className="fixed z-50 min-w-[200px] rounded-md border border-border bg-card p-1 text-sm shadow-lg"
+          className="fixed z-50 min-w-50 rounded-md border border-border bg-card p-1 text-sm shadow-lg"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           {!isTrash && onRenameTitle && (
