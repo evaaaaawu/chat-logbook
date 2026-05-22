@@ -36,7 +36,7 @@ export function SortControl<F extends string>({
       <PopoverTrigger
         aria-label="Sort chats"
         className={cn(
-          "flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-ring",
+          "flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors hover:bg-white/4 focus-visible:outline-2 focus-visible:outline-ring",
           isDefault ? "text-muted-foreground" : "text-primary"
         )}
       >
@@ -68,7 +68,7 @@ export function SortControl<F extends string>({
                   "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left transition-colors",
                   active
                     ? "bg-primary/10 text-primary"
-                    : "text-foreground hover:bg-white/[0.06]"
+                    : "text-foreground hover:bg-white/6"
                 )}
               >
                 <span>{axis.label}</span>

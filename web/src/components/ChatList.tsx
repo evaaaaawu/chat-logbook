@@ -47,7 +47,7 @@ interface ContextMenuState {
 }
 
 const TITLE_DISPLAY_CLASS =
-  "inline-block max-w-full truncate align-middle rounded px-1.5 py-0.5 -mx-1.5 text-sm font-medium text-accent-foreground cursor-text transition-colors group-hover:bg-white/[0.04]";
+  "inline-block max-w-full truncate align-middle rounded px-1.5 py-0.5 -mx-1.5 text-sm font-medium text-accent-foreground cursor-text transition-colors group-hover:bg-white/4";
 const TITLE_INPUT_CLASS =
   "min-w-[12ch] max-w-full rounded border border-border bg-transparent px-1.5 py-0.5 text-sm font-medium text-accent-foreground outline-none focus:border-primary [field-sizing:content]";
 
@@ -70,9 +70,7 @@ function MenuItem({
       role="menuitem"
       onClick={onClick}
       className={`flex w-full items-center justify-between gap-6 rounded-md px-3 py-1.5 text-left transition-colors ${
-        destructive
-          ? "text-destructive hover:bg-[#3a1d23]"
-          : "hover:bg-white/[0.06]"
+        destructive ? "text-destructive hover:bg-[#3a1d23]" : "hover:bg-white/6"
       }`}
     >
       <span className="flex items-center gap-2">
@@ -325,7 +323,7 @@ export function ChatList({
       {contextMenu && (
         <div
           role="menu"
-          className="fixed z-50 min-w-[200px] rounded-md border border-border bg-card p-1 text-sm shadow-lg"
+          className="fixed z-50 min-w-50 rounded-md border border-border bg-card p-1 text-sm shadow-lg"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           {!isTrash && onRenameTitle && (
