@@ -44,6 +44,39 @@ function App() {
   const visibleChats = mode === "trash" ? deletedChats : mainChats;
   const selectedChat = chats.find((c) => c.id === selectedId) ?? null;
 
+  const handleRestore = (id: string) => {
+    if (id === selectedId) {
+      const idx = deletedChats.findIndex((c) => c.id === id);
+      const remaining = deletedChats.filter((_, i) => i !== idx);
+      const next = remaining[idx] ?? remaining[idx - 1] ?? null;
+      setSelectedId(next?.id ?? null);
+    }
+    void restore(id);
+    showToast({
+      message: "Chat restored.",
+      actionLabel: "View",
+      onAction: () => {
+        setMode("main");
+        setSelectedId(id);
+      },
+    });
+  };
+
+  const handleDelete = (id: string) => {
+    if (id === selectedId) {
+      const idx = mainChats.findIndex((c) => c.id === id);
+      const remaining = mainChats.filter((_, i) => i !== idx);
+      const next = remaining[idx] ?? remaining[idx - 1] ?? null;
+      setSelectedId(next?.id ?? null);
+    }
+    void softDelete(id);
+    showToast({
+      message: "Chat deleted.",
+      actionLabel: "Undo",
+      onAction: () => void restore(id),
+    });
+  };
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -88,39 +121,6 @@ function App() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   });
-
-  const handleRestore = (id: string) => {
-    if (id === selectedId) {
-      const idx = deletedChats.findIndex((c) => c.id === id);
-      const remaining = deletedChats.filter((_, i) => i !== idx);
-      const next = remaining[idx] ?? remaining[idx - 1] ?? null;
-      setSelectedId(next?.id ?? null);
-    }
-    void restore(id);
-    showToast({
-      message: "Chat restored.",
-      actionLabel: "View",
-      onAction: () => {
-        setMode("main");
-        setSelectedId(id);
-      },
-    });
-  };
-
-  const handleDelete = (id: string) => {
-    if (id === selectedId) {
-      const idx = mainChats.findIndex((c) => c.id === id);
-      const remaining = mainChats.filter((_, i) => i !== idx);
-      const next = remaining[idx] ?? remaining[idx - 1] ?? null;
-      setSelectedId(next?.id ?? null);
-    }
-    void softDelete(id);
-    showToast({
-      message: "Chat deleted.",
-      actionLabel: "Undo",
-      onAction: () => void restore(id),
-    });
-  };
 
   return (
     <div className="h-screen bg-background text-foreground">
