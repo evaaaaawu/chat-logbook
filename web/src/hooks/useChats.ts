@@ -36,8 +36,13 @@ export function useChats(): UseChatsResult {
   }, []);
 
   const softDelete = useCallback(async (id: string) => {
+    // Mirror the server contract optimistically so the Trash view sorts by a
+    // real Deleted time immediately, before any refetch.
+    const now = Date.now();
     setChats((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, isDeleted: true } : c))
+      prev.map((c) =>
+        c.id === id ? { ...c, isDeleted: true, deletedAt: now } : c
+      )
     );
     await fetch(`/api/chats/${encodeURIComponent(id)}`, {
       method: "DELETE",
@@ -46,7 +51,9 @@ export function useChats(): UseChatsResult {
 
   const restore = useCallback(async (id: string) => {
     setChats((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, isDeleted: false } : c))
+      prev.map((c) =>
+        c.id === id ? { ...c, isDeleted: false, deletedAt: null } : c
+      )
     );
     await fetch(`/api/chats/${encodeURIComponent(id)}/restore`, {
       method: "POST",

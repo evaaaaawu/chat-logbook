@@ -88,6 +88,28 @@ describe("sortChats — time axes", () => {
 
     expect(sorted.map((c) => c.id)).toEqual(["old", "mid", "new"]);
   });
+
+  it("orders by deletedAt newest-first when direction is desc", () => {
+    const chats = [
+      makeChat({ id: "old", deletedAt: 100 }),
+      makeChat({ id: "new", deletedAt: 300 }),
+      makeChat({ id: "mid", deletedAt: 200 }),
+    ];
+
+    const sorted = sortChats(chats, "deletedAt", "desc");
+
+    expect(sorted.map((c) => c.id)).toEqual(["new", "mid", "old"]);
+  });
+
+  it("treats a null deletedAt as the oldest when sorting by deletedAt", () => {
+    const chats = [
+      makeChat({ id: "set", deletedAt: 200 }),
+      makeChat({ id: "null", deletedAt: null }),
+    ];
+
+    const desc = sortChats(chats, "deletedAt", "desc");
+    expect(desc.map((c) => c.id)).toEqual(["set", "null"]);
+  });
 });
 
 describe("sortChats — tie-breakers", () => {

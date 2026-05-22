@@ -27,7 +27,8 @@ export interface MetadataRepository {
   softDelete(internalId: string): void;
   restore(internalId: string): void;
   isDeleted(internalId: string): boolean;
-  listDeletedIds(): string[];
+  getDeletedAt(internalId: string): Date | null;
+  listDeleted(): Array<{ id: string; deletedAt: Date | null }>;
   getCustomTitle(internalId: string): string | null;
   setCustomTitle(internalId: string, title: string | null): void;
 }
@@ -70,10 +71,11 @@ export function createMetadataRepository({
           isDeleted: true,
           createdAt: now,
           updatedAt: now,
+          deletedAt: now,
         })
         .onConflictDoUpdate({
           target: chatsMeta.id,
-          set: { isDeleted: true, updatedAt: now },
+          set: { isDeleted: true, updatedAt: now, deletedAt: now },
         })
         .run();
     },
@@ -81,7 +83,7 @@ export function createMetadataRepository({
     restore(internalId) {
       const now = new Date();
       db.update(chatsMeta)
-        .set({ isDeleted: false, updatedAt: now })
+        .set({ isDeleted: false, updatedAt: now, deletedAt: null })
         .where(eq(chatsMeta.id, internalId))
         .run();
     },
@@ -95,13 +97,22 @@ export function createMetadataRepository({
       return row?.isDeleted ?? false;
     },
 
-    listDeletedIds() {
+    getDeletedAt(internalId) {
+      const row = db
+        .select({ deletedAt: chatsMeta.deletedAt })
+        .from(chatsMeta)
+        .where(eq(chatsMeta.id, internalId))
+        .get();
+      return row?.deletedAt ?? null;
+    },
+
+    listDeleted() {
       const rows = db
-        .select({ id: chatsMeta.id })
+        .select({ id: chatsMeta.id, deletedAt: chatsMeta.deletedAt })
         .from(chatsMeta)
         .where(eq(chatsMeta.isDeleted, true))
         .all();
-      return rows.map((r) => r.id);
+      return rows.map((r) => ({ id: r.id, deletedAt: r.deletedAt ?? null }));
     },
 
     getCustomTitle(internalId) {

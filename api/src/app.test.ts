@@ -496,6 +496,35 @@ describe("Soft delete and restore (archive-backed)", () => {
     expect(s?.isDeleted).toBe(true);
   });
 
+  it("exposes deletedAt: null for active chats and a timestamp for trashed chats", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedChat(archive, {
+      internalId: "active-uuid-1",
+      sourceId: "session-active",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedChat(archive, {
+      internalId: "trashd-uuid-1",
+      sourceId: "session-trashed",
+      firstSeenAt: new Date(1700000000000),
+    });
+
+    const app = createApp({ archive, metadata });
+    const before = Date.now();
+    await app.request("/api/chats/session-trashed", { method: "DELETE" });
+
+    const res = await app.request("/api/chats?includeTrashed=true");
+    const body = (await res.json()) as {
+      chats: (ChatResponse & { deletedAt: number | null })[];
+    };
+    const active = body.chats.find((c) => c.id === "session-active");
+    const trashed = body.chats.find((c) => c.id === "session-trashed");
+    expect(active?.deletedAt).toBeNull();
+    expect(typeof trashed?.deletedAt).toBe("number");
+    expect(trashed!.deletedAt!).toBeGreaterThanOrEqual(before);
+  });
+
   it("restores a previously deleted session", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });

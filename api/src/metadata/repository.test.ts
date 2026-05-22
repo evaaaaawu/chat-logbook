@@ -69,6 +69,35 @@ describe("MetadataRepository", () => {
     }
   });
 
+  it("backfills deleted_at from updated_at for already-trashed rows on migration", () => {
+    seedFromFixture(dataDir);
+
+    createMetadataRepository({ dataDir });
+
+    const sqlite = new Database(path.join(dataDir, "data.db"), {
+      readonly: true,
+    });
+    try {
+      const rows = sqlite
+        .prepare(
+          "SELECT id, is_deleted, deleted_at, updated_at FROM chats_meta ORDER BY created_at"
+        )
+        .all() as {
+        id: string;
+        is_deleted: number;
+        deleted_at: number | null;
+        updated_at: number;
+      }[];
+
+      const active = rows.find((r) => r.is_deleted === 0)!;
+      const trashed = rows.find((r) => r.is_deleted === 1)!;
+      expect(active.deleted_at).toBeNull();
+      expect(trashed.deleted_at).toBe(trashed.updated_at);
+    } finally {
+      sqlite.close();
+    }
+  });
+
   it("marks a session as deleted after softDelete", () => {
     const repo = createMetadataRepository({ dataDir });
 
@@ -97,6 +126,22 @@ describe("MetadataRepository", () => {
     const second = createMetadataRepository({ dataDir });
 
     expect(second.isDeleted("session-1")).toBe(true);
+  });
+
+  it("stamps deletedAt on softDelete and clears it on restore", () => {
+    const repo = createMetadataRepository({ dataDir });
+
+    expect(repo.getDeletedAt("session-1")).toBeNull();
+
+    const before = Date.now();
+    repo.softDelete("session-1");
+    const stamped = repo.getDeletedAt("session-1");
+    expect(stamped).toBeInstanceOf(Date);
+    expect(stamped!.getTime()).toBeGreaterThanOrEqual(before);
+    expect(stamped!.getTime()).toBeLessThanOrEqual(Date.now());
+
+    repo.restore("session-1");
+    expect(repo.getDeletedAt("session-1")).toBeNull();
   });
 
   it("returns null for custom title before it is set, and the stored value after", () => {

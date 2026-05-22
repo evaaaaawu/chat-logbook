@@ -8,6 +8,8 @@ export interface Chat {
   sourceFilePath: string | null;
   createdAt: number;
   updatedAt: number;
+  /** Soft-delete time in ms; null while the chat is active. */
+  deletedAt?: number | null;
   isDeleted?: boolean;
 }
 
