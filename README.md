@@ -60,6 +60,9 @@ The full problem statement, user stories, and direction live in the
   Code's terminal look.
 - **Soft delete with Trash.** Hide chats you don't want to see; restore
   them anytime.
+- **Sortable lists.** Sort your chats by title, created time, or updated
+  time, and the choice sticks between visits. Trash sorts independently —
+  by deleted time by default.
 - **Custom chat titles.** Rename any chat — click its title in the
   list or conversation header, or select it and press `F2` / `↵`. Clear
   the title to fall back to the first message.

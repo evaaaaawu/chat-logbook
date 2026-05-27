@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.10.0] - 2026-05-27
+
+You can now sort your chat list — by title, created time, or updated time — and your choice is remembered the next time you open the app. Trash keeps its own sort order, defaulting to whatever you deleted most recently.
+
+### Added
+
+- Sort your chat list by title (A–Z), created time, or updated time. The app remembers your choice between visits.
+- Trash now has its own independent sort order and can be sorted by when each chat was deleted, with the most recently deleted shown first by default.
+
 ## [0.9.0] - 2026-05-21
 
 Each chat now has a metadata popover. Click the ⓘ at the right of the conversation header to see when the chat started and was last updated, which agent it came from, the full project path on disk, and the chat's IDs and source file — with one-click copy for the path and the IDs.
