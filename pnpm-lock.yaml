@@ -172,6 +172,9 @@ importers:
       msw:
         specifier: ^2.12.14
         version: 2.12.14(@types/node@24.12.0)(typescript@5.9.3)
+      react-grab:
+        specifier: ^0.1.44
+        version: 0.1.44(react@19.2.4)
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
@@ -1387,6 +1390,12 @@ packages:
       }
     engines: { node: ">=18.18" }
 
+  "@iarna/toml@2.2.5":
+    resolution:
+      {
+        integrity: sha512-trnsAYxU3xnS1gPHPyU961coFyLkh4gAD/0zQ5mymY4yOZ+CYvsPqUbOFSw0aDM4y0tV7tiFxL/1XfXPNC6IPg==,
+      }
+
   "@inquirer/ansi@1.0.2":
     resolution:
       {
@@ -1588,6 +1597,13 @@ packages:
         integrity: sha512-h104Kh26rR8tm+a3Qkc5S4VLYint3FE48as7+/5oCEcKR2idC/pF1G6AhIXKI+eHPJa/3J9i5z0Al47IeGHPkA==,
       }
     engines: { node: ">=12" }
+
+  "@react-grab/cli@0.1.44":
+    resolution:
+      {
+        integrity: sha512-gMDYY2rw6OWajCcDlXSIgs2LC432YJXSb3Lm5yM187uhRgBYddoEVULi36h+IolX3r7jSb3ew7vn9FfI8NSo0A==,
+      }
+    hasBin: true
 
   "@rolldown/binding-android-arm64@1.0.0-rc.12":
     resolution:
@@ -2493,6 +2509,13 @@ packages:
       }
     engines: { node: ">= 14" }
 
+  agent-install@0.0.5:
+    resolution:
+      {
+        integrity: sha512-nHlms9BkP8ZiY79HrwCGiA2DcNaXrAaJrCM/BEqQ7MEsSKyCk+2A76xPGylIfASZSZE0SaU3T0bNSg4rBPIJAQ==,
+      }
+    hasBin: true
+
   ajv-formats@3.0.1:
     resolution:
       {
@@ -2660,6 +2683,14 @@ packages:
       {
         integrity: sha512-p2q/t/mhvuOj/UeLlV6566GD/guowlr0hHxClI0W9m7MWYkL1F0hLo+0Aexs9HSPCtR1SXQ0TD3MMKrXZajbiQ==,
       }
+
+  bippy@0.5.41:
+    resolution:
+      {
+        integrity: sha512-jCP2pXXLhXqPrAN+iSEFZmLI4uUM4fjSqajh0K+TmM062VehfDT3ZJNkrTGyN701Z5XMejs9qAudSqkMGhSMKg==,
+      }
+    peerDependencies:
+      react: ">=17.0.1"
 
   bl@4.1.0:
     resolution:
@@ -2903,6 +2934,13 @@ packages:
         integrity: sha512-ywqV+5MmyL4E7ybXgKys4DugZbX0FC6LnwrhjuykIjnK9k8OQacQ7axGKnjDXWNhns0xot3bZI5h55H8yo9cJg==,
       }
     engines: { node: ">=6" }
+
+  cli-spinners@3.4.0:
+    resolution:
+      {
+        integrity: sha512-bXfOC4QcT1tKXGorxL3wbJm6XJPDqEnij2gQ2m7ESQuE+/z9YFIWnl/5RpTiKWbMq3EVKR4fRLJGn6DVfu0mpw==,
+      }
+    engines: { node: ">=18.20" }
 
   cli-truncate@5.2.0:
     resolution:
@@ -4582,6 +4620,12 @@ packages:
     engines: { node: ">=6" }
     hasBin: true
 
+  jsonc-parser@3.3.1:
+    resolution:
+      {
+        integrity: sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ==,
+      }
+
   jsonfile@6.2.0:
     resolution:
       {
@@ -4791,6 +4835,13 @@ packages:
     resolution:
       {
         integrity: sha512-i24m8rpwhmPIS4zscNzK6MSEhk0DUWa/8iYQWxhffV8jkI4Phvs3F+quL5xvS0gdQR0FyTCMMH33Y78dDTzzIw==,
+      }
+    engines: { node: ">=18" }
+
+  log-symbols@7.0.1:
+    resolution:
+      {
+        integrity: sha512-ja1E3yCr9i/0hmBVaM0bfwDjnGy8I/s6PP4DFp+yP+a+mrHO4Rm7DtmnqROTUkHIkqffC84YY7AeqX6oFk0WFg==,
       }
     engines: { node: ">=18" }
 
@@ -5407,6 +5458,13 @@ packages:
       }
     engines: { node: ">=18" }
 
+  ora@9.4.0:
+    resolution:
+      {
+        integrity: sha512-84cglkRILFxdtA8hAvLNdMrtBpPNBTrQ9/ulg0FA7xLMnD6mifv+enAIeRmvtv+WgdCE+LPGOfQmtJRrVaIVhQ==,
+      }
+    engines: { node: ">=20" }
+
   outvariant@1.4.3:
     resolution:
       {
@@ -5433,6 +5491,12 @@ packages:
         integrity: sha512-ua1L4OgXSBdsu1FPb7F3tYH0F48a6kxvod4pLUlGY9COeJAJQNX/sNH2IiEmsxw7lqYiAwrdHMjz1FctOsyDQg==,
       }
     engines: { node: ">=18" }
+
+  package-manager-detector@1.6.0:
+    resolution:
+      {
+        integrity: sha512-61A5ThoTiDG/C8s8UMZwSorAGwMJ0ERVGj2OjoW5pAalsNOg15+iQiPzrLJ4jhZ1HJzmC2PIHT2oEiH3R5fzNA==,
+      }
 
   parent-module@1.0.1:
     resolution:
@@ -5749,6 +5813,18 @@ packages:
       }
     peerDependencies:
       react: ^19.2.4
+
+  react-grab@0.1.44:
+    resolution:
+      {
+        integrity: sha512-bDEwBdI90ljq2lhUtPqmWis/HwYB/CvfT0m5i+P9F83Pt0Ot8o9XL8v00s9jcWzdQUlsFDzmq2FO2CHUe8JY8A==,
+      }
+    hasBin: true
+    peerDependencies:
+      react: ">=17.0.0"
+    peerDependenciesMeta:
+      react:
+        optional: true
 
   react-is@17.0.2:
     resolution:
@@ -6181,6 +6257,13 @@ packages:
       }
     engines: { node: ">=18" }
 
+  stdin-discarder@0.3.2:
+    resolution:
+      {
+        integrity: sha512-eCPu1qRxPVkl5605OTWF8Wz40b4Mf45NY5LQmVPQ599knfs5QhASUm9GbJ5BDMDOXgrnh0wyEdvzmL//YMlw0A==,
+      }
+    engines: { node: ">=18" }
+
   strict-event-emitter@0.5.1:
     resolution:
       {
@@ -6428,6 +6511,13 @@ packages:
     resolution:
       {
         integrity: sha512-u9r3uZC0bdpGOXtlxUIdwf9pkmvhqJdrVCH9fapQtgy/OeTTMZ1nqH7agtvEfmGui6e1XxjcdrlxvxJvc3sMqw==,
+      }
+    engines: { node: ">=18" }
+
+  tinyexec@1.2.4:
+    resolution:
+      {
+        integrity: sha512-SHf/r48b7vOrjve9PxJo3MN5v5yuyjHvdUcrQffT3WXMUfnGmHDVbC4k3sHJaJTgZCwpUplIaAo5ANtMyp3YHg==,
       }
     engines: { node: ">=18" }
 
@@ -7781,6 +7871,8 @@ snapshots:
 
   "@humanwhocodes/retry@0.4.3": {}
 
+  "@iarna/toml@2.2.5": {}
+
   "@inquirer/ansi@1.0.2": {}
 
   "@inquirer/confirm@5.1.21(@types/node@22.19.15)":
@@ -7939,6 +8031,17 @@ snapshots:
       "@pnpm/config.env-replace": 1.1.0
       "@pnpm/network.ca-file": 1.0.2
       config-chain: 1.1.13
+
+  "@react-grab/cli@0.1.44":
+    dependencies:
+      agent-install: 0.0.5
+      commander: 14.0.3
+      ignore: 7.0.5
+      ora: 9.4.0
+      package-manager-detector: 1.6.0
+      picocolors: 1.1.1
+      prompts: 2.4.2
+      tinyexec: 1.2.4
 
   "@rolldown/binding-android-arm64@1.0.0-rc.12":
     optional: true
@@ -8420,6 +8523,15 @@ snapshots:
 
   agent-base@7.1.4: {}
 
+  agent-install@0.0.5:
+    dependencies:
+      "@iarna/toml": 2.2.5
+      commander: 14.0.3
+      jsonc-parser: 3.3.1
+      picocolors: 1.1.1
+      prompts: 2.4.2
+      yaml: 2.8.3
+
   ajv-formats@3.0.1(ajv@8.18.0):
     optionalDependencies:
       ajv: 8.18.0
@@ -8501,6 +8613,10 @@ snapshots:
   bindings@1.5.0:
     dependencies:
       file-uri-to-path: 1.0.0
+
+  bippy@0.5.41(react@19.2.4):
+    dependencies:
+      react: 19.2.4
 
   bl@4.1.0:
     dependencies:
@@ -8651,6 +8767,8 @@ snapshots:
       restore-cursor: 5.1.0
 
   cli-spinners@2.9.2: {}
+
+  cli-spinners@3.4.0: {}
 
   cli-truncate@5.2.0:
     dependencies:
@@ -9553,6 +9671,8 @@ snapshots:
 
   json5@2.2.3: {}
 
+  jsonc-parser@3.3.1: {}
+
   jsonfile@6.2.0:
     dependencies:
       universalify: 2.0.1
@@ -9661,6 +9781,11 @@ snapshots:
     dependencies:
       chalk: 5.6.2
       is-unicode-supported: 1.3.0
+
+  log-symbols@7.0.1:
+    dependencies:
+      is-unicode-supported: 2.1.0
+      yoctocolors: 2.1.2
 
   log-update@6.1.0:
     dependencies:
@@ -10236,6 +10361,17 @@ snapshots:
       string-width: 7.2.0
       strip-ansi: 7.2.0
 
+  ora@9.4.0:
+    dependencies:
+      chalk: 5.6.2
+      cli-cursor: 5.0.0
+      cli-spinners: 3.4.0
+      is-interactive: 2.0.0
+      is-unicode-supported: 2.1.0
+      log-symbols: 7.0.1
+      stdin-discarder: 0.3.2
+      string-width: 8.2.0
+
   outvariant@1.4.3: {}
 
   p-limit@3.1.0:
@@ -10252,6 +10388,8 @@ snapshots:
       registry-auth-token: 5.1.1
       registry-url: 6.0.1
       semver: 7.7.4
+
+  package-manager-detector@1.6.0: {}
 
   parent-module@1.0.1:
     dependencies:
@@ -10424,6 +10562,13 @@ snapshots:
     dependencies:
       react: 19.2.4
       scheduler: 0.27.0
+
+  react-grab@0.1.44(react@19.2.4):
+    dependencies:
+      "@react-grab/cli": 0.1.44
+      bippy: 0.5.41(react@19.2.4)
+    optionalDependencies:
+      react: 19.2.4
 
   react-is@17.0.2: {}
 
@@ -10781,6 +10926,8 @@ snapshots:
 
   stdin-discarder@0.2.2: {}
 
+  stdin-discarder@0.3.2: {}
+
   strict-event-emitter@0.5.1: {}
 
   string-argv@0.3.2: {}
@@ -10919,6 +11066,8 @@ snapshots:
   tinyexec@0.3.2: {}
 
   tinyexec@1.0.4: {}
+
+  tinyexec@1.2.4: {}
 
   tinyglobby@0.2.15:
     dependencies:
