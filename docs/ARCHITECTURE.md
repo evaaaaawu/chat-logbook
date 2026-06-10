@@ -1,10 +1,6 @@
 # Architecture
 
-> Before changing storage layout or ingestion, also check
-> `docs/PRD.md` § Out of Scope. Some "obvious" features (cloud sync
-> inside the OSS core, modification of source directories, bulk export
-> to bespoke formats) are deliberate non-goals and shouldn't drive
-> architecture decisions.
+> Before changing storage layout or ingestion, also check `docs/PRD.md` § Out of Scope. Some "obvious" features (cloud sync inside the OSS core, modification of source directories, bulk export to bespoke formats) are deliberate non-goals and shouldn't drive architecture decisions.
 
 ## Current state
 
@@ -13,9 +9,7 @@ Today the codebase implements one store under `~/.chat-logbook/`:
 - `data.db` — user-added metadata (titles, tags, soft-delete flags).
   Code lives in `api/src/metadata/`.
 
-`archive.db` and `index.db` described below are planned, not yet
-implemented. Source directories under `~/.claude/` are read directly
-while the app is running.
+`archive.db` and `index.db` described below are planned, not yet implemented. Source directories under `~/.claude/` are read directly while the app is running.
 
 ## Four stores (target architecture)
 
@@ -28,15 +22,9 @@ The product is designed around four separate stores. Do not merge them.
 | Archive | `~/.chat-logbook/archive.db`    | Yes — back this up    |
 | Index   | `~/.chat-logbook/index.db`      | No — `rm` and rebuild |
 
-1. **Source directories** (`~/.claude/`, `~/.codex/`, etc.) — read-only
-   conversation data. Vendor-controlled. May be auto-cleaned by the
-   vendor (Claude Code defaults to 30 days; Codex CLI has multiple
-   retention windows).
+1. **Source directories** (`~/.claude/`, `~/.codex/`, etc.) — read-only conversation data. Vendor-controlled. May be auto-cleaned by the vendor (Claude Code defaults to 30 days; Codex CLI has multiple retention windows).
 
-2. **`~/.chat-logbook/data.db`** — user-added metadata: custom titles,
-   tags, annotations, highlights, soft-delete flags, message overrides
-   (when the edit feature is wired up). User-owned and backup-worthy.
-   Keys against chat-logbook's internal chat `id` (UUID), not the vendor's.
+2. **`~/.chat-logbook/data.db`** — user-added metadata: custom titles, tags, annotations, highlights, soft-delete flags, message overrides (when the edit feature is wired up). User-owned and backup-worthy. Keys against chat-logbook's internal chat `id` (UUID), not the vendor's.
 
 3. **`~/.chat-logbook/archive.db`** — derived snapshot of conversations
    read from source. Two layers:
@@ -47,17 +35,11 @@ The product is designed around four separate stores. Do not merge them.
    Backup-worthy: once vendors have cleaned up source, this is the only
    remaining copy. See the archive contract below.
 
-4. **`~/.chat-logbook/index.db`** — derived FTS5 search index, sourced
-   from `archive.db.messages.text`. Freely rebuildable; tokenizer or
-   schema upgrades are `rm index.db` + restart. Never put user data
-   here, and never put index tables in `data.db` or `archive.db`.
+4. **`~/.chat-logbook/index.db`** — derived FTS5 search index, sourced from `archive.db.messages.text`. Freely rebuildable; tokenizer or schema upgrades are `rm index.db` + restart. Never put user data here, and never put index tables in `data.db` or `archive.db`.
 
 ## Plugin per agent
 
-Source format is polymorphic — Claude Code uses per-session JSONL,
-Codex CLI uses rollout JSONL plus a state DB, Aider uses a single
-markdown file, OpenCode uses an internal SQLite. The design is one
-plugin per agent, each conforming to a narrow three-method interface:
+Source format is polymorphic — Claude Code uses per-session JSONL, Codex CLI uses rollout JSONL plus a state DB, Aider uses a single markdown file, OpenCode uses an internal SQLite. The design is one plugin per agent, each conforming to a narrow three-method interface:
 
 ```ts
 export interface AgentPlugin {
@@ -69,76 +51,38 @@ export interface AgentPlugin {
 }
 ```
 
-Plugins will live under a `plugins/` directory in `api/src/`, with a
-registry the ingestion pipeline reads. Adding a new agent is a
-contained change — implement the interface, register it. The
-ingestion pipeline never needs agent-specific code.
+Plugins will live under a `plugins/` directory in `api/src/`, with a registry the ingestion pipeline reads. Adding a new agent is a contained change — implement the interface, register it. The ingestion pipeline never needs agent-specific code.
 
 ## Ingestion
 
 Two complementary modes, both inside the same Node.js process:
 
-- **On-app-open scan.** When `chat-log` starts, walk every source root
-  per registered plugin and ingest only new content (mtime fast path,
-  content-based idempotency).
-- **File watcher (chokidar).** While the app runs, watch source paths.
-  `add` and `change` trigger incremental ingest. `unlink` records an
-  audit row and never deletes archive rows (see Archive contract).
+- **On-app-open scan.** When `chat-log` starts, walk every source root per registered plugin and ingest only new content (mtime fast path, content-based idempotency).
+- **File watcher (chokidar).** While the app runs, watch source paths. `add` and `change` trigger incremental ingest. `unlink` records an audit row and never deletes archive rows (see Archive contract).
 
-Idempotency key: `(agent, source_id, payload_hash)`. Re-runs are
-no-ops. Source-side edits, truncations, or path collisions append new
-raw rows; the canonical layer applies last-write-wins by `ts`.
+Idempotency key: `(agent, source_id, payload_hash)`. Re-runs are no-ops. Source-side edits, truncations, or path collisions append new raw rows; the canonical layer applies last-write-wins by `ts`.
 
 ## Reading model
 
-API routes read from `archive.db.messages` (joined with
-`archive.db.chats` for chat-logbook's internal chat `id`), not from
-source files. Parsing happens at ingestion time, not at serve time —
-meaning parser bugs are fixed by re-ingesting affected rows, not by
-changing the read path.
+API routes read from `archive.db.messages` (joined with `archive.db.chats` for chat-logbook's internal chat `id`), not from source files. Parsing happens at ingestion time, not at serve time — meaning parser bugs are fixed by re-ingesting affected rows, not by changing the read path.
 
 ### Two ids per chat
 
-- `chats.id` — internal UUID, primary key, never exposed to users.
-  Used as the join key from `data.db.chats_meta` and as the stable
-  identity across vendor source-id collisions.
-- `chats.chat_id` — short, user-facing identifier (Crockford
-  base-32, 6 chars). What we'd surface in URLs and short references.
-  Formerly named `short_code`.
+- `chats.id` — internal UUID, primary key, never exposed to users. Used as the join key from `data.db.chats_meta` and as the stable identity across vendor source-id collisions.
+- `chats.chat_id` — short, user-facing identifier (Crockford base-32, 6 chars). What we'd surface in URLs and short references. Formerly named `short_code`.
 
 ## Archive contract
 
 `archive.db` is more sensitive than `index.db` because once source is
 gone, archive rows are the only copy.
 
-- **Never delete archive rows in response to source deletion.** Vendor
-  auto-cleanup, file unlink, path collisions — none of these may
-  cascade into archive deletion.
-- **Only an explicit user purge action may delete archive rows.** Soft
-  delete (Trash) sets `data.db.chats_meta.is_deleted` and does not
-  touch archive. Hard delete (Purge) is the single exception, requires
-  user confirmation, and writes an `ingestion_events('user_purged')`
-  audit row that is itself never deleted.
-- **Schema migrations preserve `raw_payload` bytes.** The canonical
-  layer (`messages`) is rebuildable from `raw_messages`; raw is not.
-- **`archive.db` is the canonical export format.** Any "export to X"
-  feature builds on top of the public schema; it never replaces it.
-  The schema is treated as a public format — forward-only migrations,
-  additive when possible, no app-internal columns. Vendor-specific
-  quirks live inside `raw_payload`.
+- **Never delete archive rows in response to source deletion.** Vendor auto-cleanup, file unlink, path collisions — none of these may cascade into archive deletion.
+- **Only an explicit user purge action may delete archive rows.** Soft delete (Trash) sets `data.db.chats_meta.is_deleted` and does not touch archive. Hard delete (Purge) is the single exception, requires user confirmation, and writes an `ingestion_events('user_purged')` audit row that is itself never deleted.
+- **Schema migrations preserve `raw_payload` bytes.** The canonical layer (`messages`) is rebuildable from `raw_messages`; raw is not.
+- **`archive.db` is the canonical export format.** Any "export to X" feature builds on top of the public schema; it never replaces it. The schema is treated as a public format — forward-only migrations, additive when possible, no app-internal columns. Vendor-specific quirks live inside `raw_payload`.
 
-  **One-time rename in v0.8.0:** the `session → chat` rename (`sessions`
-  table → `chats`, plus column renames `short_code → chat_id`,
-  `source_session_id → source_id`, `session_id → source_id` on
-  child tables) is a deliberate one-time exception to the "additive
-  only" rule. The product supports multiple agents whose per-conversation
-  unit isn't called a "session" — picking the right noun before 1.0 is
-  worth the break. Future schema changes should remain additive.
+  **One-time rename in v0.8.0:** the `session → chat` rename (`sessions` table → `chats`, plus column renames `short_code → chat_id`, `source_session_id → source_id`, `session_id → source_id` on child tables) is a deliberate one-time exception to the "additive only" rule. The product supports multiple agents whose per-conversation unit isn't called a "session" — picking the right noun before 1.0 is worth the break. Future schema changes should remain additive.
 
 ## Visibility model
 
-Visibility is enforced at the read API, not at storage. `is_deleted`,
-trash, and any future visibility flag live in `data.db.chats_meta`
-and are applied as a JOIN at query time. `archive.db`, `index.db`, and
-ingestion code stay unaware of them. This keeps storage simple and
-guarantees one place can never disagree with another.
+Visibility is enforced at the read API, not at storage. `is_deleted`, trash, and any future visibility flag live in `data.db.chats_meta` and are applied as a JOIN at query time. `archive.db`, `index.db`, and ingestion code stay unaware of them. This keeps storage simple and guarantees one place can never disagree with another.
