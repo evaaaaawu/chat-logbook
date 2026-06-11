@@ -30,7 +30,7 @@ The product is designed around four separate stores. Do not merge them.
    read from source. Two layers:
    - `raw_messages` — verbatim per-agent JSON line, with `payload_hash`
      as content-based idempotency key.
-   - `messages` — canonical normalized shape used by API, UI, and FTS.
+   - `messages` — normalized shape used by API, UI, and FTS.
 
    Backup-worthy: once vendors have cleaned up source, this is the only
    remaining copy. See the archive contract below.
@@ -47,7 +47,7 @@ export interface AgentPlugin {
   displayName: string;
   discover(env: PluginEnv): AsyncIterable<ChatRef>;
   extractRaw(ref: ChatRef): AsyncIterable<RawRecord>;
-  normalize(raw: RawRecord): CanonicalMessage | null;
+  normalize(raw: RawRecord): NormalizedMessage | null;
 }
 ```
 
@@ -60,7 +60,7 @@ Two complementary modes, both inside the same Node.js process:
 - **On-app-open scan.** When `chat-log` starts, walk every source root per registered plugin and ingest only new content (mtime fast path, content-based idempotency).
 - **File watcher (chokidar).** While the app runs, watch source paths. `add` and `change` trigger incremental ingest. `unlink` records an audit row and never deletes archive rows (see Archive contract).
 
-Idempotency key: `(agent, source_id, payload_hash)`. Re-runs are no-ops. Source-side edits, truncations, or path collisions append new raw rows; the canonical layer applies last-write-wins by `ts`.
+Idempotency key: `(agent, source_id, payload_hash)`. Re-runs are no-ops. Source-side edits, truncations, or path collisions append new raw rows; the normalized layer applies last-write-wins by `ts`.
 
 ## Reading model
 
@@ -78,7 +78,7 @@ gone, archive rows are the only copy.
 
 - **Never delete archive rows in response to source deletion.** Vendor auto-cleanup, file unlink, path collisions — none of these may cascade into archive deletion.
 - **Only an explicit user purge action may delete archive rows.** Soft delete (Trash) sets `data.db.chats_meta.is_deleted` and does not touch archive. Hard delete (Purge) is the single exception, requires user confirmation, and writes an `ingestion_events('user_purged')` audit row that is itself never deleted.
-- **Schema migrations preserve `raw_payload` bytes.** The canonical layer (`messages`) is rebuildable from `raw_messages`; raw is not.
+- **Schema migrations preserve `raw_payload` bytes.** The normalized layer (`messages`) is rebuildable from `raw_messages`; raw is not.
 - **`archive.db` is the canonical export format.** Any "export to X" feature builds on top of the public schema; it never replaces it. The schema is treated as a public format — forward-only migrations, additive when possible, no app-internal columns. Vendor-specific quirks live inside `raw_payload`.
 
   **One-time rename in v0.8.0:** the `session → chat` rename (`sessions` table → `chats`, plus column renames `short_code → chat_id`, `source_session_id → source_id`, `session_id → source_id` on child tables) is a deliberate one-time exception to the "additive only" rule. The product supports multiple agents whose per-conversation unit isn't called a "session" — picking the right noun before 1.0 is worth the break. Future schema changes should remain additive.

@@ -47,7 +47,7 @@ describe("runIngestion", () => {
 
     expect(result.scanned).toBeGreaterThan(0);
     expect(result.rawInserted).toBeGreaterThan(0);
-    expect(result.canonicalUpserted).toBeGreaterThan(0);
+    expect(result.normalizedUpserted).toBeGreaterThan(0);
 
     const chatRows = archive.db.select().from(chats).all();
     const rawRows = archive.db.select().from(rawMessages).all();
