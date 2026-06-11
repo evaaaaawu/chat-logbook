@@ -20,7 +20,7 @@ describe("startIngestionInBackground", () => {
     resolveIngest({
       scanned: 1,
       rawInserted: 2,
-      canonicalUpserted: 3,
+      normalizedUpserted: 3,
       skippedByMtime: 0,
     });
 

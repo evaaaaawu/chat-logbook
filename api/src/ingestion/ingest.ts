@@ -10,7 +10,7 @@ import {
 } from "../archive/schema.js";
 import type {
   AgentPlugin,
-  CanonicalMessage,
+  NormalizedMessage,
   PluginEnv,
 } from "../plugins/types.js";
 
@@ -24,7 +24,7 @@ export interface IngestOptions {
 export interface IngestResult {
   scanned: number;
   rawInserted: number;
-  canonicalUpserted: number;
+  normalizedUpserted: number;
   skippedByMtime: number;
 }
 
@@ -33,7 +33,7 @@ export async function runIngestion(opts: IngestOptions): Promise<IngestResult> {
   const result: IngestResult = {
     scanned: 0,
     rawInserted: 0,
-    canonicalUpserted: 0,
+    normalizedUpserted: 0,
     skippedByMtime: 0,
   };
 
@@ -112,17 +112,17 @@ export async function runIngestion(opts: IngestOptions): Promise<IngestResult> {
           result.rawInserted += 1;
         }
 
-        const canonical = plugin.normalize(raw);
-        if (!canonical) continue;
+        const normalized = plugin.normalize(raw);
+        if (!normalized) continue;
 
-        const upserted = upsertCanonical(
+        const upserted = upsertNormalized(
           opts.archive,
           plugin.id,
           ref.sourceId,
-          canonical,
+          normalized,
           rawId
         );
-        if (upserted) result.canonicalUpserted += 1;
+        if (upserted) result.normalizedUpserted += 1;
       }
 
       if (stat) {
@@ -237,11 +237,11 @@ function ensureChat(
   return id;
 }
 
-function upsertCanonical(
+function upsertNormalized(
   archive: ArchiveRepository,
   agent: string,
   sourceId: string,
-  msg: CanonicalMessage,
+  msg: NormalizedMessage,
   rawId: number
 ): boolean {
   const existing = archive.db

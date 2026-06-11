@@ -23,7 +23,7 @@ export type NormalizedBlock =
   | { type: "tool_use"; id: string; name: string; input: unknown }
   | { type: "tool_result"; toolUseId: string; content: unknown };
 
-export interface CanonicalMessage {
+export interface NormalizedMessage {
   messageId: string;
   role: "user" | "assistant";
   ts: string;
@@ -36,5 +36,5 @@ export interface AgentPlugin {
   displayName: string;
   discover(env: PluginEnv): AsyncIterable<ChatRef>;
   extractRaw(ref: ChatRef): AsyncIterable<RawRecord>;
-  normalize(raw: RawRecord): CanonicalMessage | null;
+  normalize(raw: RawRecord): NormalizedMessage | null;
 }

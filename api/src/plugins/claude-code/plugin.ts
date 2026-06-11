@@ -3,7 +3,7 @@ import path from "node:path";
 import readline from "node:readline";
 import type {
   AgentPlugin,
-  CanonicalMessage,
+  NormalizedMessage,
   NormalizedBlock,
   PluginEnv,
   RawRecord,
@@ -57,7 +57,7 @@ export class ClaudeCodePlugin implements AgentPlugin {
     }
   }
 
-  normalize(raw: RawRecord): CanonicalMessage | null {
+  normalize(raw: RawRecord): NormalizedMessage | null {
     const payload = raw.payload as Record<string, unknown> | null;
     if (!payload || typeof payload !== "object") return null;
 

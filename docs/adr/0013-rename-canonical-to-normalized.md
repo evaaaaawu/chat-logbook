@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Rename the canonical message layer to "normalized"
@@ -10,4 +10,4 @@ This is an internal code rename with no on-disk or API-shape impact — a mechan
 
 ## Status
 
-Proposed — vocabulary decided ([CONTEXT.md](../../CONTEXT.md)), code rename not yet done.
+Accepted — vocabulary decided ([CONTEXT.md](../../CONTEXT.md)), code rename done.
