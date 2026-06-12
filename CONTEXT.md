@@ -22,6 +22,10 @@ _Avoid_: data (as a store name), annotations (as the umbrella term), user data
 The search index derived from the Archive. Freely rebuildable — destroying and recreating it never risks your data.
 _Avoid_: cache, search cache
 
+**Checkpoint**:
+The ingestion progress watermark derived from Source — how far each Source file has been scanned, so the next Scan can skip unchanged files. Freely rebuildable: losing it costs one full re-scan, never any data. Not backed up.
+_Avoid_: scan state, sync state, cursor
+
 ### The conversation
 
 **Chat**:
@@ -92,7 +96,8 @@ _Avoid_: filtering, access
 - **Agent (code) vs "AI assistant" (copy).** "Agent" is the internal domain term — the thing an `AgentPlugin` reads. User-facing copy stays "AI assistant"; don't push "Agent" into product copy.
 - **"delete" is banned on its own.** There are two deletions: **Trash** (soft, reversible, Metadata-only) and **Purge** (hard, irreversible, Archive). Always say which.
 - **Three ids, never just "id".** `chat id` (short, public) vs the internal id (UUID, never shown) vs `source id` (the Agent's). Name which one.
-- **"Stores" and "repos" are different axes.** Four _stores_ (Source, Archive, Metadata, Index) is not the three _repos_ (`chat-logbook`, `chat-logbook-sync`, `chat-logbook-docs`). Don't let "four" and "three" collide in conversation.
+- **"Stores" and "repos" are different axes.** Five _stores_ (Source, Archive, Metadata, Index, Checkpoint) is not the three _repos_ (`chat-logbook`, `chat-logbook-sync`, `chat-logbook-docs`). Don't let the store count and "three" collide in conversation.
+- **Checkpoint is not Index.** Both are rebuildable, but Index derives from Archive (rebuild on tokenizer/schema change) and Checkpoint derives from Source (rebuild = a full re-scan). They live in separate stores so rebuilding one never forces rebuilding the other.
 
 ## Example dialogue
 
