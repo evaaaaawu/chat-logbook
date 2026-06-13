@@ -29,12 +29,56 @@ afterEach(() => {
 });
 
 describe("MetadataRepository", () => {
+  it("creates metadata.db on a fresh install and never a data.db", () => {
+    createMetadataRepository({ dataDir });
+
+    expect(fs.existsSync(path.join(dataDir, "metadata.db"))).toBe(true);
+    expect(fs.existsSync(path.join(dataDir, "data.db"))).toBe(false);
+  });
+
+  it("renames an existing data.db to metadata.db, preserving rows and removing the old file", () => {
+    seedFromFixture(dataDir);
+
+    createMetadataRepository({ dataDir });
+
+    expect(fs.existsSync(path.join(dataDir, "metadata.db"))).toBe(true);
+    expect(fs.existsSync(path.join(dataDir, "data.db"))).toBe(false);
+
+    const sqlite = new Database(path.join(dataDir, "metadata.db"), {
+      readonly: true,
+    });
+    try {
+      const ids = (
+        sqlite
+          .prepare("SELECT id FROM chats_meta ORDER BY created_at")
+          .all() as { id: string }[]
+      ).map((r) => r.id);
+      expect(ids).toEqual([
+        "11111111-1111-1111-1111-111111111111",
+        "22222222-2222-2222-2222-222222222222",
+      ]);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("does not clobber an existing metadata.db when a stale data.db is also present", () => {
+    const existing = createMetadataRepository({ dataDir });
+    existing.softDelete("keeper");
+    seedFromFixture(dataDir);
+
+    const reopened = createMetadataRepository({ dataDir });
+
+    expect(reopened.isDeleted("keeper")).toBe(true);
+    expect(fs.existsSync(path.join(dataDir, "data.db"))).toBe(true);
+  });
+
   it("migrates a v0.7.1 data.db: sessions_meta is renamed to chats_meta preserving rows", () => {
     seedFromFixture(dataDir);
 
     createMetadataRepository({ dataDir });
 
-    const sqlite = new Database(path.join(dataDir, "data.db"), {
+    const sqlite = new Database(path.join(dataDir, "metadata.db"), {
       readonly: true,
     });
     try {
@@ -74,7 +118,7 @@ describe("MetadataRepository", () => {
 
     createMetadataRepository({ dataDir });
 
-    const sqlite = new Database(path.join(dataDir, "data.db"), {
+    const sqlite = new Database(path.join(dataDir, "metadata.db"), {
       readonly: true,
     });
     try {

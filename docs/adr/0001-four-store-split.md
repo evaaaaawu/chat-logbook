@@ -6,4 +6,4 @@ chat-logbook keeps four stores with distinct durability postures and never merge
 
 - Reads join across stores rather than hitting one table.
 - Each store has its own migration lineage and backup posture (Archive and Metadata are backup-worthy; Index is `rm` + rebuild; Source is out of our hands).
-- The Metadata store's file is `data.db` today; see [ADR-0012](0012-rename-data-db-to-metadata-db.md).
+- The Metadata store's file is `metadata.db` (renamed from `data.db`; see [ADR-0012](0012-rename-data-db-to-metadata-db.md)).
