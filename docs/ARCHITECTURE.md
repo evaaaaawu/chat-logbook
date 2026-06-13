@@ -35,7 +35,7 @@ The product is designed around four separate stores. Do not merge them.
    Backup-worthy: once vendors have cleaned up source, this is the only
    remaining copy. See the archive contract below.
 
-4. **`~/.chat-logbook/index.db`** — derived FTS5 search index, sourced from `archive.db.messages.text`. Freely rebuildable; tokenizer or schema upgrades are `rm index.db` + restart. Never put user data here, and never put index tables in `data.db` or `archive.db`.
+4. **`~/.chat-logbook/index.db`** — derived FTS5 search index, sourced from `archive.db.messages.text`. Freely rebuildable; tokenizer or schema upgrades are `rm index.db` + restart. Never put user data here, and never put index tables in `metadata.db` or `archive.db`.
 
 ## Plugin per agent
 
@@ -85,4 +85,4 @@ gone, archive rows are the only copy.
 
 ## Visibility model
 
-Visibility is enforced at the read API, not at storage. `is_deleted`, trash, and any future visibility flag live in `data.db.chats_meta` and are applied as a JOIN at query time. `archive.db`, `index.db`, and ingestion code stay unaware of them. This keeps storage simple and guarantees one place can never disagree with another.
+Visibility is enforced at the read API, not at storage. `is_deleted`, trash, and any future visibility flag live in `metadata.db.chats_meta` and are applied as a JOIN at query time. `archive.db`, `index.db`, and ingestion code stay unaware of them. This keeps storage simple and guarantees one place can never disagree with another.
