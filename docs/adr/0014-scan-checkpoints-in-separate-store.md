@@ -6,7 +6,7 @@ The ingestion scan watermark (the `chat_scan_state` table — per-Source-file la
 
 - **Leave it in `archive.db`.** Simplest, but keeps an app-internal, rebuildable table inside the public export format — the exact thing ADR-0003 forbids.
 - **Fold it into `index.db`** (the Index store). Both are rebuildable, so on that axis it fits. Rejected because their rebuild lifecycles must stay independent: Index derives from Archive and is rebuilt on a tokenizer or FTS-schema change, while Checkpoint derives from Source and is "rebuilt" by a full re-scan. Co-locating them means `rm index.db` to rebuild search would also wipe the checkpoint and force an unnecessary full re-scan.
-- **Move it into `data.db`** (the Metadata store). Rejected: Metadata is user-owned and backup-worthy; machine-operational state does not belong there and must not be backed up.
+- **Move it into `metadata.db`** (the Metadata store). Rejected: Metadata is user-owned and backup-worthy; machine-operational state does not belong there and must not be backed up.
 
 ## Consequences
 

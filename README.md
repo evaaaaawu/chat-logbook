@@ -99,7 +99,7 @@ Three places, all on your machine:
 
 - `~/.claude/` (and equivalents for other tools) — read-only source.
 - `~/.chat-logbook/archive.db` — chat-logbook's copy of the conversations it has read.
-- `~/.chat-logbook/data.db` — your tags, titles, annotations, and soft-delete flags.
+- `~/.chat-logbook/metadata.db` — your tags, titles, annotations, and soft-delete flags.
 
 Back up the two `~/.chat-logbook/` files together; they are the complete chat-logbook state.
 

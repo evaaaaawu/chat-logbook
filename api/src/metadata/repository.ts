@@ -23,6 +23,24 @@ function resolveMigrationsFolder(): string {
   return found;
 }
 
+const DB_FILE = "metadata.db";
+const LEGACY_DB_FILE = "data.db";
+
+/**
+ * Rename a pre-v0.9 `data.db` to `metadata.db` in place (ADR-0012).
+ *
+ * Same-filesystem rename is atomic and loses no data. If `metadata.db`
+ * already exists we never clobber it — the stale `data.db` is left on disk
+ * untouched, in keeping with "only an explicit user purge deletes data".
+ */
+function migrateLegacyDbFile(dataDir: string): void {
+  const legacy = path.join(dataDir, LEGACY_DB_FILE);
+  const current = path.join(dataDir, DB_FILE);
+  if (!fs.existsSync(legacy)) return;
+  if (fs.existsSync(current)) return;
+  fs.renameSync(legacy, current);
+}
+
 export interface MetadataRepository {
   softDelete(internalId: string): void;
   restore(internalId: string): void;
@@ -54,7 +72,8 @@ export function createMetadataRepository({
   ensureChat,
 }: RepositoryOptions): MetadataRepository {
   fs.mkdirSync(dataDir, { recursive: true });
-  const sqlite = new Database(path.join(dataDir, "data.db"));
+  migrateLegacyDbFile(dataDir);
+  const sqlite = new Database(path.join(dataDir, DB_FILE));
   const db: BetterSQLite3Database = drizzle(sqlite);
   migrate(db, { migrationsFolder: resolveMigrationsFolder() });
 

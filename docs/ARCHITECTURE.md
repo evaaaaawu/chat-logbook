@@ -6,7 +6,7 @@
 
 Today the codebase implements one store under `~/.chat-logbook/`:
 
-- `data.db` — user-added metadata (titles, tags, soft-delete flags).
+- `metadata.db` — user-added metadata (titles, tags, soft-delete flags).
   Code lives in `api/src/metadata/`.
 
 `archive.db` and `index.db` described below are planned, not yet implemented. Source directories under `~/.claude/` are read directly while the app is running.
@@ -18,13 +18,13 @@ The product is designed around four separate stores. Do not merge them.
 | Store   | Path                            | Backed up?            |
 | ------- | ------------------------------- | --------------------- |
 | Source  | `~/.claude/`, `~/.codex/`, etc. | Out of our hands      |
-| Data    | `~/.chat-logbook/data.db`       | Yes — back this up    |
+| Data    | `~/.chat-logbook/metadata.db`   | Yes — back this up    |
 | Archive | `~/.chat-logbook/archive.db`    | Yes — back this up    |
 | Index   | `~/.chat-logbook/index.db`      | No — `rm` and rebuild |
 
 1. **Source directories** (`~/.claude/`, `~/.codex/`, etc.) — read-only conversation data. Vendor-controlled. May be auto-cleaned by the vendor (Claude Code defaults to 30 days; Codex CLI has multiple retention windows).
 
-2. **`~/.chat-logbook/data.db`** — user-added metadata: custom titles, tags, annotations, highlights, soft-delete flags, message overrides (when the edit feature is wired up). User-owned and backup-worthy. Keys against chat-logbook's internal chat `id` (UUID), not the vendor's.
+2. **`~/.chat-logbook/metadata.db`** — user-added metadata: custom titles, tags, annotations, highlights, soft-delete flags, message overrides (when the edit feature is wired up). User-owned and backup-worthy. Keys against chat-logbook's internal chat `id` (UUID), not the vendor's.
 
 3. **`~/.chat-logbook/archive.db`** — derived snapshot of conversations
    read from source. Two layers:
@@ -68,7 +68,7 @@ API routes read from `archive.db.messages` (joined with `archive.db.chats` for c
 
 ### Two ids per chat
 
-- `chats.id` — internal UUID, primary key, never exposed to users. Used as the join key from `data.db.chats_meta` and as the stable identity across vendor source-id collisions.
+- `chats.id` — internal UUID, primary key, never exposed to users. Used as the join key from `metadata.db.chats_meta` and as the stable identity across vendor source-id collisions.
 - `chats.chat_id` — short, user-facing identifier (Crockford base-32, 6 chars). What we'd surface in URLs and short references. Formerly named `short_code`.
 
 ## Archive contract
@@ -77,7 +77,7 @@ API routes read from `archive.db.messages` (joined with `archive.db.chats` for c
 gone, archive rows are the only copy.
 
 - **Never delete archive rows in response to source deletion.** Vendor auto-cleanup, file unlink, path collisions — none of these may cascade into archive deletion.
-- **Only an explicit user purge action may delete archive rows.** Soft delete (Trash) sets `data.db.chats_meta.is_deleted` and does not touch archive. Hard delete (Purge) is the single exception, requires user confirmation, and writes an `ingestion_events('user_purged')` audit row that is itself never deleted.
+- **Only an explicit user purge action may delete archive rows.** Soft delete (Trash) sets `metadata.db.chats_meta.is_deleted` and does not touch archive. Hard delete (Purge) is the single exception, requires user confirmation, and writes an `ingestion_events('user_purged')` audit row that is itself never deleted.
 - **Schema migrations preserve `raw_payload` bytes.** The normalized layer (`messages`) is rebuildable from `raw_messages`; raw is not.
 - **`archive.db` is the canonical export format.** Any "export to X" feature builds on top of the public schema; it never replaces it. The schema is treated as a public format — forward-only migrations, additive when possible, no app-internal columns. Vendor-specific quirks live inside `raw_payload`.
 

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Rename data.db to metadata.db
@@ -10,4 +10,4 @@ This changes a path on users' disks, so it needs a migration that detects and re
 
 ## Status
 
-Proposed — vocabulary decided ([CONTEXT.md](../../CONTEXT.md)), file rename and migration not yet implemented.
+Accepted — the Metadata store opens `metadata.db`, and `createMetadataRepository` renames an existing `data.db` in place on launch (`api/src/metadata/repository.ts`). A same-filesystem rename is atomic and loses no data; if `metadata.db` already exists the rename is skipped and the stale `data.db` is left untouched, never clobbered.
