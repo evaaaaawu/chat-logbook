@@ -26,5 +26,8 @@ playwright-report/
 .playwright-mcp/
 CLAUDE.local.md
 
+# Local-only tooling (not shared)
+scripts/sync-public-docs.sh
+
 # Plugin test fixtures need to ship a fake ~/.claude tree
 !api/src/plugins/**/__fixtures__/**
