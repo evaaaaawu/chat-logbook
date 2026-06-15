@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useChats } from "@/hooks/useChats";
 import { useMessages } from "@/hooks/useMessages";
 import { useToast } from "@/hooks/useToast";
 import { useSortPreference } from "@/hooks/useSortPreference";
-import { sortChats } from "@/lib/sortChats";
+import { useFrozenSort } from "@/hooks/useFrozenSort";
 import {
   CHAT_DIRECTION_LABELS,
   CHAT_SORT_AXES,
@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/resizable";
 
 function App() {
-  const { chats, softDelete, restore, setTitle } = useChats();
+  const { chats, sortEpoch, softDelete, restore, setTitle } = useChats();
   const handleRenameTitle = (id: string, title: string) => {
     void setTitle(id, title);
   };
@@ -35,23 +35,31 @@ function App() {
   const { toast, showToast, dismissToast } = useToast();
   const sort = useSortPreference(CHAT_SORT_CONFIG);
   const trashSort = useSortPreference(TRASH_SORT_CONFIG);
-  const mainChats = useMemo(
-    () =>
-      sortChats(
-        chats.filter((c) => !c.isDeleted),
-        sort.field,
-        sort.direction
-      ),
-    [chats, sort.field, sort.direction]
+
+  // Switching views (Chat List <-> Trash) flushes any held-back background order
+  // by counting as a re-sort. A monotonic generation bumps on every view switch
+  // and feeds the frozen-sort key, so returning to a view re-sorts with the
+  // latest data rather than reviving the order it had on the way out.
+  const [viewGen, setViewGen] = useState(0);
+  const switchMode = (next: "main" | "trash") => {
+    setMode(next);
+    setViewGen((g) => g + 1);
+  };
+
+  // sortEpoch (user data actions) and viewGen (view switches) both flush the
+  // frozen order; sort field/direction changes flush it inside useFrozenSort.
+  const resortKey = `${sortEpoch}:${viewGen}`;
+  const mainChats = useFrozenSort(
+    chats.filter((c) => !c.isDeleted),
+    sort.field,
+    sort.direction,
+    resortKey
   );
-  const deletedChats = useMemo(
-    () =>
-      sortChats(
-        chats.filter((c) => c.isDeleted),
-        trashSort.field,
-        trashSort.direction
-      ),
-    [chats, trashSort.field, trashSort.direction]
+  const deletedChats = useFrozenSort(
+    chats.filter((c) => c.isDeleted),
+    trashSort.field,
+    trashSort.direction,
+    resortKey
   );
   const visibleChats = mode === "trash" ? deletedChats : mainChats;
   const activeSort = mode === "trash" ? trashSort : sort;
@@ -69,7 +77,7 @@ function App() {
       message: "Chat restored.",
       actionLabel: "View",
       onAction: () => {
-        setMode("main");
+        switchMode("main");
         setSelectedId(id);
       },
     });
@@ -101,7 +109,7 @@ function App() {
 
       if (e.key === "Escape" && mode === "trash") {
         e.preventDefault();
-        setMode("main");
+        switchMode("main");
         return;
       }
 
@@ -141,7 +149,7 @@ function App() {
         <ResizablePanel defaultSize={15} minSize={10}>
           <FilterPanel
             deletedCount={deletedChats.length}
-            onOpenTrash={() => setMode("trash")}
+            onOpenTrash={() => switchMode("trash")}
           />
         </ResizablePanel>
         <ResizableHandle />
@@ -156,9 +164,9 @@ function App() {
             onDelete={handleDelete}
             onRestore={handleRestore}
             onRenameTitle={handleRenameTitle}
-            onBack={() => setMode("main")}
+            onBack={() => switchMode("main")}
             deletedCount={deletedChats.length}
-            onOpenTrash={() => setMode("trash")}
+            onOpenTrash={() => switchMode("trash")}
             sortSignature={`${mode}:${activeSort.field}:${activeSort.direction}`}
             sortControl={
               mode === "trash" ? (
