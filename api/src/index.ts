@@ -7,6 +7,7 @@ import { serve } from "@hono/node-server";
 import updateNotifier from "update-notifier";
 import { createApp } from "./app.js";
 import { createArchiveRepository } from "./archive/repository.js";
+import { createCheckpointRepository } from "./checkpoint/repository.js";
 import { createMetadataRepository } from "./metadata/repository.js";
 import { startIngestionInBackground } from "./ingestion/background.js";
 import { startWatcher } from "./ingestion/watcher.js";
@@ -44,22 +45,26 @@ const webDistDir = path.join(__dirname, "../../web/dist");
 const port = action.port;
 
 const archive = createArchiveRepository({ dataDir });
+const checkpoint = createCheckpointRepository({ dataDir });
 const metadata = createMetadataRepository({ dataDir });
 const app = createApp({ archive, metadata, webDistDir });
 
 const initialIngest = startIngestionInBackground({
   plugins,
   archive,
+  checkpoint,
   env: { homeDir: os.homedir() },
 });
 
 const watcher = startWatcher({
   plugins,
   archive,
+  checkpoint,
   env: { homeDir: os.homedir() },
 });
-// Don't start watching until the initial scan has populated session_scan_state;
-// otherwise a `change` event could race the first scan and re-ingest from scratch.
+// Don't start watching until the initial scan has populated the checkpoint store
+// (chat_scan_state); otherwise a `change` event could race the first scan and
+// re-ingest from scratch.
 void initialIngest.done.then(() => watcher.ready).catch(() => {});
 
 function shutdown(): void {

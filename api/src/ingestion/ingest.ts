@@ -2,12 +2,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import { and, eq } from "drizzle-orm";
 import type { ArchiveRepository } from "../archive/repository.js";
-import {
-  chats,
-  chatScanState,
-  messages,
-  rawMessages,
-} from "../archive/schema.js";
+import { chats, messages, rawMessages } from "../archive/schema.js";
+import type { CheckpointRepository } from "../checkpoint/repository.js";
 import type {
   AgentPlugin,
   NormalizedMessage,
@@ -17,6 +13,7 @@ import type {
 export interface IngestOptions {
   plugins: readonly AgentPlugin[];
   archive: ArchiveRepository;
+  checkpoint: CheckpointRepository;
   env: PluginEnv;
   now?: () => Date;
 }
@@ -42,16 +39,7 @@ export async function runIngestion(opts: IngestOptions): Promise<IngestResult> {
       result.scanned += 1;
 
       const stat = safeStat(ref.sourcePath);
-      const prior = opts.archive.db
-        .select()
-        .from(chatScanState)
-        .where(
-          and(
-            eq(chatScanState.agent, plugin.id),
-            eq(chatScanState.sourceId, ref.sourceId)
-          )
-        )
-        .get();
+      const prior = opts.checkpoint.getScanState(plugin.id, ref.sourceId);
 
       ensureChat(
         opts.archive,
@@ -126,12 +114,11 @@ export async function runIngestion(opts: IngestOptions): Promise<IngestResult> {
       }
 
       if (stat) {
-        recordScanState(
-          opts.archive,
+        opts.checkpoint.recordScanState(
           plugin.id,
           ref.sourceId,
           ref.sourcePath,
-          stat,
+          { mtimeMs: stat.mtimeMs, sizeBytes: stat.size },
           now()
         );
       }
@@ -146,48 +133,6 @@ function safeStat(p: string): fs.Stats | null {
     return fs.statSync(p);
   } catch {
     return null;
-  }
-}
-
-function recordScanState(
-  archive: ArchiveRepository,
-  agent: string,
-  sourceId: string,
-  sourcePath: string,
-  stat: fs.Stats,
-  scannedAt: Date
-): void {
-  const existing = archive.db
-    .select({ id: chatScanState.id })
-    .from(chatScanState)
-    .where(
-      and(eq(chatScanState.agent, agent), eq(chatScanState.sourceId, sourceId))
-    )
-    .get();
-
-  if (existing) {
-    archive.db
-      .update(chatScanState)
-      .set({
-        sourcePath,
-        lastMtimeMs: stat.mtimeMs,
-        lastSizeBytes: stat.size,
-        lastScannedAt: scannedAt,
-      })
-      .where(eq(chatScanState.id, existing.id))
-      .run();
-  } else {
-    archive.db
-      .insert(chatScanState)
-      .values({
-        agent,
-        sourceId,
-        sourcePath,
-        lastMtimeMs: stat.mtimeMs,
-        lastSizeBytes: stat.size,
-        lastScannedAt: scannedAt,
-      })
-      .run();
   }
 }
 
