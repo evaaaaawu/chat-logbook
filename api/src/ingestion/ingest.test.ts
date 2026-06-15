@@ -4,6 +4,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createArchiveRepository } from "../archive/repository.js";
 import { chats, messages, rawMessages } from "../archive/schema.js";
+import { createCheckpointRepository } from "../checkpoint/repository.js";
+import { chatScanState } from "../checkpoint/schema.js";
 import { ClaudeCodePlugin } from "../plugins/claude-code/plugin.js";
 import { runIngestion } from "./ingest.js";
 
@@ -38,10 +40,12 @@ afterEach(() => {
 describe("runIngestion", () => {
   it("populates archive.db sessions, raw_messages, and messages from source on first run", async () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
+    const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
 
     const result = await runIngestion({
       plugins: [new ClaudeCodePlugin()],
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
     });
 
@@ -72,11 +76,13 @@ describe("runIngestion", () => {
 
   it("is a no-op on second run: zero new raw rows and row counts unchanged", async () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
+    const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
     const pluginsList = [new ClaudeCodePlugin()];
 
     const first = await runIngestion({
       plugins: pluginsList,
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
     });
     const rawBefore = archive.db.select().from(rawMessages).all().length;
@@ -86,6 +92,7 @@ describe("runIngestion", () => {
     const second = await runIngestion({
       plugins: pluginsList,
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
     });
 
@@ -100,11 +107,13 @@ describe("runIngestion", () => {
 
   it("appends a new raw row when source content at the same line changes", async () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
+    const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
     const pluginsList = [new ClaudeCodePlugin()];
 
     await runIngestion({
       plugins: pluginsList,
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
     });
     const rawBefore = archive.db.select().from(rawMessages).all();
@@ -132,6 +141,7 @@ describe("runIngestion", () => {
     const second = await runIngestion({
       plugins: pluginsList,
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
     });
 
@@ -149,10 +159,12 @@ describe("runIngestion", () => {
 
   it("writes raw for every payload but skips messages when normalize returns null", async () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
+    const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
 
     await runIngestion({
       plugins: [new ClaudeCodePlugin()],
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
     });
 
@@ -186,11 +198,13 @@ describe("runIngestion", () => {
 
   it("mtime fast path: skips files whose mtime and size are unchanged since last scan", async () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
+    const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
 
     // First run records scan state.
     await runIngestion({
       plugins: [new ClaudeCodePlugin()],
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
     });
 
@@ -206,6 +220,7 @@ describe("runIngestion", () => {
     const second = await runIngestion({
       plugins: [observedPlugin],
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
     });
 
@@ -218,10 +233,12 @@ describe("runIngestion", () => {
 
   it("mtime fast path: re-reads a file when mtime changes", async () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
+    const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
 
     await runIngestion({
       plugins: [new ClaudeCodePlugin()],
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
     });
 
@@ -249,6 +266,7 @@ describe("runIngestion", () => {
     const second = await runIngestion({
       plugins: [new ClaudeCodePlugin()],
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
     });
 
@@ -260,10 +278,12 @@ describe("runIngestion", () => {
 
   it("preserves archive rows when source file is shrunk between scans", async () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
+    const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
 
     await runIngestion({
       plugins: [new ClaudeCodePlugin()],
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
     });
     const rawBefore = archive.db.select().from(rawMessages).all();
@@ -287,6 +307,7 @@ describe("runIngestion", () => {
     await runIngestion({
       plugins: [new ClaudeCodePlugin()],
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
     });
 
@@ -304,6 +325,7 @@ describe("runIngestion", () => {
 
   it("fills in a session's project on a later scan once cwd is resolvable", async () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
+    const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
     const pluginsList = [new ClaudeCodePlugin()];
 
     // A session whose source carries no cwd: its project is unknown.
@@ -331,6 +353,7 @@ describe("runIngestion", () => {
     await runIngestion({
       plugins: pluginsList,
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
     });
     const before = archive.db
@@ -355,6 +378,7 @@ describe("runIngestion", () => {
     await runIngestion({
       plugins: pluginsList,
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
     });
     const after = archive.db
@@ -366,5 +390,94 @@ describe("runIngestion", () => {
     expect(after?.projectPath).toBe("/Users/test/late-app");
 
     archive.close();
+  });
+
+  it("records the scan watermark in the checkpoint store, not archive.db", async () => {
+    const archive = createArchiveRepository({ dataDir: env.dataDir });
+    const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
+    const pluginsList = [new ClaudeCodePlugin()];
+
+    const first = await runIngestion({
+      plugins: pluginsList,
+      archive,
+      checkpoint,
+      env: { homeDir: env.homeDir },
+    });
+    expect(first.rawInserted).toBeGreaterThan(0);
+
+    // The watermark lands in checkpoint.db.
+    const watermarks = checkpoint.db.select().from(chatScanState).all();
+    expect(watermarks.length).toBeGreaterThan(0);
+
+    // A second scan skips unchanged files using the checkpoint store.
+    const second = await runIngestion({
+      plugins: pluginsList,
+      archive,
+      checkpoint,
+      env: { homeDir: env.homeDir },
+    });
+    expect(second.skippedByMtime).toBeGreaterThan(0);
+    expect(second.rawInserted).toBe(0);
+
+    archive.close();
+    checkpoint.close();
+  });
+
+  it("upgrade path: a scan with an empty checkpoint but a populated archive rebuilds the watermark and is a no-op at the Raw layer", async () => {
+    const archive = createArchiveRepository({ dataDir: env.dataDir });
+    const pluginsList = [new ClaudeCodePlugin()];
+
+    // Pre-upgrade: archive is already populated by an earlier build's scan.
+    const firstCheckpoint = createCheckpointRepository({
+      dataDir: env.dataDir,
+    });
+    await runIngestion({
+      plugins: pluginsList,
+      archive,
+      checkpoint: firstCheckpoint,
+      env: { homeDir: env.homeDir },
+    });
+    const rawBefore = archive.db.select().from(rawMessages).all();
+    const msgBefore = archive.db.select().from(messages).all();
+    expect(rawBefore.length).toBeGreaterThan(0);
+    firstCheckpoint.close();
+
+    // Upgrade drops session_scan_state from archive.db; checkpoint.db starts
+    // empty. Model that with a fresh, empty Checkpoint store.
+    const freshDataDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "chat-logbook-fresh-checkpoint-")
+    );
+    const emptyCheckpoint = createCheckpointRepository({
+      dataDir: freshDataDir,
+    });
+    expect(emptyCheckpoint.getScanState("claude-code", "session-1")).toBe(
+      undefined
+    );
+
+    // The next Scan re-reads every file (no fast-path), but content-based
+    // idempotency makes it a no-op at the Raw layer.
+    const upgrade = await runIngestion({
+      plugins: pluginsList,
+      archive,
+      checkpoint: emptyCheckpoint,
+      env: { homeDir: env.homeDir },
+    });
+
+    expect(upgrade.skippedByMtime).toBe(0);
+    expect(upgrade.rawInserted).toBe(0);
+    expect(archive.db.select().from(rawMessages).all().length).toBe(
+      rawBefore.length
+    );
+    expect(archive.db.select().from(messages).all().length).toBe(
+      msgBefore.length
+    );
+    // The watermark is rebuilt in the new checkpoint store.
+    expect(
+      emptyCheckpoint.getScanState("claude-code", "session-1")
+    ).toBeDefined();
+
+    archive.close();
+    emptyCheckpoint.close();
+    fs.rmSync(freshDataDir, { recursive: true, force: true });
   });
 });

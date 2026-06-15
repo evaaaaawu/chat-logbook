@@ -4,23 +4,28 @@
 
 ## Current state
 
-Today the codebase implements one store under `~/.chat-logbook/`:
+Today the codebase implements three stores under `~/.chat-logbook/`:
 
 - `metadata.db` — user-added metadata (titles, tags, soft-delete flags).
   Code lives in `api/src/metadata/`.
+- `archive.db` — derived snapshot of conversations read from source.
+  Code lives in `api/src/archive/`.
+- `checkpoint.db` — per-Source-file scan watermark.
+  Code lives in `api/src/checkpoint/`.
 
-`archive.db` and `index.db` described below are planned, not yet implemented. Source directories under `~/.claude/` are read directly while the app is running.
+`index.db` described below is planned, not yet implemented. Source directories under `~/.claude/` are read directly while the app is running.
 
-## Four stores (target architecture)
+## Five stores (target architecture)
 
-The product is designed around four separate stores. Do not merge them.
+The product is designed around five separate stores. Do not merge them.
 
-| Store   | Path                            | Backed up?            |
-| ------- | ------------------------------- | --------------------- |
-| Source  | `~/.claude/`, `~/.codex/`, etc. | Out of our hands      |
-| Data    | `~/.chat-logbook/metadata.db`   | Yes — back this up    |
-| Archive | `~/.chat-logbook/archive.db`    | Yes — back this up    |
-| Index   | `~/.chat-logbook/index.db`      | No — `rm` and rebuild |
+| Store      | Path                            | Backed up?            |
+| ---------- | ------------------------------- | --------------------- |
+| Source     | `~/.claude/`, `~/.codex/`, etc. | Out of our hands      |
+| Data       | `~/.chat-logbook/metadata.db`   | Yes — back this up    |
+| Archive    | `~/.chat-logbook/archive.db`    | Yes — back this up    |
+| Checkpoint | `~/.chat-logbook/checkpoint.db` | No — rebuilt by Scan  |
+| Index      | `~/.chat-logbook/index.db`      | No — `rm` and rebuild |
 
 1. **Source directories** (`~/.claude/`, `~/.codex/`, etc.) — read-only conversation data. Vendor-controlled. May be auto-cleaned by the vendor (Claude Code defaults to 30 days; Codex CLI has multiple retention windows).
 
@@ -35,7 +40,9 @@ The product is designed around four separate stores. Do not merge them.
    Backup-worthy: once vendors have cleaned up source, this is the only
    remaining copy. See the archive contract below.
 
-4. **`~/.chat-logbook/index.db`** — derived FTS5 search index, sourced from `archive.db.messages.text`. Freely rebuildable; tokenizer or schema upgrades are `rm index.db` + restart. Never put user data here, and never put index tables in `metadata.db` or `archive.db`.
+4. **`~/.chat-logbook/checkpoint.db`** — derived scan watermark (`chat_scan_state`: per-Source-file last mtime, size, and scan time) that lets a Scan skip unchanged files. Derived from Source and rebuildable: a full re-scan repopulates it, so it is never backed up. Kept out of `archive.db` (the public export format) and `index.db` (whose rebuild lifecycle is independent) — see ADR-0014.
+
+5. **`~/.chat-logbook/index.db`** — derived FTS5 search index, sourced from `archive.db.messages.text`. Freely rebuildable; tokenizer or schema upgrades are `rm index.db` + restart. Never put user data here, and never put index tables in `metadata.db` or `archive.db`.
 
 ## Plugin per agent
 

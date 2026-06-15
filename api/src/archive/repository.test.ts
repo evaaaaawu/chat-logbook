@@ -201,7 +201,7 @@ describe("ArchiveRepository", () => {
     }
   });
 
-  it("migrates a v0.7.1 archive.db: session_scan_state.session_id is renamed to source_id preserving data", () => {
+  it("migrates a v0.7.1 archive.db: session_scan_state table is dropped (moved to checkpoint.db)", () => {
     seedFromFixture(dataDir);
 
     const repo = createArchiveRepository({ dataDir });
@@ -211,20 +211,18 @@ describe("ArchiveRepository", () => {
       readonly: true,
     });
     try {
-      const cols = sqlite
-        .prepare("PRAGMA table_info('session_scan_state')")
+      const tables = sqlite
+        .prepare("SELECT name FROM sqlite_master WHERE type='table'")
         .all() as { name: string }[];
-      const names = cols.map((c) => c.name);
-      expect(names).toContain("source_id");
-      expect(names).not.toContain("session_id");
+      const names = tables.map((t) => t.name);
+      expect(names).not.toContain("session_scan_state");
 
-      const rows = sqlite
-        .prepare("SELECT agent, source_id FROM session_scan_state ORDER BY id")
-        .all();
-      expect(rows).toEqual([
-        { agent: "claude-code", source_id: "source-session-a" },
-        { agent: "claude-code", source_id: "source-session-b" },
-      ]);
+      const indexes = sqlite
+        .prepare("SELECT name FROM sqlite_master WHERE type='index'")
+        .all() as { name: string }[];
+      expect(indexes.map((i) => i.name)).not.toContain(
+        "session_scan_state_idx"
+      );
     } finally {
       sqlite.close();
     }

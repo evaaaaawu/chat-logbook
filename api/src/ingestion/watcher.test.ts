@@ -9,6 +9,7 @@ import {
   rawMessages,
   chats,
 } from "../archive/schema.js";
+import { createCheckpointRepository } from "../checkpoint/repository.js";
 import { ClaudeCodePlugin } from "../plugins/claude-code/plugin.js";
 import { runIngestion } from "./ingest.js";
 import { startWatcher } from "./watcher.js";
@@ -51,15 +52,22 @@ describe("startWatcher", () => {
     { timeout: 20_000 },
     async () => {
       const archive = createArchiveRepository({ dataDir: env.dataDir });
+      const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
       const plugins = [new ClaudeCodePlugin()];
 
       // Seed archive via on-app-open scan first; watcher is for live updates.
-      await runIngestion({ plugins, archive, env: { homeDir: env.homeDir } });
+      await runIngestion({
+        plugins,
+        archive,
+        checkpoint,
+        env: { homeDir: env.homeDir },
+      });
       const rawBefore = archive.db.select().from(rawMessages).all().length;
 
       const watcher = startWatcher({
         plugins,
         archive,
+        checkpoint,
         env: { homeDir: env.homeDir },
         chokidarOptions: { usePolling: true, interval: 25 },
         debounceMs: 25,
@@ -109,9 +117,15 @@ describe("startWatcher", () => {
 
   it("records an unlink_observed audit row without deleting archive rows", async () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
+    const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
     const plugins = [new ClaudeCodePlugin()];
 
-    await runIngestion({ plugins, archive, env: { homeDir: env.homeDir } });
+    await runIngestion({
+      plugins,
+      archive,
+      checkpoint,
+      env: { homeDir: env.homeDir },
+    });
     const rawBefore = archive.db.select().from(rawMessages).all().length;
     const msgBefore = archive.db.select().from(messages).all().length;
     const chatsBefore = archive.db.select().from(chats).all().length;
@@ -119,6 +133,7 @@ describe("startWatcher", () => {
     const watcher = startWatcher({
       plugins,
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
       chokidarOptions: { usePolling: true, interval: 25 },
       debounceMs: 25,
@@ -161,12 +176,19 @@ describe("startWatcher", () => {
 
   it("stops triggering ingest after close()", async () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
+    const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
     const plugins = [new ClaudeCodePlugin()];
-    await runIngestion({ plugins, archive, env: { homeDir: env.homeDir } });
+    await runIngestion({
+      plugins,
+      archive,
+      checkpoint,
+      env: { homeDir: env.homeDir },
+    });
 
     const watcher = startWatcher({
       plugins,
       archive,
+      checkpoint,
       env: { homeDir: env.homeDir },
       chokidarOptions: { usePolling: true, interval: 25 },
       debounceMs: 25,

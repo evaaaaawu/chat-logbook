@@ -1,12 +1,14 @@
 import chokidar, { type FSWatcher, type ChokidarOptions } from "chokidar";
 import type { ArchiveRepository } from "../archive/repository.js";
 import { ingestionEvents } from "../archive/schema.js";
+import type { CheckpointRepository } from "../checkpoint/repository.js";
 import type { AgentPlugin, PluginEnv, ChatRef } from "../plugins/types.js";
 import { runIngestion } from "./ingest.js";
 
 export interface WatcherOptions {
   plugins: readonly AgentPlugin[];
   archive: ArchiveRepository;
+  checkpoint: CheckpointRepository;
   env: PluginEnv;
   debounceMs?: number;
   chokidarOptions?: ChokidarOptions;
@@ -96,6 +98,7 @@ export function startWatcher(opts: WatcherOptions): IngestionWatcher {
       void runIngestion({
         plugins: opts.plugins,
         archive: opts.archive,
+        checkpoint: opts.checkpoint,
         env: opts.env,
       }).catch((err) => onError(err));
     }, debounceMs);
