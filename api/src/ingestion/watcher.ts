@@ -32,6 +32,14 @@ export interface IngestionWatcher {
    * `ready` resolves.
    */
   notifyChange(path: string): void;
+  /**
+   * Drive an unlink for `path` through the same handler chokidar's "unlink"
+   * event triggers — real `recordUnlink` → audit write. The unlink counterpart
+   * of `notifyChange`: lets callers (and tests) record an unlink_observed audit
+   * row deterministically, without depending on chokidar's filesystem polling
+   * to notice the removal. No-op until `ready` resolves.
+   */
+  notifyUnlink(path: string): void;
 }
 
 interface PathBinding {
@@ -128,6 +136,12 @@ export function startWatcher(opts: WatcherOptions): IngestionWatcher {
       // fall back to the handler directly if the watcher isn't up yet.
       if (watcher) watcher.emit("change", path);
       else scheduleIngest(path);
+    },
+    notifyUnlink(path: string) {
+      // Route through chokidar's own emitter so the real "unlink" wiring runs;
+      // fall back to the handler directly if the watcher isn't up yet.
+      if (watcher) watcher.emit("unlink", path);
+      else recordUnlink(path);
     },
     async close() {
       closed = true;
