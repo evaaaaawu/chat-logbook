@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createArchiveRepository } from "../archive/repository.js";
 import {
   ingestionEvents,
@@ -126,6 +126,17 @@ describe("startWatcher", () => {
     }
   });
 
+  // Same flaky stage as the change-event test above: under parallel-suite
+  // contention chokidar's polling can miss the unlink entirely, so the test
+  // would await an audit row that never arrives, time out, and — because a
+  // timed-out vitest test abandons its `finally` — leak a still-open watcher +
+  // archive into `afterEach`'s tmpdir teardown. The leaked watcher then fires
+  // `recordUnlink` against the just-removed `archive.db`, writing a
+  // `SQLITE_READONLY_DBMOVED` to stderr (#100). We remove the dependency on
+  // chokidar's unreliable detection while keeping the real "unlink" handler →
+  // `recordUnlink` → audit write: unlink the file, then drive the event through
+  // the watcher's own `notifyUnlink`. Real polling stays dormant (large
+  // interval), so the test is deterministic with no wall-clock race.
   it("records an unlink_observed audit row without deleting archive rows", async () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
     const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
@@ -146,7 +157,9 @@ describe("startWatcher", () => {
       archive,
       checkpoint,
       env: { homeDir: env.homeDir },
-      chokidarOptions: { usePolling: true, interval: 25 },
+      // Large interval keeps real polling dormant within the test, so the only
+      // unlink driver is the deterministic notifyUnlink call below.
+      chokidarOptions: { usePolling: true, interval: 60_000 },
       debounceMs: 25,
     });
     await watcher.ready;
@@ -161,18 +174,15 @@ describe("startWatcher", () => {
       );
       fs.unlinkSync(sourceFile);
 
-      await vi.waitFor(
-        () => {
-          const events = archive.db
-            .select()
-            .from(ingestionEvents)
-            .all()
-            .filter((e) => e.eventType === "unlink_observed");
-          expect(events.length).toBeGreaterThan(0);
-          expect(events.some((e) => e.sourcePath === sourceFile)).toBe(true);
-        },
-        { timeout: 5000, interval: 50 }
-      );
+      watcher.notifyUnlink(sourceFile);
+
+      const events = archive.db
+        .select()
+        .from(ingestionEvents)
+        .all()
+        .filter((e) => e.eventType === "unlink_observed");
+      expect(events.length).toBeGreaterThan(0);
+      expect(events.some((e) => e.sourcePath === sourceFile)).toBe(true);
 
       expect(archive.db.select().from(rawMessages).all().length).toBe(
         rawBefore
