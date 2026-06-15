@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -1351,5 +1352,280 @@ describe("Tool call rendering (continued)", () => {
     expect(
       screen.queryByText("export function add(a, b) { return a + b; }")
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("Freeze sort order on background updates", () => {
+  type WireChat = {
+    id: string;
+    chatId: string;
+    agent: string;
+    title: string;
+    project: string;
+    projectPath: string | null;
+    sourceFilePath: string | null;
+    createdAt: number;
+    updatedAt: number;
+    deletedAt?: number | null;
+    isDeleted?: boolean;
+  };
+
+  // The active (non-deleted) chats in their default Updated-time-desc order:
+  // Fix database migration, Build a login page, Refactor utils, Untitled.
+  function activeChats(): WireChat[] {
+    return [
+      {
+        id: "chat-2",
+        chatId: "CHAT02",
+        agent: "claude-code",
+        title: "Fix database migration",
+        project: "backend-api",
+        projectPath: "/Users/test/backend-api",
+        sourceFilePath: null,
+        createdAt: 1700000100000,
+        updatedAt: 1700000300000,
+      },
+      {
+        id: "chat-1",
+        chatId: "CHAT01",
+        agent: "claude-code",
+        title: "Build a login page",
+        project: "my-web-app",
+        projectPath: "/Users/test/my-web-app",
+        sourceFilePath: null,
+        createdAt: 1700000000000,
+        updatedAt: 1700000200000,
+      },
+      {
+        id: "chat-3",
+        chatId: "CHAT03",
+        agent: "claude-code",
+        title: "Refactor utils",
+        project: "my-web-app",
+        projectPath: "/Users/test/my-web-app",
+        sourceFilePath: null,
+        createdAt: 1700000050000,
+        updatedAt: 1700000150000,
+      },
+      {
+        id: "chat-missing",
+        chatId: "CHATMI",
+        agent: "claude-code",
+        title: "Untitled",
+        project: "some-project",
+        projectPath: "/Users/test/some-project",
+        sourceFilePath: null,
+        createdAt: 1699999900000,
+        updatedAt: 1699999900000,
+      },
+    ];
+  }
+
+  // The deleted chats, kept stable so the Trash view stays populated across a
+  // simulated background ingest.
+  function trashedChats(): WireChat[] {
+    return [
+      {
+        id: "chat-deleted-1",
+        chatId: "CHATDE",
+        agent: "claude-code",
+        title: "Old prototype",
+        project: "my-web-app",
+        projectPath: "/Users/test/my-web-app",
+        sourceFilePath: null,
+        createdAt: 1699999000000,
+        updatedAt: 1699999500000,
+        deletedAt: 1700000200000,
+        isDeleted: true,
+      },
+      {
+        id: "chat-deleted-2",
+        chatId: "CHATD2",
+        agent: "claude-code",
+        title: "Newer experiment",
+        project: "my-web-app",
+        projectPath: "/Users/test/my-web-app",
+        sourceFilePath: null,
+        createdAt: 1699999100000,
+        updatedAt: 1699999800000,
+        deletedAt: 1700000100000,
+        isDeleted: true,
+      },
+    ];
+  }
+
+  // Serve a given active list (plus the stable deleted chats) on every
+  // subsequent /api/chats read — i.e. the background poll.
+  function serveBackground(active: WireChat[]): void {
+    const chats = [...active, ...trashedChats()];
+    server.use(http.get("/api/chats", () => HttpResponse.json({ chats })));
+  }
+
+  // Advance past one background poll interval and let the refetch settle.
+  async function flushBackgroundPoll(): Promise<void> {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+  }
+
+  it("keeps the selected row in place when a background refresh bumps its updatedAt", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    try {
+      render(<App />);
+
+      // Select "Build a login page" (chat-1), which sits at row index 1.
+      await user.click(await screen.findByText("Build a login page"));
+
+      const list = screen.getByTestId("chat-list");
+      let rows = within(list).getAllByTestId("chat-row");
+      expect(rows[0].textContent).toContain("Fix database migration");
+      expect(rows[1].textContent).toContain("Build a login page");
+
+      // Background ingest: chat-1 now has the newest updatedAt. A live re-sort
+      // would float it to the top.
+      const bumped = activeChats();
+      bumped[1].updatedAt = 1700000999000;
+      serveBackground(bumped);
+
+      await flushBackgroundPoll();
+
+      // Frozen: the selected row has not moved.
+      rows = within(list).getAllByTestId("chat-row");
+      expect(rows[0].textContent).toContain("Fix database migration");
+      expect(rows[1].textContent).toContain("Build a login page");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("applies the held-back order on the next sort change", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    try {
+      render(<App />);
+      await user.click(await screen.findByText("Build a login page"));
+      const list = screen.getByTestId("chat-list");
+
+      // Background ingest floats chat-1 to newest; the order stays frozen.
+      const bumped = activeChats();
+      bumped[1].updatedAt = 1700000999000;
+      serveBackground(bumped);
+      await flushBackgroundPoll();
+      let rows = within(list).getAllByTestId("chat-row");
+      expect(rows[1].textContent).toContain("Build a login page");
+
+      // Re-clicking the active Updated-time axis flips to Oldest first and
+      // re-sorts with the background data: chat-1 (now newest) sinks to bottom.
+      await user.click(within(list).getByRole("button", { name: /sort/i }));
+      const popover = await screen.findByTestId("chat-sort-popover");
+      await user.click(within(popover).getByText("Updated time"));
+
+      rows = within(list).getAllByTestId("chat-row");
+      expect(rows[0].textContent).toContain("Untitled");
+      expect(rows[3].textContent).toContain("Build a login page");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("applies the held-back order after switching views and back", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    try {
+      render(<App />);
+      await user.click(await screen.findByText("Build a login page"));
+      const list = screen.getByTestId("chat-list");
+
+      const bumped = activeChats();
+      bumped[1].updatedAt = 1700000999000;
+      serveBackground(bumped);
+      await flushBackgroundPoll();
+      const rows = within(list).getAllByTestId("chat-row");
+      expect(rows[1].textContent).toContain("Build a login page");
+
+      // Switch to Trash and back: the view switch flushes the frozen order.
+      await user.click(screen.getByTestId("trash-link"));
+      await screen.findByText("Old prototype");
+      await user.keyboard("{Escape}");
+
+      await waitFor(() => {
+        const r = within(screen.getByTestId("chat-list")).getAllByTestId(
+          "chat-row"
+        );
+        expect(r[0].textContent).toContain("Build a login page");
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("inserts a newly-appearing chat at its sorted position while holding the rest", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<App />);
+      // No selection, so "Build a login page" appears only in the list.
+      await screen.findByText("Build a login page");
+      const list = screen.getByTestId("chat-list");
+
+      // A background ingest adds a brand-new chat whose updatedAt (1700000250000)
+      // places it between chat-2 (1700000300000) and chat-1 (1700000200000). No
+      // existing chat's time changes, so the held order is otherwise untouched.
+      const withNew = activeChats();
+      withNew.push({
+        id: "chat-new",
+        chatId: "CHATNW",
+        agent: "claude-code",
+        title: "Fresh ingest",
+        project: "my-web-app",
+        projectPath: "/Users/test/my-web-app",
+        sourceFilePath: null,
+        createdAt: 1700000250000,
+        updatedAt: 1700000250000,
+      });
+      serveBackground(withNew);
+      await flushBackgroundPoll();
+
+      const rows = within(list).getAllByTestId("chat-row");
+      // Existing chats keep their frozen relative order; the new chat slots into
+      // its sorted position between chat-2 and chat-1.
+      expect(rows[0].textContent).toContain("Fix database migration");
+      expect(rows[1].textContent).toContain("Fresh ingest");
+      expect(rows[2].textContent).toContain("Build a login page");
+      expect(rows[3].textContent).toContain("Refactor utils");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("re-sorts immediately when the user renames a chat", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Build a login page");
+    const list = screen.getByTestId("chat-list");
+
+    // Sort by Title (A-Z) so a rename visibly changes order.
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+    const popover = await screen.findByTestId("chat-sort-popover");
+    await user.click(within(popover).getByText("Title"));
+    await user.keyboard("{Escape}");
+
+    let rows = within(list).getAllByTestId("chat-row");
+    expect(rows[0].textContent).toContain("Build a login page");
+
+    // Rename it to sort last; the list re-sorts immediately (a user action).
+    await user.click(within(list).getByText("Build a login page"));
+    await user.click(within(list).getByText("Build a login page"));
+    const input = within(list).getByRole("textbox", {
+      name: /chat title/i,
+    }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Zzz renamed last" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(within(list).getByText("Zzz renamed last")).toBeInTheDocument();
+    });
+    rows = within(list).getAllByTestId("chat-row");
+    expect(rows[rows.length - 1].textContent).toContain("Zzz renamed last");
   });
 });
