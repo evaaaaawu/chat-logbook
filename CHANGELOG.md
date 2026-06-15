@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.11.0] - 2026-06-15
+
+The chat list now keeps its order steady while you read. Background updates from file changes no longer reshuffle the list under you.
+
+### Changed
+
+- The chat list keeps its order anchored during background updates. Previously, when chat-logbook picked up new messages from disk in the background, the list could re-sort and jump while you were reading it. Now the order stays put until you change the sort or switch views.
+
+### Upgrade notes
+
+- On first launch, the metadata file in `~/.chat-logbook/` is renamed from `data.db` to `metadata.db` automatically, and a new `checkpoint.db` is created to track scan progress. Both happen on their own — nothing to back up or move.
+
 ## [0.10.0] - 2026-05-27
 
 You can now sort your chat list — by title, created time, or updated time — and your choice is remembered the next time you open the app. Trash keeps its own sort order, defaulting to whatever you deleted most recently.
