@@ -3,7 +3,7 @@ import type { ArchiveRepository } from "../archive/repository.js";
 import { ingestionEvents } from "../archive/schema.js";
 import type { CheckpointRepository } from "../checkpoint/repository.js";
 import type { AgentPlugin, PluginEnv, ChatRef } from "../plugins/types.js";
-import { runIngestion } from "./ingest.js";
+import { runIngestion, type IngestResult } from "./ingest.js";
 
 export interface WatcherOptions {
   plugins: readonly AgentPlugin[];
@@ -13,11 +13,25 @@ export interface WatcherOptions {
   debounceMs?: number;
   chokidarOptions?: ChokidarOptions;
   onError?: (err: unknown) => void;
+  /**
+   * Called after each debounced ingest cycle settles. An observability seam:
+   * production may use it for logging/metrics, tests to synchronize on the
+   * real detect → ingest path without racing wall-clock timers.
+   */
+  onIngest?: (result: IngestResult) => void;
 }
 
 export interface IngestionWatcher {
   ready: Promise<void>;
   close(): Promise<void>;
+  /**
+   * Drive a change for `path` through the same handler chokidar's "change"
+   * event triggers — real debounce → ingest → archive write. Lets callers
+   * (and tests) re-ingest a known-changed path deterministically, without
+   * depending on chokidar's filesystem polling to notice it. No-op until
+   * `ready` resolves.
+   */
+  notifyChange(path: string): void;
 }
 
 interface PathBinding {
@@ -100,13 +114,21 @@ export function startWatcher(opts: WatcherOptions): IngestionWatcher {
         archive: opts.archive,
         checkpoint: opts.checkpoint,
         env: opts.env,
-      }).catch((err) => onError(err));
+      })
+        .then((result) => opts.onIngest?.(result))
+        .catch((err) => onError(err));
     }, debounceMs);
     pendingTimers.set(changedPath, timer);
   }
 
   return {
     ready,
+    notifyChange(path: string) {
+      // Route through chokidar's own emitter so the real "change" wiring runs;
+      // fall back to the handler directly if the watcher isn't up yet.
+      if (watcher) watcher.emit("change", path);
+      else scheduleIngest(path);
+    },
     async close() {
       closed = true;
       for (const t of pendingTimers.values()) clearTimeout(t);
