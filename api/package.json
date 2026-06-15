@@ -10,7 +10,8 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:generate:archive": "drizzle-kit generate --config drizzle.archive.config.ts"
+    "db:generate:archive": "drizzle-kit generate --config drizzle.archive.config.ts",
+    "db:generate:checkpoint": "drizzle-kit generate --config drizzle.checkpoint.config.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.11",
