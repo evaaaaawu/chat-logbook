@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { ArchiveRepository } from "./archive/repository.js";
 import {
   chats as archiveChats,
@@ -93,26 +93,19 @@ export function createChatReader({
     );
   }
 
-  function deriveTitle(row: ChatRecord): string {
-    const custom = metadata.getCustomTitle(row.id);
-    if (custom && custom.trim()) return custom;
-
-    const firstUser = archive.db
-      .select({ text: archiveMessages.text })
-      .from(archiveMessages)
-      .where(
-        and(
-          eq(archiveMessages.agent, row.agent),
-          eq(archiveMessages.sourceId, row.sourceId),
-          eq(archiveMessages.role, "user")
-        )
-      )
-      .orderBy(asc(archiveMessages.ts))
-      .limit(1)
-      .get();
-
-    const text = firstUser?.text?.trim().split("\n")[0]?.trim();
+  function deriveTitle(
+    customTitle: string | undefined,
+    firstUserText: string | undefined
+  ): string {
+    if (customTitle && customTitle.trim()) return customTitle;
+    const text = firstUserText?.trim().split("\n")[0]?.trim();
     return text && text.length > 0 ? text : "Untitled";
+  }
+
+  // Archive rows are keyed by (agent, source_id); NUL joins the pair into a
+  // single Map key that can't collide with any value either field can hold.
+  function key(agent: string, sourceId: string): string {
+    return [agent, sourceId].join("\u0000");
   }
 
   function listChats({
@@ -122,48 +115,94 @@ export function createChatReader({
   }): ChatResponse[] {
     const visibility = loadChatVisibility(metadata, { includeTrashed });
     const rows = archive.db.select().from(archiveChats).all();
-    const chats: ChatResponse[] = [];
 
+    // One grouped/windowed query per derived field, assembled in memory keyed
+    // by (agent, source_id) — so listing N chats stays a constant query count
+    // rather than ~3 per row. See issue #106.
+    const tsRangeRows = archive.db
+      .select({
+        agent: archiveMessages.agent,
+        sourceId: archiveMessages.sourceId,
+        minTs: sql<number | null>`min(${archiveMessages.ts})`,
+        maxTs: sql<number | null>`max(${archiveMessages.ts})`,
+      })
+      .from(archiveMessages)
+      .groupBy(archiveMessages.agent, archiveMessages.sourceId)
+      .all();
+    const tsRangeByKey = new Map(
+      tsRangeRows.map((r) => [key(r.agent, r.sourceId), r])
+    );
+
+    const rankedRaw = archive.db
+      .select({
+        agent: archiveRawMessages.agent,
+        sourceId: archiveRawMessages.sourceId,
+        sourcePath: archiveRawMessages.sourcePath,
+        rn: sql<number>`row_number() over (partition by ${archiveRawMessages.agent}, ${archiveRawMessages.sourceId} order by ${archiveRawMessages.ingestedAt} desc)`.as(
+          "rn"
+        ),
+      })
+      .from(archiveRawMessages)
+      .as("ranked_raw");
+    const latestRawRows = archive.db
+      .select({
+        agent: rankedRaw.agent,
+        sourceId: rankedRaw.sourceId,
+        sourcePath: rankedRaw.sourcePath,
+      })
+      .from(rankedRaw)
+      .where(eq(rankedRaw.rn, 1))
+      .all();
+    const sourcePathByKey = new Map(
+      latestRawRows.map((r) => [key(r.agent, r.sourceId), r.sourcePath])
+    );
+
+    const rankedUser = archive.db
+      .select({
+        agent: archiveMessages.agent,
+        sourceId: archiveMessages.sourceId,
+        text: archiveMessages.text,
+        rn: sql<number>`row_number() over (partition by ${archiveMessages.agent}, ${archiveMessages.sourceId} order by ${archiveMessages.ts} asc)`.as(
+          "rn"
+        ),
+      })
+      .from(archiveMessages)
+      .where(eq(archiveMessages.role, "user"))
+      .as("ranked_user");
+    const firstUserRows = archive.db
+      .select({
+        agent: rankedUser.agent,
+        sourceId: rankedUser.sourceId,
+        text: rankedUser.text,
+      })
+      .from(rankedUser)
+      .where(eq(rankedUser.rn, 1))
+      .all();
+    const firstUserTextByKey = new Map(
+      firstUserRows.map((r) => [key(r.agent, r.sourceId), r.text])
+    );
+
+    const customTitleById = metadata.listCustomTitles();
+
+    const chats: ChatResponse[] = [];
     for (const row of rows) {
       if (!visibility.isVisible(row.id)) continue;
       const isDeleted = visibility.isTrashed(row.id);
 
-      const latestRaw = archive.db
-        .select({ sourcePath: archiveRawMessages.sourcePath })
-        .from(archiveRawMessages)
-        .where(
-          and(
-            eq(archiveRawMessages.agent, row.agent),
-            eq(archiveRawMessages.sourceId, row.sourceId)
-          )
-        )
-        .orderBy(desc(archiveRawMessages.ingestedAt))
-        .limit(1)
-        .get();
-
-      const tsRange = archive.db
-        .select({
-          minTs: sql<number | null>`min(${archiveMessages.ts})`,
-          maxTs: sql<number | null>`max(${archiveMessages.ts})`,
-        })
-        .from(archiveMessages)
-        .where(
-          and(
-            eq(archiveMessages.agent, row.agent),
-            eq(archiveMessages.sourceId, row.sourceId)
-          )
-        )
-        .get();
-
+      const rowKey = key(row.agent, row.sourceId);
+      const tsRange = tsRangeByKey.get(rowKey);
       const firstSeenAtMs = row.firstSeenAt.getTime();
       const chat: ChatResponse = {
         id: row.sourceId,
         chatId: row.chatId,
         agent: row.agent,
-        title: deriveTitle(row),
+        title: deriveTitle(
+          customTitleById.get(row.id),
+          firstUserTextByKey.get(rowKey)
+        ),
         project: row.project ?? "",
         projectPath: row.projectPath ?? null,
-        sourceFilePath: latestRaw?.sourcePath ?? null,
+        sourceFilePath: sourcePathByKey.get(rowKey) ?? null,
         createdAt: tsRange?.minTs ?? firstSeenAtMs,
         updatedAt: tsRange?.maxTs ?? firstSeenAtMs,
         deletedAt: visibility.deletedAt(row.id),

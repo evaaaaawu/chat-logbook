@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import { eq } from "drizzle-orm";
+import { eq, isNotNull } from "drizzle-orm";
 import {
   drizzle,
   type BetterSQLite3Database,
@@ -48,6 +48,9 @@ export interface MetadataRepository {
   getDeletedAt(internalId: string): Date | null;
   listDeleted(): Array<{ id: string; deletedAt: Date | null }>;
   getCustomTitle(internalId: string): string | null;
+  /** Every chat with a custom title, keyed by internal id. Lets read paths
+   * resolve titles in one query instead of one per chat. */
+  listCustomTitles(): Map<string, string>;
   setCustomTitle(internalId: string, title: string | null): void;
 }
 
@@ -141,6 +144,19 @@ export function createMetadataRepository({
         .where(eq(chatsMeta.id, internalId))
         .get();
       return row?.customTitle ?? null;
+    },
+
+    listCustomTitles() {
+      const rows = db
+        .select({ id: chatsMeta.id, customTitle: chatsMeta.customTitle })
+        .from(chatsMeta)
+        .where(isNotNull(chatsMeta.customTitle))
+        .all();
+      const byId = new Map<string, string>();
+      for (const row of rows) {
+        if (row.customTitle !== null) byId.set(row.id, row.customTitle);
+      }
+      return byId;
     },
 
     setCustomTitle(internalId, title) {
