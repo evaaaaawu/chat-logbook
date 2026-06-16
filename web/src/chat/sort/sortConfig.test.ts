@@ -4,7 +4,7 @@ import {
   TRASH_SORT_AXES,
   TRASH_SORT_CONFIG,
   TRASH_DIRECTION_LABELS,
-} from "./chatSort";
+} from "./sortConfig";
 
 describe("TRASH_SORT_CONFIG", () => {
   it("persists under the chatlogbook.sort.trash key", () => {

@@ -1,7 +1,11 @@
 import { useState } from "react";
 import type { Chat } from "@/types";
-import { applyHeldOrder } from "@/lib/freezeSortOrder";
-import { sortChats, type SortDirection, type SortField } from "@/lib/sortChats";
+import { applyHeldOrder } from "@/chat/sort/freezeSortOrder";
+import {
+  sortChats,
+  type SortDirection,
+  type SortField,
+} from "@/chat/sort/sortChats";
 
 interface Anchor {
   key: string;

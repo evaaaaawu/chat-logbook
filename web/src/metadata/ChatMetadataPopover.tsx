@@ -2,12 +2,8 @@ import { Check, Copy, Info } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Chat } from "@/types";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { getAgentDisplayName } from "@/lib/agentDisplayName";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import { getAgentDisplayName } from "@/agent/agentDisplayName";
 
 interface ChatMetadataPopoverProps {
   chat: Chat;

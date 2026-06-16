@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ContentBlock } from "@/types";
-import { generateToolSummary } from "@/lib/generateToolSummary";
+import { generateToolSummary } from "@/conversation/generateToolSummary";
 
 type ToolUseBlock = Extract<ContentBlock, { type: "tool_use" }>;
 

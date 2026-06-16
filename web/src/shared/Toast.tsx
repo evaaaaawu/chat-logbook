@@ -1,4 +1,4 @@
-import type { ToastState } from "@/hooks/useToast";
+import type { ToastState } from "@/shared/useToast";
 
 interface ToastProps {
   toast: ToastState | null;
