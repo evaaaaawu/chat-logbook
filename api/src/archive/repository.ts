@@ -19,6 +19,7 @@ import {
   schemaVersion,
 } from "./schema.js";
 import { generateChatId } from "./chat-id.js";
+import { createArchiveReadSeam, type ArchiveReadSeam } from "./read-seam.js";
 
 export type ArchiveDb = BetterSQLite3Database<typeof schema>;
 
@@ -87,6 +88,12 @@ export interface AppliedMigration {
 
 export interface ArchiveRepository {
   readonly db: ArchiveDb;
+  /**
+   * The read seam for the Chat read path. Named read primitives the reader
+   * composes into the public Chat/Message JSON, so the read path never touches
+   * the raw drizzle handle.
+   */
+  readonly read: ArchiveReadSeam;
   getArchiveUuid(): string;
   getAppliedMigrations(): AppliedMigration[];
   generateChatId(): string;
@@ -181,6 +188,7 @@ export function createArchiveRepository({
 
   return {
     db,
+    read: createArchiveReadSeam(db),
     getArchiveUuid() {
       const row = db.select().from(archiveMeta).get();
       if (!row) {
