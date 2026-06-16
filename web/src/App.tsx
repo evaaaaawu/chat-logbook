@@ -2,16 +2,7 @@ import { useEffect, useState } from "react";
 import { useChats } from "@/chat/useChats";
 import { useMessages } from "@/conversation/useMessages";
 import { useToast } from "@/shared/useToast";
-import { useSortPreference } from "@/chat/sort/useSortPreference";
-import { useFrozenSort } from "@/chat/sort/useFrozenSort";
-import {
-  CHAT_DIRECTION_LABELS,
-  CHAT_SORT_AXES,
-  CHAT_SORT_CONFIG,
-  TRASH_DIRECTION_LABELS,
-  TRASH_SORT_AXES,
-  TRASH_SORT_CONFIG,
-} from "@/chat/sort/sortConfig";
+import { useChatOrder } from "@/chat/sort/useChatOrder";
 import { FilterPanel } from "@/chat/FilterPanel";
 import { ChatList } from "@/chat/ChatList";
 import { SortControl } from "@/chat/sort/SortControl";
@@ -33,8 +24,6 @@ function App() {
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const { messages, error } = useMessages(selectedId);
   const { toast, showToast, dismissToast } = useToast();
-  const sort = useSortPreference(CHAT_SORT_CONFIG);
-  const trashSort = useSortPreference(TRASH_SORT_CONFIG);
 
   // Switching views (Chat List <-> Trash) flushes any held-back background order
   // by counting as a re-sort. A monotonic generation bumps on every view switch
@@ -47,22 +36,14 @@ function App() {
   };
 
   // sortEpoch (user data actions) and viewGen (view switches) both flush the
-  // frozen order; sort field/direction changes flush it inside useFrozenSort.
+  // frozen order; sort field/direction changes flush it inside the hook.
   const resortKey = `${sortEpoch}:${viewGen}`;
-  const mainChats = useFrozenSort(
-    chats.filter((c) => !c.isDeleted),
-    sort.field,
-    sort.direction,
-    resortKey
-  );
-  const deletedChats = useFrozenSort(
-    chats.filter((c) => c.isDeleted),
-    trashSort.field,
-    trashSort.direction,
-    resortKey
-  );
-  const visibleChats = mode === "trash" ? deletedChats : mainChats;
-  const activeSort = mode === "trash" ? trashSort : sort;
+  const mainOrder = useChatOrder("main", chats, resortKey);
+  const trashOrder = useChatOrder("trash", chats, resortKey);
+  const order = mode === "trash" ? trashOrder : mainOrder;
+  const mainChats = mainOrder.orderedChats;
+  const deletedChats = trashOrder.orderedChats;
+  const visibleChats = order.orderedChats;
   const selectedChat = chats.find((c) => c.id === selectedId) ?? null;
 
   const handleRestore = (id: string) => {
@@ -167,32 +148,8 @@ function App() {
             onBack={() => switchMode("main")}
             deletedCount={deletedChats.length}
             onOpenTrash={() => switchMode("trash")}
-            sortSignature={`${mode}:${activeSort.field}:${activeSort.direction}`}
-            sortControl={
-              mode === "trash" ? (
-                <SortControl
-                  testId="trash-sort-popover"
-                  axes={TRASH_SORT_AXES}
-                  field={trashSort.field}
-                  direction={trashSort.direction}
-                  isDefault={trashSort.isDefault}
-                  directionLabels={TRASH_DIRECTION_LABELS}
-                  onSelectField={trashSort.selectField}
-                  onToggleDirection={trashSort.toggleDirection}
-                />
-              ) : (
-                <SortControl
-                  testId="chat-sort-popover"
-                  axes={CHAT_SORT_AXES}
-                  field={sort.field}
-                  direction={sort.direction}
-                  isDefault={sort.isDefault}
-                  directionLabels={CHAT_DIRECTION_LABELS}
-                  onSelectField={sort.selectField}
-                  onToggleDirection={sort.toggleDirection}
-                />
-              )
-            }
+            sortSignature={`${mode}:${order.sortControlProps.field}:${order.sortControlProps.direction}`}
+            sortControl={<SortControl {...order.sortControlProps} />}
           />
         </ResizablePanel>
         <ResizableHandle />

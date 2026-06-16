@@ -94,6 +94,12 @@ _Avoid_: delete, hard-delete (in prose), wipe
 Whether a Chat appears, decided at read time from Metadata — never by changing the Archive or the Index.
 _Avoid_: filtering, access
 
+### List ordering
+
+**Frozen order**:
+The Chat list holds its existing row order across a background refresh — existing rows never move, and only a newly-appearing Chat slots into its sorted position. The order re-sorts only on a user action: changing the sort, switching view (Chat list ⇄ Trash), or a Trash/Restore. Owned by the `useChatOrder` hook per view.
+_Avoid_: pinned order, locked order, sticky sort
+
 ## Flagged ambiguities
 
 - **Chat, not session.** "Chat" is canonical since the v0.8.0 rename. "session" still lingers in `docs/PRD.md` — that is term debt to repay, not an alias to keep. Use "session" only when you mean the _Agent's own_ unit (which is why the field is `source id`, once `source_session_id`).
