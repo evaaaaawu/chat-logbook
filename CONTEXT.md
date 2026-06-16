@@ -26,6 +26,10 @@ _Avoid_: cache, search cache
 The ingestion progress watermark derived from Source — how far each Source file has been scanned, so the next Scan can skip unchanged files. Freely rebuildable: losing it costs one full re-scan, never any data. Not backed up.
 _Avoid_: scan state, sync state, cursor
 
+**ChatReader**:
+The Chat read face — at read time it composes Archive + Metadata into the outward Chat/Message shapes the API serves. A read-time derivation, not a materialized store.
+_Avoid_: chat store, view model
+
 ### The conversation
 
 **Chat**:
