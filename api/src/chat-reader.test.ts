@@ -605,3 +605,214 @@ describe("ChatReader is agent-agnostic", () => {
     ]);
   });
 });
+
+/**
+ * Count how many SQLite statements execute on the archive connection while
+ * `fn` runs. Wraps `prepare` so every returned statement's all/get/run is
+ * tallied — this measures real query volume, independent of drizzle's
+ * statement caching.
+ */
+function countArchiveQueries(
+  archive: ReturnType<typeof createArchiveRepository>,
+  fn: () => void
+): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = (archive.db as any).$client;
+  const originalPrepare = client.prepare.bind(client);
+  let count = 0;
+  client.prepare = (source: string) => {
+    const stmt = originalPrepare(source);
+    for (const method of ["all", "get", "run"] as const) {
+      const original = stmt[method]?.bind(stmt);
+      if (!original) continue;
+      stmt[method] = (...args: unknown[]) => {
+        count += 1;
+        return original(...args);
+      };
+    }
+    return stmt;
+  };
+  try {
+    fn();
+  } finally {
+    client.prepare = originalPrepare;
+  }
+  return count;
+}
+
+function seedFullChat(
+  archive: ReturnType<typeof createArchiveRepository>,
+  metadata: ReturnType<typeof createMetadataRepository>,
+  index: number
+): void {
+  // chat_id is derived from internalId.slice(0, 6) by seedChat, so the first
+  // six characters must be unique per chat to avoid a UNIQUE collision.
+  const internalId = `c${String(index).padStart(5, "0")}`;
+  const sourceId = `session-${index}`;
+  seedChat(archive, {
+    internalId,
+    sourceId,
+    firstSeenAt: new Date(1700000000000 + index),
+  });
+  seedMessage(archive, {
+    sourceId,
+    messageId: `m-user-${index}`,
+    role: "user",
+    ts: new Date(1700000100000 + index),
+    text: `Question ${index}`,
+    blocks: [{ type: "text", text: `Question ${index}` }],
+  });
+  seedMessage(archive, {
+    sourceId,
+    messageId: `m-assistant-${index}`,
+    role: "assistant",
+    ts: new Date(1700000500000 + index),
+    text: `Answer ${index}`,
+    blocks: [{ type: "text", text: `Answer ${index}` }],
+  });
+  seedRawMessage(archive, {
+    sourceId,
+    sourcePath: `/path/${index}.jsonl`,
+    payloadHash: `hash-${index}`,
+    ingestedAt: new Date(1700000900000 + index),
+  });
+  if (index % 2 === 0) {
+    metadata.setCustomTitle(internalId, `Custom title ${index}`);
+  }
+}
+
+describe("ChatReader.listChats query batching", () => {
+  it("runs a constant number of archive queries regardless of chat count", () => {
+    const archiveSmall = createArchiveRepository({ dataDir });
+    const metadataSmall = createMetadataRepository({ dataDir });
+    seedFullChat(archiveSmall, metadataSmall, 1);
+    const readerSmall = createChatReader({
+      archive: archiveSmall,
+      metadata: metadataSmall,
+    });
+    const smallCount = countArchiveQueries(archiveSmall, () => {
+      readerSmall.listChats({ includeTrashed: false });
+    });
+
+    const bigDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "chat-logbook-reader-test-big-")
+    );
+    try {
+      const archiveBig = createArchiveRepository({ dataDir: bigDir });
+      const metadataBig = createMetadataRepository({ dataDir: bigDir });
+      for (let i = 1; i <= 20; i += 1) {
+        seedFullChat(archiveBig, metadataBig, i);
+      }
+      const readerBig = createChatReader({
+        archive: archiveBig,
+        metadata: metadataBig,
+      });
+      const bigCount = countArchiveQueries(archiveBig, () => {
+        readerBig.listChats({ includeTrashed: false });
+      });
+
+      expect(bigCount).toBe(smallCount);
+    } finally {
+      fs.rmSync(bigDir, { recursive: true, force: true });
+    }
+  });
+
+  it("assembles per-chat title, ts-range, and source path correctly across multiple chats", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    // Chat A: derives its title from the first user message, has two raw rows
+    // (newest path wins) and a two-message ts-range.
+    seedChat(archive, {
+      internalId: "aaaaaa-uuid",
+      sourceId: "session-a",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceId: "session-a",
+      messageId: "a-user",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: "Title from A",
+      blocks: [{ type: "text", text: "Title from A" }],
+    });
+    seedMessage(archive, {
+      sourceId: "session-a",
+      messageId: "a-assistant",
+      role: "assistant",
+      ts: new Date(1700000800000),
+      text: "ok",
+      blocks: [{ type: "text", text: "ok" }],
+    });
+    seedRawMessage(archive, {
+      sourceId: "session-a",
+      sourcePath: "/a/old.jsonl",
+      payloadHash: "a-old",
+      ingestedAt: new Date(1700000100000),
+    });
+    seedRawMessage(archive, {
+      sourceId: "session-a",
+      sourcePath: "/a/new.jsonl",
+      payloadHash: "a-new",
+      ingestedAt: new Date(1700000900000),
+    });
+
+    // Chat B: a custom title overrides its first user message.
+    seedChat(archive, {
+      internalId: "bbbbbb-uuid",
+      sourceId: "session-b",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceId: "session-b",
+      messageId: "b-user",
+      role: "user",
+      ts: new Date(1700000200000),
+      text: "Derived B title",
+      blocks: [{ type: "text", text: "Derived B title" }],
+    });
+    seedRawMessage(archive, {
+      sourceId: "session-b",
+      sourcePath: "/b/only.jsonl",
+      payloadHash: "b-only",
+      ingestedAt: new Date(1700000300000),
+    });
+    metadata.setCustomTitle("bbbbbb-uuid", "Custom B title");
+
+    // Chat C: no messages, no raw rows — falls back to Untitled, null path,
+    // and firstSeenAt for both timestamps.
+    seedChat(archive, {
+      internalId: "cccccc-uuid",
+      sourceId: "session-c",
+      firstSeenAt: new Date(1700000050000),
+    });
+
+    const reader = createChatReader({ archive, metadata });
+    const chats = reader.listChats({ includeTrashed: false });
+
+    // Ordering mirrors the chat-row insertion order.
+    expect(chats.map((c) => c.id)).toEqual([
+      "session-a",
+      "session-b",
+      "session-c",
+    ]);
+
+    const a = chats.find((c) => c.id === "session-a")!;
+    expect(a.title).toBe("Title from A");
+    expect(a.sourceFilePath).toBe("/a/new.jsonl");
+    expect(a.createdAt).toBe(1700000100000);
+    expect(a.updatedAt).toBe(1700000800000);
+
+    const b = chats.find((c) => c.id === "session-b")!;
+    expect(b.title).toBe("Custom B title");
+    expect(b.sourceFilePath).toBe("/b/only.jsonl");
+    expect(b.createdAt).toBe(1700000200000);
+    expect(b.updatedAt).toBe(1700000200000);
+
+    const c = chats.find((c) => c.id === "session-c")!;
+    expect(c.title).toBe("Untitled");
+    expect(c.sourceFilePath).toBeNull();
+    expect(c.createdAt).toBe(1700000050000);
+    expect(c.updatedAt).toBe(1700000050000);
+  });
+});
