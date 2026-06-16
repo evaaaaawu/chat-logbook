@@ -4,7 +4,7 @@ import type { DirectionLabels, SortAxis } from "@/chat/sort/sortConfig";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { cn } from "@/shared/utils";
 
-interface SortControlProps<F extends string> {
+export interface SortControlProps<F extends string> {
   axes: SortAxis<F>[];
   field: F;
   direction: SortDirection;
