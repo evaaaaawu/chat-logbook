@@ -1,6 +1,5 @@
 import chokidar, { type FSWatcher, type ChokidarOptions } from "chokidar";
 import type { ArchiveRepository } from "../archive/repository.js";
-import { ingestionEvents } from "../archive/schema.js";
 import type { CheckpointRepository } from "../checkpoint/repository.js";
 import type { AgentPlugin, PluginEnv, ChatRef } from "../plugins/types.js";
 import { runIngestion, type IngestResult } from "./ingest.js";
@@ -95,17 +94,14 @@ export function startWatcher(opts: WatcherOptions): IngestionWatcher {
     const binding = pathBindings.get(removedPath);
     if (!binding) return;
     try {
-      opts.archive.db
-        .insert(ingestionEvents)
-        .values({
-          agent: binding.plugin.id,
-          sourceId: binding.ref.sourceId,
-          sourcePath: removedPath,
-          eventType: "unlink_observed",
-          detail: { path: removedPath },
-          observedAt: new Date(),
-        })
-        .run();
+      opts.archive.recordIngestionEvent({
+        agent: binding.plugin.id,
+        sourceId: binding.ref.sourceId,
+        sourcePath: removedPath,
+        eventType: "unlink_observed",
+        detail: { path: removedPath },
+        observedAt: new Date(),
+      });
     } catch (err) {
       onError(err);
     }
