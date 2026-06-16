@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import type { SortDirection } from "@/lib/sortChats";
+import type { SortDirection } from "@/chat/sort/sortChats";
 import {
   isDefaultSort,
   loadSortPreference,
@@ -8,7 +8,7 @@ import {
   toggleDirection,
   type SortConfig,
   type SortPreference,
-} from "@/lib/sortPreference";
+} from "@/chat/sort/sortPreference";
 
 export interface UseSortPreferenceResult<F extends string> {
   field: F;

@@ -1,12 +1,8 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import type { SortDirection } from "@/lib/sortChats";
-import type { DirectionLabels, SortAxis } from "@/lib/chatSort";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import type { SortDirection } from "@/chat/sort/sortChats";
+import type { DirectionLabels, SortAxis } from "@/chat/sort/sortConfig";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import { cn } from "@/shared/utils";
 
 interface SortControlProps<F extends string> {
   axes: SortAxis<F>[];

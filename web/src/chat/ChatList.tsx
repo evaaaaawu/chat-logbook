@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import type { Chat } from "@/types";
-import { EditableTitle } from "./EditableTitle";
+import { EditableTitle } from "@/metadata/EditableTitle";
 
 interface ChatListProps {
   mode?: "main" | "trash";

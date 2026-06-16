@@ -5,10 +5,10 @@ import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { Message, ContentBlock, Chat } from "@/types";
-import { CollapsibleThinking } from "./CollapsibleThinking";
-import { CollapsibleToolCall } from "./CollapsibleToolCall";
-import { ChatMetadataPopover } from "./ChatMetadataPopover";
-import { EditableTitle } from "./EditableTitle";
+import { CollapsibleThinking } from "@/conversation/CollapsibleThinking";
+import { CollapsibleToolCall } from "@/conversation/CollapsibleToolCall";
+import { ChatMetadataPopover } from "@/metadata/ChatMetadataPopover";
+import { EditableTitle } from "@/metadata/EditableTitle";
 
 interface ConversationViewProps {
   chat: Chat | null;

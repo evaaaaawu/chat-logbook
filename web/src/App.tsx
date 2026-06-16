@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { useChats } from "@/hooks/useChats";
-import { useMessages } from "@/hooks/useMessages";
-import { useToast } from "@/hooks/useToast";
-import { useSortPreference } from "@/hooks/useSortPreference";
-import { useFrozenSort } from "@/hooks/useFrozenSort";
+import { useChats } from "@/chat/useChats";
+import { useMessages } from "@/conversation/useMessages";
+import { useToast } from "@/shared/useToast";
+import { useSortPreference } from "@/chat/sort/useSortPreference";
+import { useFrozenSort } from "@/chat/sort/useFrozenSort";
 import {
   CHAT_DIRECTION_LABELS,
   CHAT_SORT_AXES,
@@ -11,17 +11,17 @@ import {
   TRASH_DIRECTION_LABELS,
   TRASH_SORT_AXES,
   TRASH_SORT_CONFIG,
-} from "@/lib/chatSort";
-import { FilterPanel } from "@/components/FilterPanel";
-import { ChatList } from "@/components/ChatList";
-import { SortControl } from "@/components/SortControl";
-import { ConversationView } from "@/components/ConversationView";
-import { Toast } from "@/components/Toast";
+} from "@/chat/sort/sortConfig";
+import { FilterPanel } from "@/chat/FilterPanel";
+import { ChatList } from "@/chat/ChatList";
+import { SortControl } from "@/chat/sort/SortControl";
+import { ConversationView } from "@/conversation/ConversationView";
+import { Toast } from "@/shared/Toast";
 import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
-} from "@/components/ui/resizable";
+} from "@/shared/ui/resizable";
 
 function App() {
   const { chats, sortEpoch, softDelete, restore, setTitle } = useChats();
