@@ -6,7 +6,6 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createArchiveRepository } from "./repository.js";
 import { CROCKFORD_ALPHABET } from "./chat-id.js";
-import { chats } from "./schema.js";
 
 const FIXTURE_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -60,23 +59,18 @@ describe("ArchiveRepository", () => {
     const repo = createArchiveRepository({ dataDir });
     const allowed = new Set(CROCKFORD_ALPHABET);
 
-    const first = repo.generateChatId();
-    expect(first).toHaveLength(6);
-    for (const ch of first) expect(allowed.has(ch)).toBe(true);
-
-    repo.db
-      .insert(chats)
-      .values({
-        id: "id-1",
-        chatId: first,
-        agent: "claude-code",
-        sourceId: "a",
-        firstSeenAt: new Date(),
-      })
-      .run();
+    // Seed a real chat so its chat_id is taken; ensureChat assigns the id via
+    // the same generateChatId path, so its taken-set behavior is what we want
+    // subsequent calls to avoid.
+    repo.ensureChat("claude-code", "a", new Date());
+    const seeded = repo.read.findChatBySourceId("a");
+    expect(seeded).not.toBeNull();
+    const taken = seeded!.chatId;
+    expect(taken).toHaveLength(6);
+    for (const ch of taken) expect(allowed.has(ch)).toBe(true);
 
     for (let i = 0; i < 20; i++) {
-      expect(repo.generateChatId()).not.toBe(first);
+      expect(repo.generateChatId()).not.toBe(taken);
     }
 
     repo.close();

@@ -5,11 +5,6 @@ import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import { createApp } from "./app.js";
 import { createArchiveRepository } from "./archive/repository.js";
 import { createMetadataRepository } from "./metadata/repository.js";
-import {
-  chats as archiveChats,
-  rawMessages as archiveRawMessages,
-  messages as archiveMessages,
-} from "./archive/schema.js";
 
 interface ChatResponse {
   id: string;
@@ -35,26 +30,22 @@ interface MessageResponse {
   timestamp: string;
 }
 
+const DEFAULT_AGENT = "claude-code";
+
 function seedChat(
   archive: ReturnType<typeof createArchiveRepository>,
   opts: {
-    internalId: string;
     sourceId: string;
     firstSeenAt: Date;
     project?: string | null;
   }
-): void {
-  archive.db
-    .insert(archiveChats)
-    .values({
-      id: opts.internalId,
-      chatId: opts.internalId.slice(0, 6).toUpperCase(),
-      agent: "claude-code",
-      sourceId: opts.sourceId,
-      firstSeenAt: opts.firstSeenAt,
-      project: opts.project ?? null,
-    })
-    .run();
+): string {
+  return archive.ensureChat(
+    DEFAULT_AGENT,
+    opts.sourceId,
+    opts.firstSeenAt,
+    opts.project ?? undefined
+  );
 }
 
 function seedMessage(
@@ -68,32 +59,27 @@ function seedMessage(
     blocks: unknown[];
   }
 ): void {
-  const rawRow = archive.db
-    .insert(archiveRawMessages)
-    .values({
-      agent: "claude-code",
-      sourceId: opts.sourceId,
-      sourcePath: "/dev/null",
-      sourceLocator: `${opts.messageId}:0`,
-      rawPayload: JSON.stringify({ id: opts.messageId }),
-      payloadHash: `hash-${opts.messageId}`,
-      ingestedAt: opts.ts,
-    })
-    .returning({ id: archiveRawMessages.id })
-    .get();
-  archive.db
-    .insert(archiveMessages)
-    .values({
-      agent: "claude-code",
-      sourceId: opts.sourceId,
+  archive.ensureChat(DEFAULT_AGENT, opts.sourceId, opts.ts);
+  const raw = archive.insertRawMessage({
+    agent: DEFAULT_AGENT,
+    sourceId: opts.sourceId,
+    sourcePath: "/dev/null",
+    sourceLocator: `${opts.messageId}:0`,
+    payload: { id: opts.messageId },
+    ingestedAt: opts.ts,
+  });
+  archive.upsertNormalizedMessage({
+    agent: DEFAULT_AGENT,
+    sourceId: opts.sourceId,
+    rawId: raw.id,
+    message: {
       messageId: opts.messageId,
       role: opts.role,
-      ts: opts.ts,
+      ts: opts.ts.toISOString(),
       text: opts.text,
       blocks: opts.blocks,
-      rawId: rawRow.id,
-    })
-    .run();
+    },
+  });
 }
 
 let dataDir: string;
@@ -111,7 +97,6 @@ describe("Soft delete and restore (archive-backed)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -128,7 +113,6 @@ describe("Soft delete and restore (archive-backed)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -148,7 +132,6 @@ describe("Soft delete and restore (archive-backed)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -169,7 +152,6 @@ describe("Soft delete and restore (archive-backed)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -177,8 +159,8 @@ describe("Soft delete and restore (archive-backed)", () => {
     const app = createApp({ archive, metadata });
     await app.request("/api/chats/session-1", { method: "DELETE" });
 
-    const rows = archive.db.select().from(archiveChats).all();
-    expect(rows.map((r) => r.sourceId)).toContain("session-1");
+    const row = archive.read.findChatBySourceId("session-1");
+    expect(row?.sourceId).toBe("session-1");
   });
 });
 
@@ -187,7 +169,6 @@ describe("GET /api/chats/:id visibility", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -211,7 +192,6 @@ describe("GET /api/chats/:id visibility", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -237,7 +217,6 @@ describe("GET /api/chats/:id visibility", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -278,7 +257,6 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -298,7 +276,6 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -316,7 +293,6 @@ describe("PATCH /api/chats/:id/title", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -346,8 +322,7 @@ describe("PATCH /api/chats/:id/title", () => {
   it("clears the custom title when an empty string is sent, reverting to derived", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedChat(archive, {
-      internalId: "internal-uuid-1",
+    const internalId = seedChat(archive, {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -359,7 +334,7 @@ describe("PATCH /api/chats/:id/title", () => {
       text: "Build a login page",
       blocks: [{ type: "text", text: "Build a login page" }],
     });
-    metadata.setCustomTitle("internal-uuid-1", "Custom");
+    metadata.setCustomTitle(internalId, "Custom");
 
     const app = createApp({ archive, metadata });
     const patch = await app.request("/api/chats/session-1/title", {
@@ -378,12 +353,11 @@ describe("PATCH /api/chats/:id/title", () => {
   it("treats whitespace-only title as a clear", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedChat(archive, {
-      internalId: "internal-uuid-1",
+    const internalId = seedChat(archive, {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
-    metadata.setCustomTitle("internal-uuid-1", "Custom");
+    metadata.setCustomTitle(internalId, "Custom");
 
     const app = createApp({ archive, metadata });
     const patch = await app.request("/api/chats/session-1/title", {
@@ -403,7 +377,6 @@ describe("PATCH /api/chats/:id/title", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -438,7 +411,6 @@ describe("PATCH /api/chats/:id/title", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -456,7 +428,6 @@ describe("PATCH /api/chats/:id/title", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });

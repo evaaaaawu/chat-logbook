@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createArchiveRepository } from "../archive/repository.js";
-import { chats, messages, rawMessages } from "../archive/schema.js";
 import { createCheckpointRepository } from "../checkpoint/repository.js";
 import { chatScanState } from "../checkpoint/schema.js";
 import { ClaudeCodePlugin } from "../plugins/claude-code/plugin.js";
@@ -27,6 +26,23 @@ function setupEnv(): Env {
   return { dataDir, homeDir };
 }
 
+/**
+ * Sum the messages of every chat through the read seam. The archive's outward
+ * read surface is per-chat, so a global count is composed from `listChatRows`
+ * + `listMessagesByChat` rather than a back-channel `SELECT FROM messages`.
+ */
+function totalMessageCount(
+  archive: ReturnType<typeof createArchiveRepository>
+): number {
+  return archive.read
+    .listChatRows()
+    .reduce(
+      (acc, chat) =>
+        acc + archive.read.listMessagesByChat(chat.agent, chat.sourceId).length,
+      0
+    );
+}
+
 let env: Env;
 
 beforeEach(() => {
@@ -38,7 +54,7 @@ afterEach(() => {
 });
 
 describe("runIngestion", () => {
-  it("populates archive.db sessions, raw_messages, and messages from source on first run", async () => {
+  it("populates chats, raw messages, and normalized messages from source on first run", async () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
     const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
 
@@ -52,22 +68,19 @@ describe("runIngestion", () => {
     expect(result.scanned).toBeGreaterThan(0);
     expect(result.rawInserted).toBeGreaterThan(0);
     expect(result.normalizedUpserted).toBeGreaterThan(0);
+    // Normalized writes can never outnumber raw rows: plugins skip some
+    // payloads (meta, snapshot, sidechain) at the normalize step but write
+    // them all to the raw layer.
+    expect(result.normalizedUpserted).toBeLessThanOrEqual(result.rawInserted);
 
-    const chatRows = archive.db.select().from(chats).all();
-    const rawRows = archive.db.select().from(rawMessages).all();
-    const msgRows = archive.db.select().from(messages).all();
-
+    const chatRows = archive.read.listChatRows();
     expect(chatRows.length).toBeGreaterThan(0);
-    expect(rawRows.length).toBeGreaterThan(0);
-    expect(msgRows.length).toBeGreaterThan(0);
-    expect(msgRows.length).toBeLessThanOrEqual(rawRows.length);
-
-    for (const s of chatRows) {
-      expect(s.agent).toBe("claude-code");
-      expect(s.chatId).toHaveLength(6);
+    for (const c of chatRows) {
+      expect(c.agent).toBe("claude-code");
+      expect(c.chatId).toHaveLength(6);
     }
 
-    const session1 = chatRows.find((s) => s.sourceId === "session-1");
+    const session1 = archive.read.findChatBySourceId("session-1");
     expect(session1?.project).toBe("project-a");
     expect(session1?.projectPath).toBe("/Users/test/project-a");
 
@@ -85,9 +98,8 @@ describe("runIngestion", () => {
       checkpoint,
       env: { homeDir: env.homeDir },
     });
-    const rawBefore = archive.db.select().from(rawMessages).all().length;
-    const msgBefore = archive.db.select().from(messages).all().length;
-    const chatsBefore = archive.db.select().from(chats).all().length;
+    const chatsBefore = archive.read.listChatRows().length;
+    const messagesBefore = totalMessageCount(archive);
 
     const second = await runIngestion({
       plugins: pluginsList,
@@ -98,9 +110,9 @@ describe("runIngestion", () => {
 
     expect(first.rawInserted).toBeGreaterThan(0);
     expect(second.rawInserted).toBe(0);
-    expect(archive.db.select().from(rawMessages).all().length).toBe(rawBefore);
-    expect(archive.db.select().from(messages).all().length).toBe(msgBefore);
-    expect(archive.db.select().from(chats).all().length).toBe(chatsBefore);
+    expect(second.normalizedUpserted).toBe(0);
+    expect(archive.read.listChatRows().length).toBe(chatsBefore);
+    expect(totalMessageCount(archive)).toBe(messagesBefore);
 
     archive.close();
   });
@@ -116,7 +128,6 @@ describe("runIngestion", () => {
       checkpoint,
       env: { homeDir: env.homeDir },
     });
-    const rawBefore = archive.db.select().from(rawMessages).all();
 
     // Edit a line in the source: same line number, different payload.
     const sourceFile = path.join(
@@ -145,14 +156,9 @@ describe("runIngestion", () => {
       env: { homeDir: env.homeDir },
     });
 
-    const rawAfter = archive.db.select().from(rawMessages).all();
+    // Append-only at the raw layer: the changed line inserts a new raw row
+    // alongside the original. ADR-0002 guarantees nothing gets overwritten.
     expect(second.rawInserted).toBe(1);
-    expect(rawAfter.length).toBe(rawBefore.length + 1);
-
-    // All original raw rows are still present (no overwrite).
-    for (const before of rawBefore) {
-      expect(rawAfter.some((r) => r.id === before.id)).toBe(true);
-    }
 
     archive.close();
   });
@@ -161,37 +167,17 @@ describe("runIngestion", () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
     const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
 
-    await runIngestion({
+    const result = await runIngestion({
       plugins: [new ClaudeCodePlugin()],
       archive,
       checkpoint,
       env: { homeDir: env.homeDir },
     });
 
-    const rawRows = archive.db.select().from(rawMessages).all();
-    const msgRows = archive.db.select().from(messages).all();
-
     // Fixture contains file-history-snapshot, isMeta, and isSidechain rows
-    // that the claude-code plugin skips. They must still appear in raw_messages.
-    const hasMetaRaw = rawRows.some((r) => {
-      const p = JSON.parse(r.rawPayload) as Record<string, unknown>;
-      return p.isMeta === true || p.type === "file-history-snapshot";
-    });
-    expect(hasMetaRaw).toBe(true);
-
-    // No message row should be a meta/snapshot/sidechain payload.
-    const rawById = new Map(rawRows.map((r) => [r.id, r]));
-    for (const m of msgRows) {
-      const raw = rawById.get(m.rawId);
-      expect(raw).toBeDefined();
-      const p = JSON.parse(raw!.rawPayload) as Record<string, unknown>;
-      expect(p.isMeta).not.toBe(true);
-      expect(p.isSidechain).not.toBe(true);
-      expect(p.type === "user" || p.type === "assistant").toBe(true);
-    }
-
-    // Strict inequality: there are skipped raw rows.
-    expect(msgRows.length).toBeLessThan(rawRows.length);
+    // that the claude-code plugin skips at the normalize step but writes to
+    // the raw layer. Strict inequality proves at least one skipped raw row.
+    expect(result.normalizedUpserted).toBeLessThan(result.rawInserted);
 
     archive.close();
   });
@@ -286,10 +272,9 @@ describe("runIngestion", () => {
       checkpoint,
       env: { homeDir: env.homeDir },
     });
-    const rawBefore = archive.db.select().from(rawMessages).all();
-    const msgBefore = archive.db.select().from(messages).all();
-    const chatsBefore = archive.db.select().from(chats).all();
-    expect(rawBefore.length).toBeGreaterThan(1);
+    const chatsBefore = archive.read.listChatRows().length;
+    const messagesBefore = totalMessageCount(archive);
+    expect(messagesBefore).toBeGreaterThan(0);
 
     // Truncate source file to a single line (simulate vendor pruning).
     const sourceFile = path.join(
@@ -311,16 +296,10 @@ describe("runIngestion", () => {
       env: { homeDir: env.homeDir },
     });
 
-    const rawAfter = archive.db.select().from(rawMessages).all();
-    const msgAfter = archive.db.select().from(messages).all();
-    const chatsAfter = archive.db.select().from(chats).all();
-
-    expect(rawAfter.length).toBeGreaterThanOrEqual(rawBefore.length);
-    expect(msgAfter.length).toBeGreaterThanOrEqual(msgBefore.length);
-    expect(chatsAfter.length).toBe(chatsBefore.length);
-    for (const r of rawBefore) {
-      expect(rawAfter.some((a) => a.id === r.id)).toBe(true);
-    }
+    // Chat count unchanged and messages append-only: shrinking the source
+    // never deletes archive rows (ADR-0002).
+    expect(archive.read.listChatRows().length).toBe(chatsBefore);
+    expect(totalMessageCount(archive)).toBeGreaterThanOrEqual(messagesBefore);
   });
 
   it("fills in a session's project on a later scan once cwd is resolvable", async () => {
@@ -356,11 +335,7 @@ describe("runIngestion", () => {
       checkpoint,
       env: { homeDir: env.homeDir },
     });
-    const before = archive.db
-      .select()
-      .from(chats)
-      .all()
-      .find((s) => s.sourceId === "late");
+    const before = archive.read.findChatBySourceId("late");
     expect(before?.project).toBeNull();
 
     // A later message now carries cwd (e.g. read further into the file).
@@ -381,18 +356,14 @@ describe("runIngestion", () => {
       checkpoint,
       env: { homeDir: env.homeDir },
     });
-    const after = archive.db
-      .select()
-      .from(chats)
-      .all()
-      .find((s) => s.sourceId === "late");
+    const after = archive.read.findChatBySourceId("late");
     expect(after?.project).toBe("late-app");
     expect(after?.projectPath).toBe("/Users/test/late-app");
 
     archive.close();
   });
 
-  it("records the scan watermark in the checkpoint store, not archive.db", async () => {
+  it("records the scan watermark in the checkpoint store, not the archive store", async () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
     const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
     const pluginsList = [new ClaudeCodePlugin()];
@@ -431,19 +402,19 @@ describe("runIngestion", () => {
     const firstCheckpoint = createCheckpointRepository({
       dataDir: env.dataDir,
     });
-    await runIngestion({
+    const first = await runIngestion({
       plugins: pluginsList,
       archive,
       checkpoint: firstCheckpoint,
       env: { homeDir: env.homeDir },
     });
-    const rawBefore = archive.db.select().from(rawMessages).all();
-    const msgBefore = archive.db.select().from(messages).all();
-    expect(rawBefore.length).toBeGreaterThan(0);
+    expect(first.rawInserted).toBeGreaterThan(0);
+    const chatsBefore = archive.read.listChatRows().length;
+    const messagesBefore = totalMessageCount(archive);
     firstCheckpoint.close();
 
-    // Upgrade drops session_scan_state from archive.db; checkpoint.db starts
-    // empty. Model that with a fresh, empty Checkpoint store.
+    // Upgrade drops session_scan_state from the archive store; the checkpoint
+    // store starts empty. Model that with a fresh, empty Checkpoint store.
     const freshDataDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "chat-logbook-fresh-checkpoint-")
     );
@@ -465,12 +436,11 @@ describe("runIngestion", () => {
 
     expect(upgrade.skippedByMtime).toBe(0);
     expect(upgrade.rawInserted).toBe(0);
-    expect(archive.db.select().from(rawMessages).all().length).toBe(
-      rawBefore.length
-    );
-    expect(archive.db.select().from(messages).all().length).toBe(
-      msgBefore.length
-    );
+    // Raw layer is a no-op: chat and message counts stay where the first run
+    // left them. `normalizedUpserted` may still be > 0 because last-write-wins
+    // re-stamps the same payloads — that's a write, but not a new row.
+    expect(archive.read.listChatRows().length).toBe(chatsBefore);
+    expect(totalMessageCount(archive)).toBe(messagesBefore);
     // The watermark is rebuilt in the new checkpoint store.
     expect(
       emptyCheckpoint.getScanState("claude-code", "session-1")

@@ -87,7 +87,6 @@ export interface AppliedMigration {
 }
 
 export interface ArchiveRepository {
-  readonly db: ArchiveDb;
   /**
    * The read seam for the Chat read path. Named read primitives the reader
    * composes into the public Chat/Message JSON, so the read path never touches
@@ -187,7 +186,6 @@ export function createArchiveRepository({
   }
 
   return {
-    db,
     read: createArchiveReadSeam(db),
     getArchiveUuid() {
       const row = db.select().from(archiveMeta).get();
