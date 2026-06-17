@@ -1,27 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { eq, isNotNull } from "drizzle-orm";
-import {
-  drizzle,
-  type BetterSQLite3Database,
-} from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import { openStore } from "../storage/openStore.js";
+import * as schema from "./schema.js";
 import { chatsMeta } from "./schema.js";
 
-function resolveMigrationsFolder(): string {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    path.join(here, "../../drizzle"),
-    path.join(here, "./drizzle"),
-  ];
-  const found = candidates.find((p) => fs.existsSync(p));
-  if (!found) {
-    throw new Error("Could not locate drizzle migrations folder");
-  }
-  return found;
-}
+export type MetadataDb = BetterSQLite3Database<typeof schema>;
 
 const DB_FILE = "metadata.db";
 const LEGACY_DB_FILE = "data.db";
@@ -74,11 +60,17 @@ export function createMetadataRepository({
   lookupInternalId,
   ensureChat,
 }: RepositoryOptions): MetadataRepository {
-  fs.mkdirSync(dataDir, { recursive: true });
+  // Rename a pre-v0.9 data.db before opening (ADR-0012). openStore has no
+  // beforeOpen hook; the rename is a no-op when dataDir doesn't exist yet, so
+  // plain ordering here is enough.
   migrateLegacyDbFile(dataDir);
-  const sqlite = new Database(path.join(dataDir, DB_FILE));
-  const db: BetterSQLite3Database = drizzle(sqlite);
-  migrate(db, { migrationsFolder: resolveMigrationsFolder() });
+  const { db, sqlite } = openStore({
+    dataDir,
+    dbFile: DB_FILE,
+    callerUrl: import.meta.url,
+    migrationsSubdir: "drizzle",
+    schema,
+  });
 
   if (lookupInternalId) {
     rekeyLegacyRows(sqlite, db, lookupInternalId, ensureChat);
@@ -181,7 +173,7 @@ const REKEY_USER_VERSION = 4;
 
 function rekeyLegacyRows(
   sqlite: Database.Database,
-  db: BetterSQLite3Database,
+  db: MetadataDb,
   lookupInternalId: LookupInternalId,
   ensureChat: EnsureChat | undefined
 ): void {
