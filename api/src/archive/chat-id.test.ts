@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { CROCKFORD_ALPHABET, generateChatId } from "./chat-id.js";
+import {
+  CHAT_ID_PREFIX,
+  CROCKFORD_ALPHABET,
+  formatChatId,
+  generateChatId,
+  parseChatId,
+} from "./chat-id.js";
 
 const ALLOWED = new Set(CROCKFORD_ALPHABET);
 
@@ -51,5 +57,36 @@ describe("generateChatId", () => {
       expect(ALLOWED.has(banned)).toBe(false);
     }
     expect(CROCKFORD_ALPHABET).toHaveLength(32);
+  });
+});
+
+describe("formatChatId / parseChatId", () => {
+  it("formats a bare code into the clog_ wire form", () => {
+    expect(formatChatId("a3f7kx")).toBe("clog_a3f7kx");
+    expect(CHAT_ID_PREFIX).toBe("clog_");
+  });
+
+  it("parses a wire-form id back to the bare code", () => {
+    expect(parseChatId("clog_a3f7kx")).toBe("a3f7kx");
+  });
+
+  it("round-trips format then parse", () => {
+    const code = generateChatId({ isTaken: () => false });
+    expect(parseChatId(formatChatId(code))).toBe(code);
+  });
+
+  it("returns null when the clog_ prefix is missing", () => {
+    expect(parseChatId("a3f7kx")).toBeNull();
+  });
+
+  it("returns null when the code is the wrong length", () => {
+    expect(parseChatId("clog_a3f7k")).toBeNull();
+    expect(parseChatId("clog_a3f7kxy")).toBeNull();
+  });
+
+  it("returns null when the code has non-Crockford characters", () => {
+    // i, l, o, u are excluded from the alphabet
+    expect(parseChatId("clog_a3f7ki")).toBeNull();
+    expect(parseChatId("clog_A3F7KX")).toBeNull();
   });
 });

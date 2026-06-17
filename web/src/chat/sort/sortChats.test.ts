@@ -5,7 +5,7 @@ import { sortChats } from "./sortChats";
 function makeChat(overrides: Partial<Chat>): Chat {
   return {
     id: "id",
-    chatId: "CHAT",
+    sourceId: "session-1",
     agent: "claude-code",
     title: "",
     project: "p",

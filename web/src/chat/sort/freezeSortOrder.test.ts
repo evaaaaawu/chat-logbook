@@ -5,7 +5,7 @@ import { applyHeldOrder } from "./freezeSortOrder";
 function chat(id: string): Chat {
   return {
     id,
-    chatId: id.toUpperCase(),
+    sourceId: id.toUpperCase(),
     agent: "claude-code",
     title: id,
     project: "p",

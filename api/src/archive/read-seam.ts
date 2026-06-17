@@ -41,6 +41,8 @@ export interface ArchiveReadSeam {
   listChatRows(): ChatRow[];
   /** Resolve a chat by its source id; null when absent. */
   findChatBySourceId(sourceId: string): ChatRow | null;
+  /** Resolve a chat by its bare chat_id code (the public handle); null when absent. */
+  findChatByChatId(chatId: string): ChatRow | null;
   /** Messages for one `(agent, source_id)` chat, ordered by ascending ts. */
   listMessagesByChat(agent: string, sourceId: string): MessageRow[];
   /**
@@ -71,6 +73,11 @@ export function createArchiveReadSeam(db: ArchiveDb): ArchiveReadSeam {
       return (
         db.select().from(chats).where(eq(chats.sourceId, sourceId)).get() ??
         null
+      );
+    },
+    findChatByChatId(chatId) {
+      return (
+        db.select().from(chats).where(eq(chats.chatId, chatId)).get() ?? null
       );
     },
     listMessagesByChat(agent, sourceId) {

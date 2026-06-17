@@ -1,6 +1,8 @@
 export interface Chat {
+  /** Public wire-form chat id (`clog_…`) — the canonical handle used for routing. */
   id: string;
-  chatId: string;
+  /** The originating Agent's source id, surfaced for display only. */
+  sourceId: string;
   agent: string;
   title: string;
   project: string;

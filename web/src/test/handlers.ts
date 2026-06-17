@@ -2,7 +2,7 @@ import { http, HttpResponse } from "msw";
 
 type FakeChat = {
   id: string;
-  chatId: string;
+  sourceId: string;
   agent: string;
   defaultTitle: string;
   customTitle: string | null;
@@ -18,7 +18,7 @@ type FakeChat = {
 const initialFakeChats: FakeChat[] = [
   {
     id: "chat-1",
-    chatId: "CHAT01",
+    sourceId: "CHAT01",
     agent: "claude-code",
     defaultTitle: "Build a login page",
     customTitle: null,
@@ -30,7 +30,7 @@ const initialFakeChats: FakeChat[] = [
   },
   {
     id: "chat-2",
-    chatId: "CHAT02",
+    sourceId: "CHAT02",
     agent: "claude-code",
     defaultTitle: "Fix database migration",
     customTitle: null,
@@ -42,7 +42,7 @@ const initialFakeChats: FakeChat[] = [
   },
   {
     id: "chat-3",
-    chatId: "CHAT03",
+    sourceId: "CHAT03",
     agent: "claude-code",
     defaultTitle: "Refactor utils",
     customTitle: null,
@@ -54,7 +54,7 @@ const initialFakeChats: FakeChat[] = [
   },
   {
     id: "chat-missing",
-    chatId: "CHATMI",
+    sourceId: "CHATMI",
     agent: "claude-code",
     defaultTitle: "Untitled",
     customTitle: null,
@@ -66,7 +66,7 @@ const initialFakeChats: FakeChat[] = [
   },
   {
     id: "chat-deleted-1",
-    chatId: "CHATDE",
+    sourceId: "CHATDE",
     agent: "claude-code",
     defaultTitle: "Old prototype",
     customTitle: null,
@@ -81,7 +81,7 @@ const initialFakeChats: FakeChat[] = [
   },
   {
     id: "chat-deleted-2",
-    chatId: "CHATD2",
+    sourceId: "CHATD2",
     agent: "claude-code",
     defaultTitle: "Newer experiment",
     customTitle: null,

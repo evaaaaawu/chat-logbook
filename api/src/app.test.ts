@@ -5,10 +5,11 @@ import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import { createApp } from "./app.js";
 import { createArchiveRepository } from "./archive/repository.js";
 import { createMetadataRepository } from "./metadata/repository.js";
+import { formatChatId } from "./archive/chat-id.js";
 
 interface ChatResponse {
   id: string;
-  chatId: string;
+  sourceId: string;
   agent: string;
   title: string;
   project: string;
@@ -82,6 +83,17 @@ function seedMessage(
   });
 }
 
+// The public route handle is the wire-form chat id. Tests seed by source id,
+// so this renders the wire form to put in the URL.
+function wireIdFor(
+  archive: ReturnType<typeof createArchiveRepository>,
+  sourceId: string
+): string {
+  const row = archive.read.findChatBySourceId(sourceId);
+  if (!row) throw new Error(`no seeded chat for source id ${sourceId}`);
+  return formatChatId(row.chatId);
+}
+
 let dataDir: string;
 
 beforeEach(() => {
@@ -92,6 +104,70 @@ afterEach(() => {
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
+describe("Chat id is the public API handle", () => {
+  it("GET /api/chats exposes id as the wire-form chat id plus sourceId", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const wireId = wireIdFor(archive, "session-1");
+
+    const app = createApp({ archive, metadata });
+    const list = await app.request("/api/chats");
+    const body = (await list.json()) as { chats: ChatResponse[] };
+    const chat = body.chats.find((s) => s.sourceId === "session-1");
+    expect(chat?.id).toBe(wireId);
+    expect(chat?.id.startsWith("clog_")).toBe(true);
+  });
+
+  it("GET /api/chats/:id 404s when given the source id instead of the chat id", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m1",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: "hi",
+      blocks: [{ type: "text", text: "hi" }],
+    });
+
+    const app = createApp({ archive, metadata });
+    const res = await app.request("/api/chats/session-1");
+    expect(res.status).toBe(404);
+  });
+
+  it("GET /api/chats/:id resolves messages by the wire-form chat id", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m1",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: "hi",
+      blocks: [{ type: "text", text: "hi" }],
+    });
+    const wireId = wireIdFor(archive, "session-1");
+
+    const app = createApp({ archive, metadata });
+    const res = await app.request(`/api/chats/${wireId}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { messages: MessageResponse[] };
+    expect(body.messages).toHaveLength(1);
+  });
+});
+
 describe("Soft delete and restore (archive-backed)", () => {
   it("ignores the legacy includeDeleted query param", async () => {
     const archive = createArchiveRepository({ dataDir });
@@ -100,13 +176,14 @@ describe("Soft delete and restore (archive-backed)", () => {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
+    const wireId = wireIdFor(archive, "session-1");
 
     const app = createApp({ archive, metadata });
-    await app.request("/api/chats/session-1", { method: "DELETE" });
+    await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
 
     const res = await app.request("/api/chats?includeDeleted=true");
     const body = (await res.json()) as { chats: ChatResponse[] };
-    expect(body.chats.map((s) => s.id)).not.toContain("session-1");
+    expect(body.chats.map((s) => s.sourceId)).not.toContain("session-1");
   });
 
   it("hides a session from GET /api/chats after DELETE", async () => {
@@ -116,16 +193,17 @@ describe("Soft delete and restore (archive-backed)", () => {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
+    const wireId = wireIdFor(archive, "session-1");
 
     const app = createApp({ archive, metadata });
-    const del = await app.request("/api/chats/session-1", {
+    const del = await app.request(`/api/chats/${wireId}`, {
       method: "DELETE",
     });
     expect(del.status).toBe(204);
 
     const list = await app.request("/api/chats");
     const body = (await list.json()) as { chats: ChatResponse[] };
-    expect(body.chats.map((s) => s.id)).not.toContain("session-1");
+    expect(body.chats.map((s) => s.sourceId)).not.toContain("session-1");
   });
 
   it("restores a previously deleted session", async () => {
@@ -135,17 +213,18 @@ describe("Soft delete and restore (archive-backed)", () => {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
+    const wireId = wireIdFor(archive, "session-1");
 
     const app = createApp({ archive, metadata });
-    await app.request("/api/chats/session-1", { method: "DELETE" });
-    const restore = await app.request("/api/chats/session-1/restore", {
+    await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
+    const restore = await app.request(`/api/chats/${wireId}/restore`, {
       method: "POST",
     });
     expect(restore.status).toBe(204);
 
     const list = await app.request("/api/chats");
     const body = (await list.json()) as { chats: ChatResponse[] };
-    expect(body.chats.map((s) => s.id)).toContain("session-1");
+    expect(body.chats.map((s) => s.sourceId)).toContain("session-1");
   });
 
   it("never deletes archive.sessions rows on soft delete", async () => {
@@ -155,9 +234,10 @@ describe("Soft delete and restore (archive-backed)", () => {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
+    const wireId = wireIdFor(archive, "session-1");
 
     const app = createApp({ archive, metadata });
-    await app.request("/api/chats/session-1", { method: "DELETE" });
+    await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
 
     const row = archive.read.findChatBySourceId("session-1");
     expect(row?.sourceId).toBe("session-1");
@@ -180,11 +260,12 @@ describe("GET /api/chats/:id visibility", () => {
       text: "hi",
       blocks: [{ type: "text", text: "hi" }],
     });
+    const wireId = wireIdFor(archive, "session-1");
 
     const app = createApp({ archive, metadata });
-    await app.request("/api/chats/session-1", { method: "DELETE" });
+    await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
 
-    const res = await app.request("/api/chats/session-1");
+    const res = await app.request(`/api/chats/${wireId}`);
     expect(res.status).toBe(404);
   });
 
@@ -203,11 +284,12 @@ describe("GET /api/chats/:id visibility", () => {
       text: "hi",
       blocks: [{ type: "text", text: "hi" }],
     });
+    const wireId = wireIdFor(archive, "session-1");
 
     const app = createApp({ archive, metadata });
-    await app.request("/api/chats/session-1", { method: "DELETE" });
+    await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
 
-    const res = await app.request("/api/chats/session-1?includeTrashed=true");
+    const res = await app.request(`/api/chats/${wireId}?includeTrashed=true`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { messages: MessageResponse[] };
     expect(body.messages).toHaveLength(1);
@@ -220,10 +302,11 @@ describe("GET /api/chats/:id visibility", () => {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
+    const wireId = wireIdFor(archive, "session-1");
 
     const app = createApp({ archive, metadata });
-    await app.request("/api/chats/session-1", { method: "DELETE" });
-    const restore = await app.request("/api/chats/session-1/restore", {
+    await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
+    const restore = await app.request(`/api/chats/${wireId}/restore`, {
       method: "POST",
     });
     expect(restore.status).toBe(204);
@@ -231,7 +314,7 @@ describe("GET /api/chats/:id visibility", () => {
 });
 
 describe("DELETE / restore idempotency (archive-backed)", () => {
-  it("returns 404 when DELETE targets a session absent from archive", async () => {
+  it("returns 404 when DELETE targets a chat absent from archive", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     const app = createApp({ archive, metadata });
@@ -242,7 +325,7 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 404 when restore targets a session absent from archive", async () => {
+  it("returns 404 when restore targets a chat absent from archive", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     const app = createApp({ archive, metadata });
@@ -260,13 +343,14 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
+    const wireId = wireIdFor(archive, "session-1");
     const app = createApp({ archive, metadata });
 
-    const first = await app.request("/api/chats/session-1", {
+    const first = await app.request(`/api/chats/${wireId}`, {
       method: "DELETE",
     });
     expect(first.status).toBe(204);
-    const second = await app.request("/api/chats/session-1", {
+    const second = await app.request(`/api/chats/${wireId}`, {
       method: "DELETE",
     });
     expect(second.status).toBe(204);
@@ -279,9 +363,10 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
+    const wireId = wireIdFor(archive, "session-1");
     const app = createApp({ archive, metadata });
 
-    const res = await app.request("/api/chats/session-1/restore", {
+    const res = await app.request(`/api/chats/${wireId}/restore`, {
       method: "POST",
     });
     expect(res.status).toBe(204);
@@ -304,9 +389,10 @@ describe("PATCH /api/chats/:id/title", () => {
       text: "Build a login page",
       blocks: [{ type: "text", text: "Build a login page" }],
     });
+    const wireId = wireIdFor(archive, "session-1");
 
     const app = createApp({ archive, metadata });
-    const patch = await app.request("/api/chats/session-1/title", {
+    const patch = await app.request(`/api/chats/${wireId}/title`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "My favourite chat" }),
@@ -315,7 +401,7 @@ describe("PATCH /api/chats/:id/title", () => {
 
     const list = await app.request("/api/chats");
     const body = (await list.json()) as { chats: ChatResponse[] };
-    const session = body.chats.find((s) => s.id === "session-1");
+    const session = body.chats.find((s) => s.sourceId === "session-1");
     expect(session?.title).toBe("My favourite chat");
   });
 
@@ -335,9 +421,10 @@ describe("PATCH /api/chats/:id/title", () => {
       blocks: [{ type: "text", text: "Build a login page" }],
     });
     metadata.setCustomTitle(internalId, "Custom");
+    const wireId = wireIdFor(archive, "session-1");
 
     const app = createApp({ archive, metadata });
-    const patch = await app.request("/api/chats/session-1/title", {
+    const patch = await app.request(`/api/chats/${wireId}/title`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "" }),
@@ -346,7 +433,7 @@ describe("PATCH /api/chats/:id/title", () => {
 
     const list = await app.request("/api/chats");
     const body = (await list.json()) as { chats: ChatResponse[] };
-    const session = body.chats.find((s) => s.id === "session-1");
+    const session = body.chats.find((s) => s.sourceId === "session-1");
     expect(session?.title).toBe("Build a login page");
   });
 
@@ -358,9 +445,10 @@ describe("PATCH /api/chats/:id/title", () => {
       firstSeenAt: new Date(1700000000000),
     });
     metadata.setCustomTitle(internalId, "Custom");
+    const wireId = wireIdFor(archive, "session-1");
 
     const app = createApp({ archive, metadata });
-    const patch = await app.request("/api/chats/session-1/title", {
+    const patch = await app.request(`/api/chats/${wireId}/title`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "   " }),
@@ -369,7 +457,7 @@ describe("PATCH /api/chats/:id/title", () => {
 
     const list = await app.request("/api/chats");
     const body = (await list.json()) as { chats: ChatResponse[] };
-    const session = body.chats.find((s) => s.id === "session-1");
+    const session = body.chats.find((s) => s.sourceId === "session-1");
     expect(session?.title).toBe("Untitled");
   });
 
@@ -380,9 +468,10 @@ describe("PATCH /api/chats/:id/title", () => {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
+    const wireId = wireIdFor(archive, "session-1");
 
     const app = createApp({ archive, metadata });
-    await app.request("/api/chats/session-1/title", {
+    await app.request(`/api/chats/${wireId}/title`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "  Padded title  " }),
@@ -390,11 +479,11 @@ describe("PATCH /api/chats/:id/title", () => {
 
     const list = await app.request("/api/chats");
     const body = (await list.json()) as { chats: ChatResponse[] };
-    const session = body.chats.find((s) => s.id === "session-1");
+    const session = body.chats.find((s) => s.sourceId === "session-1");
     expect(session?.title).toBe("Padded title");
   });
 
-  it("returns 404 when archive has no session for the given id", async () => {
+  it("returns 404 when archive has no chat for the given id", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     const app = createApp({ archive, metadata });
@@ -414,9 +503,10 @@ describe("PATCH /api/chats/:id/title", () => {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
+    const wireId = wireIdFor(archive, "session-1");
     const app = createApp({ archive, metadata });
 
-    const wrongType = await app.request("/api/chats/session-1/title", {
+    const wrongType = await app.request(`/api/chats/${wireId}/title`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: 123 }),
@@ -431,10 +521,11 @@ describe("PATCH /api/chats/:id/title", () => {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
+    const wireId = wireIdFor(archive, "session-1");
     const app = createApp({ archive, metadata });
 
     const tooLong = "x".repeat(201);
-    const res = await app.request("/api/chats/session-1/title", {
+    const res = await app.request(`/api/chats/${wireId}/title`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: tooLong }),
@@ -444,7 +535,7 @@ describe("PATCH /api/chats/:id/title", () => {
 });
 
 describe("GET /api/chats/:id (route status mapping)", () => {
-  it("returns 404 when archive has no session for the given source id", async () => {
+  it("returns 404 when archive has no chat for the given id", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
