@@ -1,13 +1,6 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
 import { and, eq } from "drizzle-orm";
-import {
-  drizzle,
-  type BetterSQLite3Database,
-} from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import { openStore } from "../storage/openStore.js";
 import * as schema from "./schema.js";
 import { chatScanState } from "./schema.js";
 
@@ -41,26 +34,16 @@ interface RepositoryOptions {
   dataDir: string;
 }
 
-function resolveMigrationsFolder(): string {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    path.join(here, "../../drizzle/checkpoint"),
-    path.join(here, "./drizzle/checkpoint"),
-  ];
-  const found = candidates.find((p) => fs.existsSync(p));
-  if (!found) {
-    throw new Error("Could not locate checkpoint drizzle migrations folder");
-  }
-  return found;
-}
-
 export function createCheckpointRepository({
   dataDir,
 }: RepositoryOptions): CheckpointRepository {
-  fs.mkdirSync(dataDir, { recursive: true });
-  const sqlite = new Database(path.join(dataDir, "checkpoint.db"));
-  const db: CheckpointDb = drizzle(sqlite, { schema });
-  migrate(db, { migrationsFolder: resolveMigrationsFolder() });
+  const { db, sqlite } = openStore({
+    dataDir,
+    dbFile: "checkpoint.db",
+    callerUrl: import.meta.url,
+    migrationsSubdir: "drizzle/checkpoint",
+    schema,
+  });
 
   return {
     db,
