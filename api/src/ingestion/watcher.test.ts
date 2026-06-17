@@ -3,12 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createArchiveRepository } from "../archive/repository.js";
-import {
-  ingestionEvents,
-  messages,
-  rawMessages,
-  chats,
-} from "../archive/schema.js";
 import { createCheckpointRepository } from "../checkpoint/repository.js";
 import { ClaudeCodePlugin } from "../plugins/claude-code/plugin.js";
 import { runIngestion } from "./ingest.js";
@@ -31,6 +25,22 @@ function setupEnv(): Env {
   fs.mkdirSync(claudeProjects, { recursive: true });
   fs.cpSync(fixturesRoot, claudeProjects, { recursive: true });
   return { tmp, dataDir, homeDir };
+}
+
+/**
+ * Sum the messages of every chat through the read seam — the public-surface
+ * equivalent of `SELECT COUNT(*) FROM messages` for "no rows changed" guards.
+ */
+function totalMessageCount(
+  archive: ReturnType<typeof createArchiveRepository>
+): number {
+  return archive.read
+    .listChatRows()
+    .reduce(
+      (acc, chat) =>
+        acc + archive.read.listMessagesByChat(chat.agent, chat.sourceId).length,
+      0
+    );
 }
 
 let env: Env;
@@ -63,7 +73,10 @@ describe("startWatcher", () => {
       checkpoint,
       env: { homeDir: env.homeDir },
     });
-    const rawBefore = archive.db.select().from(rawMessages).all().length;
+    const messagesBefore = archive.read.listMessagesByChat(
+      "claude-code",
+      "session-1"
+    ).length;
 
     // Resolves the instant a watcher-triggered ingest cycle has applied the
     // appended row — event-driven, not wall-clock polling.
@@ -82,8 +95,11 @@ describe("startWatcher", () => {
       chokidarOptions: { usePolling: true, interval: 60_000 },
       debounceMs: 25,
       onIngest: () => {
-        const rawAfter = archive.db.select().from(rawMessages).all().length;
-        if (rawAfter === rawBefore + 1) signalIngested();
+        const messagesAfter = archive.read.listMessagesByChat(
+          "claude-code",
+          "session-1"
+        ).length;
+        if (messagesAfter === messagesBefore + 1) signalIngested();
       },
     });
     await watcher.ready;
@@ -112,14 +128,12 @@ describe("startWatcher", () => {
       watcher.notifyChange(sourceFile);
       await ingested;
 
-      const rawAfter = archive.db.select().from(rawMessages).all().length;
-      expect(rawAfter).toBe(rawBefore + 1);
-      const msg = archive.db
-        .select()
-        .from(messages)
-        .all()
-        .find((m) => m.messageId === "msg-live-1");
-      expect(msg).toBeDefined();
+      const messages = archive.read.listMessagesByChat(
+        "claude-code",
+        "session-1"
+      );
+      expect(messages.length).toBe(messagesBefore + 1);
+      expect(messages.some((m) => m.messageId === "msg-live-1")).toBe(true);
     } finally {
       await watcher.close();
       archive.close();
@@ -131,7 +145,7 @@ describe("startWatcher", () => {
   // would await an audit row that never arrives, time out, and — because a
   // timed-out vitest test abandons its `finally` — leak a still-open watcher +
   // archive into `afterEach`'s tmpdir teardown. The leaked watcher then fires
-  // `recordUnlink` against the just-removed `archive.db`, writing a
+  // `recordUnlink` against the just-removed archive store, writing a
   // `SQLITE_READONLY_DBMOVED` to stderr (#100). We remove the dependency on
   // chokidar's unreliable detection while keeping the real "unlink" handler →
   // `recordUnlink` → audit write: unlink the file, then drive the event through
@@ -148,9 +162,8 @@ describe("startWatcher", () => {
       checkpoint,
       env: { homeDir: env.homeDir },
     });
-    const rawBefore = archive.db.select().from(rawMessages).all().length;
-    const msgBefore = archive.db.select().from(messages).all().length;
-    const chatsBefore = archive.db.select().from(chats).all().length;
+    const chatsBefore = archive.read.listChatRows().length;
+    const messagesBefore = totalMessageCount(archive);
 
     const watcher = startWatcher({
       plugins,
@@ -176,19 +189,15 @@ describe("startWatcher", () => {
 
       watcher.notifyUnlink(sourceFile);
 
-      const events = archive.db
-        .select()
-        .from(ingestionEvents)
-        .all()
+      const events = archive.read
+        .listIngestionEvents()
         .filter((e) => e.eventType === "unlink_observed");
       expect(events.length).toBeGreaterThan(0);
       expect(events.some((e) => e.sourcePath === sourceFile)).toBe(true);
 
-      expect(archive.db.select().from(rawMessages).all().length).toBe(
-        rawBefore
-      );
-      expect(archive.db.select().from(messages).all().length).toBe(msgBefore);
-      expect(archive.db.select().from(chats).all().length).toBe(chatsBefore);
+      // The audit row writes nothing back into chats / messages (ADR-0002).
+      expect(archive.read.listChatRows().length).toBe(chatsBefore);
+      expect(totalMessageCount(archive)).toBe(messagesBefore);
     } finally {
       await watcher.close();
       archive.close();
@@ -217,7 +226,10 @@ describe("startWatcher", () => {
     await watcher.ready;
     await watcher.close();
 
-    const rawBefore = archive.db.select().from(rawMessages).all().length;
+    const messagesBefore = archive.read.listMessagesByChat(
+      "claude-code",
+      "session-1"
+    ).length;
 
     const sourceFile = path.join(
       env.homeDir,
@@ -240,7 +252,9 @@ describe("startWatcher", () => {
     fs.utimesSync(sourceFile, future, future);
 
     await new Promise((r) => setTimeout(r, 400));
-    expect(archive.db.select().from(rawMessages).all().length).toBe(rawBefore);
+    expect(
+      archive.read.listMessagesByChat("claude-code", "session-1").length
+    ).toBe(messagesBefore);
 
     archive.close();
   });

@@ -1,10 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createArchiveRepository } from "./repository.js";
-import { chats, ingestionEvents, messages, rawMessages } from "./schema.js";
 
 let dataDir: string;
 
@@ -93,7 +91,7 @@ describe("ArchiveRepository write seam", () => {
 
     expect(upserted).toBe(true);
 
-    const rows = repo.db.select().from(messages).all();
+    const rows = repo.read.listMessagesByChat("claude-code", "session-1");
     expect(rows).toHaveLength(1);
     expect(rows[0].messageId).toBe("m1");
     expect(rows[0].text).toBe("hello");
@@ -158,7 +156,7 @@ describe("ArchiveRepository write seam", () => {
     });
     expect(older).toBe(false);
 
-    const rows = repo.db.select().from(messages).all();
+    const rows = repo.read.listMessagesByChat("claude-code", "session-1");
     expect(rows).toHaveLength(1);
     expect(rows[0].text).toBe("v2");
     expect(rows[0].ts.getTime()).toBe(
@@ -175,11 +173,8 @@ describe("ArchiveRepository write seam", () => {
     const id = repo.ensureChat("claude-code", "session-1", new Date());
     expect(id).toBeTypeOf("string");
 
-    const beforeRow = repo.db
-      .select()
-      .from(chats)
-      .where(eq(chats.id, id))
-      .get();
+    const beforeRow = repo.read.findChatBySourceId("session-1");
+    expect(beforeRow?.id).toBe(id);
     expect(beforeRow?.project).toBeNull();
     expect(beforeRow?.chatId).toHaveLength(6);
 
@@ -193,12 +188,13 @@ describe("ArchiveRepository write seam", () => {
     );
     expect(again).toBe(id);
 
-    const afterRow = repo.db.select().from(chats).where(eq(chats.id, id)).get();
+    const afterRow = repo.read.findChatBySourceId("session-1");
+    expect(afterRow?.id).toBe(id);
     expect(afterRow?.project).toBe("project-a");
     expect(afterRow?.projectPath).toBe("/Users/test/project-a");
 
     // Still a single chat row for the canonical (agent, source_id).
-    expect(repo.db.select().from(chats).all()).toHaveLength(1);
+    expect(repo.read.listChatRows()).toHaveLength(1);
 
     repo.close();
   });
@@ -207,14 +203,15 @@ describe("ArchiveRepository write seam", () => {
     const repo = createArchiveRepository({ dataDir });
 
     // An existing raw row that must survive an unlink audit (ADR-0002).
-    const raw = repo.insertRawMessage({
+    const rawInput = {
       agent: "claude-code",
       sourceId: "session-1",
       sourcePath: "/src/session-1.jsonl",
       sourceLocator: "line:1",
       payload: { role: "user", content: "hello" },
       ingestedAt: new Date(),
-    });
+    };
+    const raw = repo.insertRawMessage(rawInput);
 
     repo.recordIngestionEvent({
       agent: "claude-code",
@@ -224,16 +221,18 @@ describe("ArchiveRepository write seam", () => {
       detail: { path: "/src/session-1.jsonl" },
     });
 
-    const events = repo.db.select().from(ingestionEvents).all();
+    const events = repo.read.listIngestionEvents();
     expect(events).toHaveLength(1);
     expect(events[0].eventType).toBe("unlink_observed");
     expect(events[0].sourceId).toBe("session-1");
     expect(events[0].detail).toEqual({ path: "/src/session-1.jsonl" });
 
-    // The unlink audit leaves the archive rows untouched.
-    const rawRows = repo.db.select().from(rawMessages).all();
-    expect(rawRows).toHaveLength(1);
-    expect(rawRows[0].id).toBe(raw.id);
+    // The unlink audit leaves the archive rows untouched: a repeat insert of
+    // the same payload dedupes to the original raw row, proving it still
+    // exists with the same id.
+    const repeat = repo.insertRawMessage(rawInput);
+    expect(repeat.inserted).toBe(false);
+    expect(repeat.id).toBe(raw.id);
 
     repo.close();
   });

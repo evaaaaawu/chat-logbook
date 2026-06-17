@@ -1,6 +1,6 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { ArchiveDb } from "./repository.js";
-import { chats, messages, rawMessages } from "./schema.js";
+import { chats, ingestionEvents, messages, rawMessages } from "./schema.js";
 
 /**
  * The Archive read seam: the deliberate, read-oriented face onto the archive
@@ -12,6 +12,7 @@ import { chats, messages, rawMessages } from "./schema.js";
 
 export type ChatRow = typeof chats.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
+export type IngestionEventRow = typeof ingestionEvents.$inferSelect;
 
 /** Per `(agent, source_id)` first/last message timestamps for a chat. */
 export interface ChatTsRange {
@@ -57,6 +58,8 @@ export interface ArchiveReadSeam {
    * windowed query so listing N chats stays a constant query count.
    */
   listFirstUserTexts(): FirstUserText[];
+  /** Every ingestion-event audit row, in insertion order. */
+  listIngestionEvents(): IngestionEventRow[];
 }
 
 export function createArchiveReadSeam(db: ArchiveDb): ArchiveReadSeam {
@@ -134,6 +137,9 @@ export function createArchiveReadSeam(db: ArchiveDb): ArchiveReadSeam {
         .from(ranked)
         .where(eq(ranked.rn, 1))
         .all();
+    },
+    listIngestionEvents() {
+      return db.select().from(ingestionEvents).all();
     },
   };
 }

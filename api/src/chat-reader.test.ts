@@ -5,37 +5,32 @@ import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import { createChatReader } from "./chat-reader.js";
 import { createArchiveRepository } from "./archive/repository.js";
 import { createMetadataRepository } from "./metadata/repository.js";
-import {
-  chats as archiveChats,
-  rawMessages as archiveRawMessages,
-  messages as archiveMessages,
-} from "./archive/schema.js";
+import { CROCKFORD_ALPHABET } from "./archive/chat-id.js";
+import type { ArchiveReadSeam } from "./archive/read-seam.js";
 
 const DEFAULT_AGENT = "claude-code";
 
+/**
+ * Seed a chat through the write seam; returns the generated internal id so
+ * callers can pass it to metadata writes.
+ */
 function seedChat(
   archive: ReturnType<typeof createArchiveRepository>,
   opts: {
-    internalId: string;
     sourceId: string;
     firstSeenAt: Date;
     agent?: string;
     project?: string | null;
     projectPath?: string | null;
   }
-): void {
-  archive.db
-    .insert(archiveChats)
-    .values({
-      id: opts.internalId,
-      chatId: opts.internalId.slice(0, 6).toUpperCase(),
-      agent: opts.agent ?? DEFAULT_AGENT,
-      sourceId: opts.sourceId,
-      firstSeenAt: opts.firstSeenAt,
-      project: opts.project ?? null,
-      projectPath: opts.projectPath ?? null,
-    })
-    .run();
+): string {
+  return archive.ensureChat(
+    opts.agent ?? DEFAULT_AGENT,
+    opts.sourceId,
+    opts.firstSeenAt,
+    opts.project ?? undefined,
+    opts.projectPath ?? undefined
+  );
 }
 
 function seedMessage(
@@ -51,32 +46,27 @@ function seedMessage(
   }
 ): void {
   const agent = opts.agent ?? DEFAULT_AGENT;
-  const rawRow = archive.db
-    .insert(archiveRawMessages)
-    .values({
-      agent,
-      sourceId: opts.sourceId,
-      sourcePath: "/dev/null",
-      sourceLocator: `${opts.messageId}:0`,
-      rawPayload: JSON.stringify({ id: opts.messageId }),
-      payloadHash: `hash-${opts.messageId}`,
-      ingestedAt: opts.ts,
-    })
-    .returning({ id: archiveRawMessages.id })
-    .get();
-  archive.db
-    .insert(archiveMessages)
-    .values({
-      agent,
-      sourceId: opts.sourceId,
+  archive.ensureChat(agent, opts.sourceId, opts.ts);
+  const raw = archive.insertRawMessage({
+    agent,
+    sourceId: opts.sourceId,
+    sourcePath: "/dev/null",
+    sourceLocator: `${opts.messageId}:0`,
+    payload: { id: opts.messageId },
+    ingestedAt: opts.ts,
+  });
+  archive.upsertNormalizedMessage({
+    agent,
+    sourceId: opts.sourceId,
+    rawId: raw.id,
+    message: {
       messageId: opts.messageId,
       role: opts.role,
-      ts: opts.ts,
+      ts: opts.ts.toISOString(),
       text: opts.text,
       blocks: opts.blocks,
-      rawId: rawRow.id,
-    })
-    .run();
+    },
+  });
 }
 
 function seedRawMessage(
@@ -84,23 +74,23 @@ function seedRawMessage(
   opts: {
     sourceId: string;
     sourcePath: string;
-    payloadHash: string;
+    payloadKey: string;
     ingestedAt: Date;
     agent?: string;
   }
 ): void {
-  archive.db
-    .insert(archiveRawMessages)
-    .values({
-      agent: opts.agent ?? DEFAULT_AGENT,
-      sourceId: opts.sourceId,
-      sourcePath: opts.sourcePath,
-      sourceLocator: `${opts.payloadHash}:0`,
-      rawPayload: JSON.stringify({ hash: opts.payloadHash }),
-      payloadHash: opts.payloadHash,
-      ingestedAt: opts.ingestedAt,
-    })
-    .run();
+  const agent = opts.agent ?? DEFAULT_AGENT;
+  archive.ensureChat(agent, opts.sourceId, opts.ingestedAt);
+  archive.insertRawMessage({
+    agent,
+    sourceId: opts.sourceId,
+    sourcePath: opts.sourcePath,
+    sourceLocator: `${opts.payloadKey}:0`,
+    // The key only needs to make payloads unique so the content-hash dedup
+    // doesn't merge them; `insertRawMessage` hashes the payload internally.
+    payload: { key: opts.payloadKey },
+    ingestedAt: opts.ingestedAt,
+  });
 }
 
 let dataDir: string;
@@ -119,7 +109,6 @@ describe("ChatReader.listChats", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -134,7 +123,6 @@ describe("ChatReader.listChats", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
       project: "project-a",
@@ -152,7 +140,6 @@ describe("ChatReader.listChats", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -184,8 +171,7 @@ describe("ChatReader.listChats", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
-    seedChat(archive, {
-      internalId: "internal-uuid-1",
+    const internalId = seedChat(archive, {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -197,7 +183,7 @@ describe("ChatReader.listChats", () => {
       text: "Build a login page",
       blocks: [{ type: "text", text: "Build a login page" }],
     });
-    metadata.setCustomTitle("internal-uuid-1", "My favourite chat");
+    metadata.setCustomTitle(internalId, "My favourite chat");
 
     const reader = createChatReader({ archive, metadata });
     const chat = reader
@@ -211,7 +197,6 @@ describe("ChatReader.listChats", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -228,7 +213,6 @@ describe("ChatReader.listChats", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -262,7 +246,6 @@ describe("ChatReader.listChats", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -275,12 +258,11 @@ describe("ChatReader.listChats", () => {
     expect(chat?.updatedAt).toBe(1700000000000);
   });
 
-  it("returns chatId from the archive chat row", () => {
+  it("returns a 6-char Crockford chatId from the archive chat row", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -289,8 +271,9 @@ describe("ChatReader.listChats", () => {
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.id === "session-1");
-    // seedChat assigns chatId = internalId.slice(0, 6).toUpperCase()
-    expect(chat?.chatId).toBe("INTERN");
+    expect(chat?.chatId).toHaveLength(6);
+    const allowed = new Set(CROCKFORD_ALPHABET);
+    for (const ch of chat!.chatId) expect(allowed.has(ch)).toBe(true);
   });
 
   it("returns sourceFilePath from the most-recently-ingested raw row", () => {
@@ -298,20 +281,19 @@ describe("ChatReader.listChats", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
     seedRawMessage(archive, {
       sourceId: "session-1",
       sourcePath: "/old/path.jsonl",
-      payloadHash: "hash-old",
+      payloadKey: "hash-old",
       ingestedAt: new Date(1700000100000),
     });
     seedRawMessage(archive, {
       sourceId: "session-1",
       sourcePath: "/new/path.jsonl",
-      payloadHash: "hash-new",
+      payloadKey: "hash-new",
       ingestedAt: new Date(1700000900000),
     });
 
@@ -327,7 +309,6 @@ describe("ChatReader.listChats", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -344,7 +325,6 @@ describe("ChatReader.listChats", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -361,7 +341,6 @@ describe("ChatReader.listChats", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
       project: "chat-logbook",
@@ -380,7 +359,6 @@ describe("ChatReader.listChats", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -397,7 +375,6 @@ describe("ChatReader.listChats", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
       project: null,
@@ -415,12 +392,11 @@ describe("ChatReader visibility", () => {
   it("excludes trashed chats by default", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedChat(archive, {
-      internalId: "internal-uuid-1",
+    const internalId = seedChat(archive, {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
-    metadata.softDelete("internal-uuid-1");
+    metadata.softDelete(internalId);
 
     const reader = createChatReader({ archive, metadata });
     const chats = reader.listChats({ includeTrashed: false });
@@ -430,12 +406,11 @@ describe("ChatReader visibility", () => {
   it("includes trashed chats with isDeleted flag when includeTrashed", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedChat(archive, {
-      internalId: "internal-uuid-1",
+    const internalId = seedChat(archive, {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
-    metadata.softDelete("internal-uuid-1");
+    metadata.softDelete(internalId);
 
     const reader = createChatReader({ archive, metadata });
     const chat = reader
@@ -448,17 +423,15 @@ describe("ChatReader visibility", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     seedChat(archive, {
-      internalId: "active-uuid-1",
       sourceId: "session-active",
       firstSeenAt: new Date(1700000000000),
     });
-    seedChat(archive, {
-      internalId: "trashd-uuid-1",
+    const trashedId = seedChat(archive, {
       sourceId: "session-trashed",
       firstSeenAt: new Date(1700000000000),
     });
     const before = Date.now();
-    metadata.softDelete("trashd-uuid-1");
+    metadata.softDelete(trashedId);
 
     const reader = createChatReader({ archive, metadata });
     const chats = reader.listChats({ includeTrashed: true });
@@ -476,7 +449,6 @@ describe("ChatReader.getMessages", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -511,8 +483,7 @@ describe("ChatReader.getMessages", () => {
   it("returns null for a trashed chat by default", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    seedChat(archive, {
-      internalId: "internal-uuid-1",
+    const internalId = seedChat(archive, {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -524,7 +495,7 @@ describe("ChatReader.getMessages", () => {
       text: "hi",
       blocks: [{ type: "text", text: "hi" }],
     });
-    metadata.softDelete("internal-uuid-1");
+    metadata.softDelete(internalId);
 
     const reader = createChatReader({ archive, metadata });
     expect(
@@ -547,7 +518,6 @@ describe("ChatReader.getMessages", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
@@ -574,7 +544,6 @@ describe("ChatReader is agent-agnostic", () => {
     const metadata = createMetadataRepository({ dataDir });
 
     seedChat(archive, {
-      internalId: "internal-uuid-1",
       sourceId: "session-codex",
       firstSeenAt: new Date(1700000000000),
       agent: "codex",
@@ -607,35 +576,46 @@ describe("ChatReader is agent-agnostic", () => {
 });
 
 /**
- * Count how many SQLite statements execute on the archive connection while
- * `fn` runs. Wraps `prepare` so every returned statement's all/get/run is
- * tallied — this measures real query volume, independent of drizzle's
- * statement caching.
+ * Count how many archive read-seam methods are invoked while `fn` runs.
+ * The #106 invariant is "listChats issues a constant number of archive reads
+ * regardless of chat count" — each seam method maps to one underlying SQL
+ * statement, so a constant call count is the public-surface proxy for the
+ * constant SQL-statement count the original raw-handle counter measured.
  */
 function countArchiveQueries(
   archive: ReturnType<typeof createArchiveRepository>,
   fn: () => void
 ): number {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const client = (archive.db as any).$client;
-  const originalPrepare = client.prepare.bind(client);
+  const seam = archive.read;
+  const methods = [
+    "listChatRows",
+    "findChatBySourceId",
+    "listMessagesByChat",
+    "listChatTsRanges",
+    "listLatestRawSourcePaths",
+    "listFirstUserTexts",
+    "listIngestionEvents",
+  ] as const;
+  const originals: Partial<Record<(typeof methods)[number], unknown>> = {};
   let count = 0;
-  client.prepare = (source: string) => {
-    const stmt = originalPrepare(source);
-    for (const method of ["all", "get", "run"] as const) {
-      const original = stmt[method]?.bind(stmt);
-      if (!original) continue;
-      stmt[method] = (...args: unknown[]) => {
-        count += 1;
-        return original(...args);
-      };
-    }
-    return stmt;
-  };
+  for (const m of methods) {
+    originals[m] = seam[m];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (seam as any)[m] = (...args: unknown[]) => {
+      count += 1;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (originals[m] as any).call(seam, ...args);
+    };
+  }
   try {
     fn();
   } finally {
-    client.prepare = originalPrepare;
+    for (const m of methods) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (seam as unknown as Record<string, unknown>)[m] = originals[
+        m
+      ] as ArchiveReadSeam[typeof m];
+    }
   }
   return count;
 }
@@ -645,12 +625,8 @@ function seedFullChat(
   metadata: ReturnType<typeof createMetadataRepository>,
   index: number
 ): void {
-  // chat_id is derived from internalId.slice(0, 6) by seedChat, so the first
-  // six characters must be unique per chat to avoid a UNIQUE collision.
-  const internalId = `c${String(index).padStart(5, "0")}`;
   const sourceId = `session-${index}`;
-  seedChat(archive, {
-    internalId,
+  const internalId = seedChat(archive, {
     sourceId,
     firstSeenAt: new Date(1700000000000 + index),
   });
@@ -673,7 +649,7 @@ function seedFullChat(
   seedRawMessage(archive, {
     sourceId,
     sourcePath: `/path/${index}.jsonl`,
-    payloadHash: `hash-${index}`,
+    payloadKey: `hash-${index}`,
     ingestedAt: new Date(1700000900000 + index),
   });
   if (index % 2 === 0) {
@@ -724,7 +700,6 @@ describe("ChatReader.listChats query batching", () => {
     // Chat A: derives its title from the first user message, has two raw rows
     // (newest path wins) and a two-message ts-range.
     seedChat(archive, {
-      internalId: "aaaaaa-uuid",
       sourceId: "session-a",
       firstSeenAt: new Date(1700000000000),
     });
@@ -747,19 +722,18 @@ describe("ChatReader.listChats query batching", () => {
     seedRawMessage(archive, {
       sourceId: "session-a",
       sourcePath: "/a/old.jsonl",
-      payloadHash: "a-old",
+      payloadKey: "a-old",
       ingestedAt: new Date(1700000100000),
     });
     seedRawMessage(archive, {
       sourceId: "session-a",
       sourcePath: "/a/new.jsonl",
-      payloadHash: "a-new",
+      payloadKey: "a-new",
       ingestedAt: new Date(1700000900000),
     });
 
     // Chat B: a custom title overrides its first user message.
-    seedChat(archive, {
-      internalId: "bbbbbb-uuid",
+    const idB = seedChat(archive, {
       sourceId: "session-b",
       firstSeenAt: new Date(1700000000000),
     });
@@ -774,15 +748,14 @@ describe("ChatReader.listChats query batching", () => {
     seedRawMessage(archive, {
       sourceId: "session-b",
       sourcePath: "/b/only.jsonl",
-      payloadHash: "b-only",
+      payloadKey: "b-only",
       ingestedAt: new Date(1700000300000),
     });
-    metadata.setCustomTitle("bbbbbb-uuid", "Custom B title");
+    metadata.setCustomTitle(idB, "Custom B title");
 
     // Chat C: no messages, no raw rows — falls back to Untitled, null path,
     // and firstSeenAt for both timestamps.
     seedChat(archive, {
-      internalId: "cccccc-uuid",
       sourceId: "session-c",
       firstSeenAt: new Date(1700000050000),
     });

@@ -1,23 +1,42 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
+import {
+  drizzle,
+  type BetterSQLite3Database,
+} from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createArchiveRepository,
   type ArchiveRepository,
 } from "./repository.js";
+import * as schema from "./schema.js";
 import { chats, ingestionEvents, messages, rawMessages } from "./schema.js";
+
+// These tests pin schema-level guarantees (UNIQUE constraints, JSON
+// round-trips) that live below the repository's named write methods. The
+// repository's write seam applies idempotency and last-write-wins, so a
+// raw-constraint failure would never surface through it — instead the tests
+// open their own drizzle handle on the migrated `archive.db` file. The
+// repository's handle stays private; this connection is the test's own.
 
 let dataDir: string;
 let repo: ArchiveRepository;
+let db: BetterSQLite3Database<typeof schema>;
+let testSqlite: Database.Database;
 
 beforeEach(() => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "chat-logbook-archive-"));
+  // Creating the repository applies the migrations the test schema relies on.
   repo = createArchiveRepository({ dataDir });
+  testSqlite = new Database(path.join(dataDir, "archive.db"));
+  db = drizzle(testSqlite, { schema });
 });
 
 afterEach(() => {
+  testSqlite.close();
   repo.close();
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
@@ -25,8 +44,7 @@ afterEach(() => {
 describe("chats table", () => {
   it("round-trips a chat row", () => {
     const now = new Date();
-    repo.db
-      .insert(chats)
+    db.insert(chats)
       .values({
         id: "11111111-1111-4111-8111-111111111111",
         chatId: "abc234",
@@ -36,7 +54,7 @@ describe("chats table", () => {
       })
       .run();
 
-    const row = repo.db
+    const row = db
       .select()
       .from(chats)
       .where(eq(chats.id, "11111111-1111-4111-8111-111111111111"))
@@ -57,13 +75,12 @@ describe("chats table", () => {
       sourceId: "dup",
       firstSeenAt: new Date(),
     };
-    repo.db
-      .insert(chats)
+    db.insert(chats)
       .values({ ...base, id: "id-1", chatId: "aaa111" })
       .run();
 
     expect(() =>
-      repo.db
+      db
         .insert(chats)
         .values({ ...base, id: "id-2", chatId: "bbb222" })
         .run()
@@ -72,8 +89,7 @@ describe("chats table", () => {
 
   it("round-trips project_path alongside project", () => {
     const now = new Date();
-    repo.db
-      .insert(chats)
+    db.insert(chats)
       .values({
         id: "22222222-2222-4222-8222-222222222222",
         chatId: "pth111",
@@ -85,7 +101,7 @@ describe("chats table", () => {
       })
       .run();
 
-    const row = repo.db
+    const row = db
       .select()
       .from(chats)
       .where(eq(chats.id, "22222222-2222-4222-8222-222222222222"))
@@ -97,8 +113,7 @@ describe("chats table", () => {
 
   it("rejects duplicate chat_id", () => {
     const now = new Date();
-    repo.db
-      .insert(chats)
+    db.insert(chats)
       .values({
         id: "id-1",
         chatId: "same11",
@@ -109,7 +124,7 @@ describe("chats table", () => {
       .run();
 
     expect(() =>
-      repo.db
+      db
         .insert(chats)
         .values({
           id: "id-2",
@@ -126,7 +141,7 @@ describe("chats table", () => {
 describe("raw_messages table", () => {
   it("round-trips a raw_messages row", () => {
     const now = new Date();
-    const inserted = repo.db
+    const inserted = db
       .insert(rawMessages)
       .values({
         agent: "claude-code",
@@ -159,15 +174,15 @@ describe("raw_messages table", () => {
       payloadHash: "h1",
       ingestedAt: new Date(),
     };
-    repo.db.insert(rawMessages).values(base).run();
+    db.insert(rawMessages).values(base).run();
 
-    expect(() => repo.db.insert(rawMessages).values(base).run()).toThrow();
+    expect(() => db.insert(rawMessages).values(base).run()).toThrow();
   });
 });
 
 describe("messages table", () => {
   it("round-trips a messages row referencing raw_messages", () => {
-    const raw = repo.db
+    const raw = db
       .insert(rawMessages)
       .values({
         agent: "claude-code",
@@ -182,8 +197,7 @@ describe("messages table", () => {
       .get();
 
     const ts = new Date();
-    repo.db
-      .insert(messages)
+    db.insert(messages)
       .values({
         agent: "claude-code",
         sourceId: "src-1",
@@ -196,7 +210,7 @@ describe("messages table", () => {
       })
       .run();
 
-    const row = repo.db.select().from(messages).get();
+    const row = db.select().from(messages).get();
     expect(row).toMatchObject({
       messageId: "m-1",
       role: "user",
@@ -207,7 +221,7 @@ describe("messages table", () => {
   });
 
   it("rejects duplicate (agent, source_id, message_id)", () => {
-    const raw = repo.db
+    const raw = db
       .insert(rawMessages)
       .values({
         agent: "claude-code",
@@ -231,16 +245,15 @@ describe("messages table", () => {
       blocks: [],
       rawId: raw.id,
     };
-    repo.db.insert(messages).values(base).run();
+    db.insert(messages).values(base).run();
 
-    expect(() => repo.db.insert(messages).values(base).run()).toThrow();
+    expect(() => db.insert(messages).values(base).run()).toThrow();
   });
 });
 
 describe("ingestion_events table", () => {
   it("round-trips an ingestion_events row", () => {
-    repo.db
-      .insert(ingestionEvents)
+    db.insert(ingestionEvents)
       .values({
         agent: "claude-code",
         sourceId: "src-1",
@@ -251,7 +264,7 @@ describe("ingestion_events table", () => {
       })
       .run();
 
-    const row = repo.db.select().from(ingestionEvents).get();
+    const row = db.select().from(ingestionEvents).get();
     expect(row).toMatchObject({
       agent: "claude-code",
       eventType: "unlinked",
