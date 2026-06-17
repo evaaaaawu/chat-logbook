@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.12.0] - 2026-06-17
+
+Every chat now has one stable, paste-anywhere id (`clog_a3f7kx`) shown across the API and the metadata panel. This is also a breaking change to the local HTTP API — see the upgrade note below.
+
+### Changed
+
+- Each chat now uses its own id (`clog_a3f7kx`) as the public handle everywhere — in `GET /api/chats` and in every per-chat URL. This id is unique on its own, so chats no longer collide across different agents.
+- The chat's metadata panel now shows both a **Chat ID** (the `clog_` handle) and a separate **Source ID** (the original id from `~/.claude/`).
+
+### Upgrade notes
+
+- **Breaking (local HTTP API only):** if you call the API directly or have scripts hitting `/api/chats/:id`, you must now pass the `clog_` chat id. The old source id no longer resolves and returns `404`. The `chatId` field in `GET /api/chats` responses is removed; use `id` (the `clog_` handle) instead, with the source id available as the new `sourceId` field. The browser UI updates itself — no action needed if you only use the app.
+- Your original `~/.claude/` files and stored data are untouched; nothing to back up or re-index.
+
 ## [0.11.0] - 2026-06-15
 
 The chat list now keeps its order steady while you read. Background updates from file changes no longer reshuffle the list under you.
