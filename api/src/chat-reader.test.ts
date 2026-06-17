@@ -5,10 +5,22 @@ import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import { createChatReader } from "./chat-reader.js";
 import { createArchiveRepository } from "./archive/repository.js";
 import { createMetadataRepository } from "./metadata/repository.js";
-import { CROCKFORD_ALPHABET } from "./archive/chat-id.js";
+import { CROCKFORD_ALPHABET, formatChatId } from "./archive/chat-id.js";
 import type { ArchiveReadSeam } from "./archive/read-seam.js";
 
 const DEFAULT_AGENT = "claude-code";
+
+// The public handle is the wire-form chat id. Tests seed by source id, so this
+// looks up the chat's generated chat_id and renders the wire form callers pass
+// to findChat / getMessages.
+function wireIdFor(
+  archive: ReturnType<typeof createArchiveRepository>,
+  sourceId: string
+): string {
+  const row = archive.read.findChatBySourceId(sourceId);
+  if (!row) throw new Error(`no seeded chat for source id ${sourceId}`);
+  return formatChatId(row.chatId);
+}
 
 /**
  * Seed a chat through the write seam; returns the generated internal id so
@@ -115,7 +127,7 @@ describe("ChatReader.listChats", () => {
 
     const reader = createChatReader({ archive, metadata });
     const chats = reader.listChats({ includeTrashed: false });
-    expect(chats.map((c) => c.id)).toContain("session-1");
+    expect(chats.map((c) => c.sourceId)).toContain("session-1");
   });
 
   it("surfaces project from the archive chat row", () => {
@@ -131,7 +143,7 @@ describe("ChatReader.listChats", () => {
     const reader = createChatReader({ archive, metadata });
     const chat = reader
       .listChats({ includeTrashed: false })
-      .find((c) => c.id === "session-1");
+      .find((c) => c.sourceId === "session-1");
     expect(chat?.project).toBe("project-a");
   });
 
@@ -163,7 +175,7 @@ describe("ChatReader.listChats", () => {
     const reader = createChatReader({ archive, metadata });
     const chat = reader
       .listChats({ includeTrashed: false })
-      .find((c) => c.id === "session-1");
+      .find((c) => c.sourceId === "session-1");
     expect(chat?.title).toBe("Build a login page");
   });
 
@@ -188,7 +200,7 @@ describe("ChatReader.listChats", () => {
     const reader = createChatReader({ archive, metadata });
     const chat = reader
       .listChats({ includeTrashed: false })
-      .find((c) => c.id === "session-1");
+      .find((c) => c.sourceId === "session-1");
     expect(chat?.title).toBe("My favourite chat");
   });
 
@@ -204,7 +216,7 @@ describe("ChatReader.listChats", () => {
     const reader = createChatReader({ archive, metadata });
     const chat = reader
       .listChats({ includeTrashed: false })
-      .find((c) => c.id === "session-1");
+      .find((c) => c.sourceId === "session-1");
     expect(chat?.title).toBe("Untitled");
   });
 
@@ -236,7 +248,7 @@ describe("ChatReader.listChats", () => {
     const reader = createChatReader({ archive, metadata });
     const chat = reader
       .listChats({ includeTrashed: false })
-      .find((c) => c.id === "session-1");
+      .find((c) => c.sourceId === "session-1");
     expect(chat?.createdAt).toBe(1700000100000);
     expect(chat?.updatedAt).toBe(1700000500000);
   });
@@ -253,12 +265,35 @@ describe("ChatReader.listChats", () => {
     const reader = createChatReader({ archive, metadata });
     const chat = reader
       .listChats({ includeTrashed: false })
-      .find((c) => c.id === "session-1");
+      .find((c) => c.sourceId === "session-1");
     expect(chat?.createdAt).toBe(1700000000000);
     expect(chat?.updatedAt).toBe(1700000000000);
   });
 
-  it("returns a 6-char Crockford chatId from the archive chat row", () => {
+  it("exposes id as the wire-form chat id and sourceId as the source id", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const code = archive.read.findChatBySourceId("session-1")!.chatId;
+
+    const reader = createChatReader({ archive, metadata });
+    const chat = reader
+      .listChats({ includeTrashed: false })
+      .find((c) => c.sourceId === "session-1");
+    // id is the public wire-form chat id (clog_ + 6 Crockford chars).
+    expect(chat?.id).toBe(`clog_${code}`);
+    expect(code).toHaveLength(6);
+    const allowed = new Set(CROCKFORD_ALPHABET);
+    for (const ch of code) expect(allowed.has(ch)).toBe(true);
+    // sourceId carries the source id for display, never as a handle.
+    expect(chat?.sourceId).toBe("session-1");
+  });
+
+  it("does not expose a chatId field (collapsed into id)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
@@ -270,10 +305,9 @@ describe("ChatReader.listChats", () => {
     const reader = createChatReader({ archive, metadata });
     const chat = reader
       .listChats({ includeTrashed: false })
-      .find((c) => c.id === "session-1");
-    expect(chat?.chatId).toHaveLength(6);
-    const allowed = new Set(CROCKFORD_ALPHABET);
-    for (const ch of chat!.chatId) expect(allowed.has(ch)).toBe(true);
+      .find((c) => c.sourceId === "session-1");
+    expect(chat).toBeDefined();
+    expect("chatId" in chat!).toBe(false);
   });
 
   it("returns sourceFilePath from the most-recently-ingested raw row", () => {
@@ -300,7 +334,7 @@ describe("ChatReader.listChats", () => {
     const reader = createChatReader({ archive, metadata });
     const chat = reader
       .listChats({ includeTrashed: false })
-      .find((c) => c.id === "session-1");
+      .find((c) => c.sourceId === "session-1");
     expect(chat?.sourceFilePath).toBe("/new/path.jsonl");
   });
 
@@ -316,7 +350,7 @@ describe("ChatReader.listChats", () => {
     const reader = createChatReader({ archive, metadata });
     const chat = reader
       .listChats({ includeTrashed: false })
-      .find((c) => c.id === "session-1");
+      .find((c) => c.sourceId === "session-1");
     expect(chat?.sourceFilePath).toBeNull();
   });
 
@@ -332,7 +366,7 @@ describe("ChatReader.listChats", () => {
     const reader = createChatReader({ archive, metadata });
     const chat = reader
       .listChats({ includeTrashed: false })
-      .find((c) => c.id === "session-1");
+      .find((c) => c.sourceId === "session-1");
     expect(chat?.agent).toBe("claude-code");
   });
 
@@ -350,7 +384,7 @@ describe("ChatReader.listChats", () => {
     const reader = createChatReader({ archive, metadata });
     const chat = reader
       .listChats({ includeTrashed: false })
-      .find((c) => c.id === "session-1");
+      .find((c) => c.sourceId === "session-1");
     expect(chat?.projectPath).toBe("/Users/evaaaaawu/Documents/chat-logbook");
   });
 
@@ -366,7 +400,7 @@ describe("ChatReader.listChats", () => {
     const reader = createChatReader({ archive, metadata });
     const chat = reader
       .listChats({ includeTrashed: false })
-      .find((c) => c.id === "session-1");
+      .find((c) => c.sourceId === "session-1");
     expect(chat?.projectPath).toBeNull();
   });
 
@@ -383,7 +417,7 @@ describe("ChatReader.listChats", () => {
     const reader = createChatReader({ archive, metadata });
     const chat = reader
       .listChats({ includeTrashed: false })
-      .find((c) => c.id === "session-1");
+      .find((c) => c.sourceId === "session-1");
     expect(chat?.project).toBe("");
   });
 });
@@ -400,7 +434,7 @@ describe("ChatReader visibility", () => {
 
     const reader = createChatReader({ archive, metadata });
     const chats = reader.listChats({ includeTrashed: false });
-    expect(chats.map((c) => c.id)).not.toContain("session-1");
+    expect(chats.map((c) => c.sourceId)).not.toContain("session-1");
   });
 
   it("includes trashed chats with isDeleted flag when includeTrashed", () => {
@@ -415,7 +449,7 @@ describe("ChatReader visibility", () => {
     const reader = createChatReader({ archive, metadata });
     const chat = reader
       .listChats({ includeTrashed: true })
-      .find((c) => c.id === "session-1");
+      .find((c) => c.sourceId === "session-1");
     expect(chat?.isDeleted).toBe(true);
   });
 
@@ -435,8 +469,8 @@ describe("ChatReader visibility", () => {
 
     const reader = createChatReader({ archive, metadata });
     const chats = reader.listChats({ includeTrashed: true });
-    const active = chats.find((c) => c.id === "session-active");
-    const trashed = chats.find((c) => c.id === "session-trashed");
+    const active = chats.find((c) => c.sourceId === "session-active");
+    const trashed = chats.find((c) => c.sourceId === "session-trashed");
     expect(active?.deletedAt).toBeNull();
     expect(typeof trashed?.deletedAt).toBe("number");
     expect(trashed!.deletedAt!).toBeGreaterThanOrEqual(before);
@@ -470,7 +504,9 @@ describe("ChatReader.getMessages", () => {
     });
 
     const reader = createChatReader({ archive, metadata });
-    const messages = reader.getMessages("session-1", { includeTrashed: false });
+    const messages = reader.getMessages(wireIdFor(archive, "session-1"), {
+      includeTrashed: false,
+    });
     expect(messages).toHaveLength(2);
     expect(messages![0].role).toBe("user");
     expect(messages![0].content).toEqual([
@@ -495,15 +531,14 @@ describe("ChatReader.getMessages", () => {
       text: "hi",
       blocks: [{ type: "text", text: "hi" }],
     });
+    const wireId = wireIdFor(archive, "session-1");
     metadata.softDelete(internalId);
 
     const reader = createChatReader({ archive, metadata });
-    expect(
-      reader.getMessages("session-1", { includeTrashed: false })
-    ).toBeNull();
+    expect(reader.getMessages(wireId, { includeTrashed: false })).toBeNull();
   });
 
-  it("returns null for an absent chat id", () => {
+  it("returns null for an absent (malformed) chat id", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
@@ -511,6 +546,51 @@ describe("ChatReader.getMessages", () => {
     expect(
       reader.getMessages("does-not-exist", { includeTrashed: false })
     ).toBeNull();
+  });
+
+  it("returns null when resolved by source id rather than the chat id", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m1",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: "hi",
+      blocks: [{ type: "text", text: "hi" }],
+    });
+
+    const reader = createChatReader({ archive, metadata });
+    // Source id is no longer a public lookup key — only the wire-form chat id is.
+    expect(
+      reader.getMessages("session-1", { includeTrashed: false })
+    ).toBeNull();
+  });
+
+  it("returns null when resolved by the bare chat_id code without the prefix", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m1",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: "hi",
+      blocks: [{ type: "text", text: "hi" }],
+    });
+    const bareCode = archive.read.findChatBySourceId("session-1")!.chatId;
+
+    const reader = createChatReader({ archive, metadata });
+    // Strict: only the clog_ wire form resolves; the bare code does not.
+    expect(reader.getMessages(bareCode, { includeTrashed: false })).toBeNull();
   });
 
   it("maps tool_result blocks back to snake_case for the API contract", () => {
@@ -531,7 +611,9 @@ describe("ChatReader.getMessages", () => {
     });
 
     const reader = createChatReader({ archive, metadata });
-    const messages = reader.getMessages("session-1", { includeTrashed: false });
+    const messages = reader.getMessages(wireIdFor(archive, "session-1"), {
+      includeTrashed: false,
+    });
     expect(messages![0].content).toEqual([
       { type: "tool_result", tool_use_id: "tool-1", content: "result" },
     ]);
@@ -561,11 +643,11 @@ describe("ChatReader is agent-agnostic", () => {
     const reader = createChatReader({ archive, metadata });
     const chat = reader
       .listChats({ includeTrashed: false })
-      .find((c) => c.id === "session-codex");
+      .find((c) => c.sourceId === "session-codex");
     expect(chat?.agent).toBe("codex");
     expect(chat?.title).toBe("Hello from Codex");
 
-    const messages = reader.getMessages("session-codex", {
+    const messages = reader.getMessages(wireIdFor(archive, "session-codex"), {
       includeTrashed: false,
     });
     expect(messages).toHaveLength(1);
@@ -764,25 +846,25 @@ describe("ChatReader.listChats query batching", () => {
     const chats = reader.listChats({ includeTrashed: false });
 
     // Ordering mirrors the chat-row insertion order.
-    expect(chats.map((c) => c.id)).toEqual([
+    expect(chats.map((c) => c.sourceId)).toEqual([
       "session-a",
       "session-b",
       "session-c",
     ]);
 
-    const a = chats.find((c) => c.id === "session-a")!;
+    const a = chats.find((c) => c.sourceId === "session-a")!;
     expect(a.title).toBe("Title from A");
     expect(a.sourceFilePath).toBe("/a/new.jsonl");
     expect(a.createdAt).toBe(1700000100000);
     expect(a.updatedAt).toBe(1700000800000);
 
-    const b = chats.find((c) => c.id === "session-b")!;
+    const b = chats.find((c) => c.sourceId === "session-b")!;
     expect(b.title).toBe("Custom B title");
     expect(b.sourceFilePath).toBe("/b/only.jsonl");
     expect(b.createdAt).toBe(1700000200000);
     expect(b.updatedAt).toBe(1700000200000);
 
-    const c = chats.find((c) => c.id === "session-c")!;
+    const c = chats.find((c) => c.sourceId === "session-c")!;
     expect(c.title).toBe("Untitled");
     expect(c.sourceFilePath).toBeNull();
     expect(c.createdAt).toBe(1700000050000);

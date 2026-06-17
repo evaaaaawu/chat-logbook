@@ -1,4 +1,5 @@
 import type { ArchiveRepository } from "./archive/repository.js";
+import { formatChatId, parseChatId } from "./archive/chat-id.js";
 import type { ChatRow } from "./archive/read-seam.js";
 import type { MetadataRepository } from "./metadata/repository.js";
 import { loadChatVisibility } from "./visibility.js";
@@ -14,8 +15,10 @@ import { loadChatVisibility } from "./visibility.js";
 export type ChatRecord = ChatRow;
 
 export interface ChatResponse {
+  /** Public wire-form chat id (`clog_…`) — the canonical, paste-anywhere handle. */
   id: string;
-  chatId: string;
+  /** The originating Agent's source id, surfaced for display only — never a handle. */
+  sourceId: string;
   agent: string;
   title: string;
   project: string;
@@ -58,15 +61,19 @@ function toApiBlock(block: StoredBlock): ApiContentBlock {
 export interface ChatReader {
   listChats(opts: { includeTrashed: boolean }): ChatResponse[];
   /**
-   * Messages for a Chat resolved by its source id. Returns null when the row
-   * is absent or not visible — the caller maps both to 404 (the two existing
-   * 404 paths collapse into one, behavior-preserving).
+   * Messages for a Chat resolved by its public wire-form chat id (`clog_…`).
+   * Returns null when the id is malformed, no chat matches, or it is not visible
+   * — the caller maps all of these to 404 (the 404 paths collapse into one).
    */
   getMessages(
     id: string,
     opts: { includeTrashed: boolean }
   ): MessageResponse[] | null;
-  /** Resolve a Chat by its source id for the mutation routes. */
+  /**
+   * Resolve a Chat by its public wire-form chat id (`clog_…`) for the mutation
+   * routes. Returns null when the id is malformed or no chat matches — both map
+   * to 404. Source ids and bare codes do not resolve.
+   */
   findChat(id: string): ChatRecord | null;
 }
 
@@ -80,7 +87,9 @@ export function createChatReader({
   metadata,
 }: ChatReaderDeps): ChatReader {
   function findChat(id: string): ChatRecord | null {
-    return archive.read.findChatBySourceId(id);
+    const code = parseChatId(id);
+    if (code === null) return null;
+    return archive.read.findChatByChatId(code);
   }
 
   function deriveTitle(
@@ -136,8 +145,8 @@ export function createChatReader({
       const tsRange = tsRangeByKey.get(rowKey);
       const firstSeenAtMs = row.firstSeenAt.getTime();
       const chat: ChatResponse = {
-        id: row.sourceId,
-        chatId: row.chatId,
+        id: formatChatId(row.chatId),
+        sourceId: row.sourceId,
         agent: row.agent,
         title: deriveTitle(
           customTitleById.get(row.id),

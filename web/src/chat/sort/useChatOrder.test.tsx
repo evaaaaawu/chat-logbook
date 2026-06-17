@@ -6,7 +6,7 @@ import { useChatOrder } from "@/chat/sort/useChatOrder";
 function chat(id: string, fields: Partial<Chat> = {}): Chat {
   return {
     id,
-    chatId: id.toUpperCase(),
+    sourceId: id.toUpperCase(),
     agent: "claude-code",
     title: id,
     project: "p",

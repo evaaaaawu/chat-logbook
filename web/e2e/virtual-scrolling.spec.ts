@@ -23,8 +23,8 @@ test.describe("Virtual scrolling", () => {
         json: {
           chats: [
             {
-              id: "large-chat",
-              chatId: "LARGEC",
+              id: "clog_large1",
+              sourceId: "large-chat",
               agent: "claude-code",
               title: "Large conversation",
               project: "/test/project",
@@ -37,7 +37,7 @@ test.describe("Virtual scrolling", () => {
       })
     );
 
-    await page.route(/\/api\/chats\/large-chat(\?|$)/, (route) =>
+    await page.route(/\/api\/chats\/clog_large1(\?|$)/, (route) =>
       route.fulfill({
         json: { messages: generateMessages(MESSAGE_COUNT) },
       })

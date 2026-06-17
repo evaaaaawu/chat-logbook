@@ -195,14 +195,14 @@ export function ChatMetadataPopover({ chat }: ChatMetadataPopoverProps) {
           <SectionLabel>Identifiers & location</SectionLabel>
           <CopyableField
             label="Chat ID"
-            display={chat.chatId}
-            copyValue={chat.chatId}
+            display={chat.id}
+            copyValue={chat.id}
             copyAriaLabel="Copy chat id"
           />
           <CopyableField
             label="Source ID"
-            display={<TruncatedPath value={chat.id} />}
-            copyValue={chat.id}
+            display={<TruncatedPath value={chat.sourceId} />}
+            copyValue={chat.sourceId}
             copyAriaLabel="Copy source id"
           />
           {chat.sourceFilePath ? (

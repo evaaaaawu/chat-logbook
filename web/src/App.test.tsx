@@ -302,7 +302,7 @@ describe("Chat metadata popover", () => {
           chats: [
             {
               id: "chat-x",
-              chatId: "CHATXX",
+              sourceId: "CHATXX",
               agent: "claude-code",
               title: "Full path chat",
               project: "chat-logbook",
@@ -339,7 +339,7 @@ describe("Chat metadata popover", () => {
           chats: [
             {
               id: "chat-y",
-              chatId: "CHATYY",
+              sourceId: "CHATYY",
               agent: "claude-code",
               title: "Basename fallback chat",
               project: "legacy-basename",
@@ -371,7 +371,7 @@ describe("Chat metadata popover", () => {
           chats: [
             {
               id: "chat-x",
-              chatId: "CHATXX",
+              sourceId: "CHATXX",
               agent: "claude-code",
               title: "No project chat",
               project: "",
@@ -948,7 +948,7 @@ describe("Empty states", () => {
           chats: [
             {
               id: "chat-1",
-              chatId: "CHAT01",
+              sourceId: "CHAT01",
               agent: "claude-code",
               title: "Build a login page",
               project: "/Users/test/my-web-app",
@@ -978,7 +978,7 @@ describe("Empty states", () => {
           chats: [
             {
               id: "chat-deleted-only",
-              chatId: "CHATDX",
+              sourceId: "CHATDX",
               agent: "claude-code",
               title: "Only deleted",
               project: "/Users/test/p",
@@ -1358,7 +1358,7 @@ describe("Tool call rendering (continued)", () => {
 describe("Freeze sort order on background updates", () => {
   type WireChat = {
     id: string;
-    chatId: string;
+    sourceId: string;
     agent: string;
     title: string;
     project: string;
@@ -1376,7 +1376,7 @@ describe("Freeze sort order on background updates", () => {
     return [
       {
         id: "chat-2",
-        chatId: "CHAT02",
+        sourceId: "CHAT02",
         agent: "claude-code",
         title: "Fix database migration",
         project: "backend-api",
@@ -1387,7 +1387,7 @@ describe("Freeze sort order on background updates", () => {
       },
       {
         id: "chat-1",
-        chatId: "CHAT01",
+        sourceId: "CHAT01",
         agent: "claude-code",
         title: "Build a login page",
         project: "my-web-app",
@@ -1398,7 +1398,7 @@ describe("Freeze sort order on background updates", () => {
       },
       {
         id: "chat-3",
-        chatId: "CHAT03",
+        sourceId: "CHAT03",
         agent: "claude-code",
         title: "Refactor utils",
         project: "my-web-app",
@@ -1409,7 +1409,7 @@ describe("Freeze sort order on background updates", () => {
       },
       {
         id: "chat-missing",
-        chatId: "CHATMI",
+        sourceId: "CHATMI",
         agent: "claude-code",
         title: "Untitled",
         project: "some-project",
@@ -1427,7 +1427,7 @@ describe("Freeze sort order on background updates", () => {
     return [
       {
         id: "chat-deleted-1",
-        chatId: "CHATDE",
+        sourceId: "CHATDE",
         agent: "claude-code",
         title: "Old prototype",
         project: "my-web-app",
@@ -1440,7 +1440,7 @@ describe("Freeze sort order on background updates", () => {
       },
       {
         id: "chat-deleted-2",
-        chatId: "CHATD2",
+        sourceId: "CHATD2",
         agent: "claude-code",
         title: "Newer experiment",
         project: "my-web-app",
@@ -1574,7 +1574,7 @@ describe("Freeze sort order on background updates", () => {
       const withNew = activeChats();
       withNew.push({
         id: "chat-new",
-        chatId: "CHATNW",
+        sourceId: "CHATNW",
         agent: "claude-code",
         title: "Fresh ingest",
         project: "my-web-app",
