@@ -1,4 +1,5 @@
 import {
+  index,
   integer,
   sqliteTable,
   text,
@@ -27,7 +28,11 @@ export const chats = sqliteTable(
     project: text("project"),
     projectPath: text("project_path"),
   },
-  (t) => [uniqueIndex("chats_agent_source_idx").on(t.agent, t.sourceId)]
+  (t) => [
+    uniqueIndex("chats_agent_source_idx").on(t.agent, t.sourceId),
+    // Backs the server-side Project filter (`WHERE coalesce(project,'') IN …`).
+    index("chats_project_idx").on(t.project),
+  ]
 );
 
 export const rawMessages = sqliteTable(

@@ -15,8 +15,12 @@ export function createApp({ archive, metadata, webDistDir }: AppOptions) {
   const reader = createChatReader({ archive, metadata });
 
   app.get("/api/chats", (c) => {
+    // Repeated `?project=` params union (OR); an empty value selects the
+    // `(No project)` group. Absent param => undefined => unfiltered.
+    const projects = c.req.queries("project");
     const chats = reader.listChats({
       includeTrashed: c.req.query("includeTrashed") === "true",
+      projects,
     });
     return c.json({ chats });
   });

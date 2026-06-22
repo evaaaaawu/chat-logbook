@@ -59,7 +59,15 @@ function toApiBlock(block: StoredBlock): ApiContentBlock {
 }
 
 export interface ChatReader {
-  listChats(opts: { includeTrashed: boolean }): ChatResponse[];
+  /**
+   * List visible chats. `projects`, when given, filters server-side to chats in
+   * any of those Projects (OR / union); an empty-string entry selects the
+   * `(No project)` group. Omitting it returns every visible chat.
+   */
+  listChats(opts: {
+    includeTrashed: boolean;
+    projects?: string[];
+  }): ChatResponse[];
   /**
    * Messages for a Chat resolved by its public wire-form chat id (`clog_…`).
    * Returns null when the id is malformed, no chat matches, or it is not visible
@@ -109,11 +117,13 @@ export function createChatReader({
 
   function listChats({
     includeTrashed,
+    projects,
   }: {
     includeTrashed: boolean;
+    projects?: string[];
   }): ChatResponse[] {
     const visibility = loadChatVisibility(metadata, { includeTrashed });
-    const rows = archive.read.listChatRows();
+    const rows = archive.read.listChatRows(projects ? { projects } : undefined);
 
     // One grouped/windowed query per derived field, assembled in memory keyed
     // by (agent, source_id) — so listing N chats stays a constant query count
