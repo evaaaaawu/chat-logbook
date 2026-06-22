@@ -56,6 +56,10 @@ _Avoid_: source_session_id, session_id
 The working directory a Chat belongs to. (chat-logbook itself is never "the project" in domain prose — that word is reserved for the user's working directory.)
 _Avoid_: workspace, repo, folder
 
+**Tag**:
+A user-created label, with a name and a color, that you attach to any number of Chats to categorize them your own way. A Chat may carry many Tags; a Tag may be on many Chats. Lives in Metadata, so it never touches the Archive.
+_Avoid_: label, category, folder, keyword
+
 ### Raw vs normalized
 
 **Raw**:
