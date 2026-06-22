@@ -534,6 +534,131 @@ describe("PATCH /api/chats/:id/title", () => {
   });
 });
 
+describe("GET /api/chats?project= (server-side Project filter)", () => {
+  it("filters to a single project", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedChat(archive, {
+      sourceId: "session-a",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-a",
+    });
+    seedChat(archive, {
+      sourceId: "session-b",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-b",
+    });
+
+    const app = createApp({ archive, metadata });
+    const res = await app.request("/api/chats?project=project-a");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    expect(body.chats.map((c) => c.sourceId)).toEqual(["session-a"]);
+  });
+
+  it("unions chats across repeated project params (OR)", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedChat(archive, {
+      sourceId: "session-a",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-a",
+    });
+    seedChat(archive, {
+      sourceId: "session-b",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-b",
+    });
+    seedChat(archive, {
+      sourceId: "session-c",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-c",
+    });
+
+    const app = createApp({ archive, metadata });
+    const res = await app.request(
+      "/api/chats?project=project-a&project=project-c"
+    );
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    expect(body.chats.map((c) => c.sourceId).sort()).toEqual([
+      "session-a",
+      "session-c",
+    ]);
+  });
+
+  it("selects the (No project) group when project= is empty", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedChat(archive, {
+      sourceId: "session-none",
+      firstSeenAt: new Date(1700000000000),
+      project: null,
+    });
+    seedChat(archive, {
+      sourceId: "session-a",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-a",
+    });
+
+    const app = createApp({ archive, metadata });
+    const res = await app.request("/api/chats?project=");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    expect(body.chats.map((c) => c.sourceId)).toEqual(["session-none"]);
+  });
+
+  it("returns every chat when no project param is given", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedChat(archive, {
+      sourceId: "session-a",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-a",
+    });
+    seedChat(archive, {
+      sourceId: "session-b",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-b",
+    });
+
+    const app = createApp({ archive, metadata });
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    expect(body.chats.map((c) => c.sourceId).sort()).toEqual([
+      "session-a",
+      "session-b",
+    ]);
+  });
+
+  it("composes with includeTrashed within the active view", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    seedChat(archive, {
+      sourceId: "session-active",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-a",
+    });
+    const trashedId = seedChat(archive, {
+      sourceId: "session-trashed",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-a",
+    });
+    metadata.softDelete(trashedId);
+
+    const app = createApp({ archive, metadata });
+    const main = await app.request("/api/chats?project=project-a");
+    const mainBody = (await main.json()) as { chats: ChatResponse[] };
+    expect(mainBody.chats.map((c) => c.sourceId)).toEqual(["session-active"]);
+
+    const trash = await app.request(
+      "/api/chats?project=project-a&includeTrashed=true"
+    );
+    const trashBody = (await trash.json()) as { chats: ChatResponse[] };
+    expect(trashBody.chats.map((c) => c.sourceId).sort()).toEqual([
+      "session-active",
+      "session-trashed",
+    ]);
+  });
+});
+
 describe("GET /api/chats/:id (route status mapping)", () => {
   it("returns 404 when archive has no chat for the given id", async () => {
     const archive = createArchiveRepository({ dataDir });

@@ -422,6 +422,118 @@ describe("ChatReader.listChats", () => {
   });
 });
 
+describe("ChatReader.listChats project filter", () => {
+  it("returns only chats in the given project", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "session-a",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-a",
+    });
+    seedChat(archive, {
+      sourceId: "session-b",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-b",
+    });
+
+    const reader = createChatReader({ archive, metadata });
+    const chats = reader.listChats({
+      includeTrashed: false,
+      projects: ["project-a"],
+    });
+    expect(chats.map((c) => c.sourceId)).toEqual(["session-a"]);
+  });
+
+  it("returns the union of chats across several projects (OR)", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "session-a",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-a",
+    });
+    seedChat(archive, {
+      sourceId: "session-b",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-b",
+    });
+    seedChat(archive, {
+      sourceId: "session-c",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-c",
+    });
+
+    const reader = createChatReader({ archive, metadata });
+    const chats = reader.listChats({
+      includeTrashed: false,
+      projects: ["project-a", "project-c"],
+    });
+    expect(chats.map((c) => c.sourceId).sort()).toEqual([
+      "session-a",
+      "session-c",
+    ]);
+  });
+
+  it("selects the (No project) group when the filter value is the empty string", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "session-none",
+      firstSeenAt: new Date(1700000000000),
+      project: null,
+    });
+    seedChat(archive, {
+      sourceId: "session-a",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-a",
+    });
+
+    const reader = createChatReader({ archive, metadata });
+    const chats = reader.listChats({
+      includeTrashed: false,
+      projects: [""],
+    });
+    expect(chats.map((c) => c.sourceId)).toEqual(["session-none"]);
+  });
+
+  it("composes the project filter with trash visibility (active view only)", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "session-active",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-a",
+    });
+    const trashedId = seedChat(archive, {
+      sourceId: "session-trashed",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-a",
+    });
+    metadata.softDelete(trashedId);
+
+    const reader = createChatReader({ archive, metadata });
+    const active = reader.listChats({
+      includeTrashed: false,
+      projects: ["project-a"],
+    });
+    expect(active.map((c) => c.sourceId)).toEqual(["session-active"]);
+
+    const trash = reader.listChats({
+      includeTrashed: true,
+      projects: ["project-a"],
+    });
+    expect(trash.map((c) => c.sourceId).sort()).toEqual([
+      "session-active",
+      "session-trashed",
+    ]);
+  });
+});
+
 describe("ChatReader visibility", () => {
   it("excludes trashed chats by default", () => {
     const archive = createArchiveRepository({ dataDir });

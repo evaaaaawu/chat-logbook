@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChats } from "@/chat/useChats";
 import { useMessages } from "@/conversation/useMessages";
 import { useToast } from "@/shared/useToast";
 import { useChatOrder } from "@/chat/sort/useChatOrder";
+import { deriveProjects } from "@/chat/projects/deriveProjects";
+import { filterChatsByProjects } from "@/chat/projects/filterChatsByProjects";
 import { FilterPanel } from "@/chat/FilterPanel";
 import { ChatList } from "@/chat/ChatList";
 import { SortControl } from "@/chat/sort/SortControl";
@@ -43,7 +45,33 @@ function App() {
   const order = mode === "trash" ? trashOrder : mainOrder;
   const mainChats = mainOrder.orderedChats;
   const deletedChats = trashOrder.orderedChats;
-  const visibleChats = order.orderedChats;
+
+  // Project filter: an empty selection means "all Projects". Facets are derived
+  // from the active view's chats (so counts are per-view), and the selected
+  // Projects are ensured into the list so a selected Project stays visible even
+  // after its last chat leaves the view (count 0).
+  const [selectedProjects, setSelectedProjects] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+  const toggleProject = useCallback((project: string) => {
+    setSelectedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(project)) next.delete(project);
+      else next.add(project);
+      return next;
+    });
+  }, []);
+  const clearProjects = useCallback(() => setSelectedProjects(new Set()), []);
+
+  const projectFacets = useMemo(
+    () => deriveProjects(order.orderedChats, { ensure: [...selectedProjects] }),
+    [order.orderedChats, selectedProjects]
+  );
+
+  const visibleChats = filterChatsByProjects(
+    order.orderedChats,
+    selectedProjects
+  );
   const selectedChat = chats.find((c) => c.id === selectedId) ?? null;
 
   const handleRestore = (id: string) => {
@@ -131,6 +159,10 @@ function App() {
           <FilterPanel
             deletedCount={deletedChats.length}
             onOpenTrash={() => switchMode("trash")}
+            projectFacets={projectFacets}
+            selectedProjects={selectedProjects}
+            onToggleProject={toggleProject}
+            onClearFilters={clearProjects}
           />
         </ResizablePanel>
         <ResizableHandle />

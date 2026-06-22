@@ -1,0 +1,1 @@
+CREATE INDEX `chats_project_idx` ON `chats` (`project`);

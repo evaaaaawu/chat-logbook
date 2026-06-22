@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { ArchiveDb } from "./repository.js";
 import { chats, ingestionEvents, messages, rawMessages } from "./schema.js";
 
@@ -37,8 +37,13 @@ export interface FirstUserText {
 }
 
 export interface ArchiveReadSeam {
-  /** Every chat row, in insertion order. */
-  listChatRows(): ChatRow[];
+  /**
+   * Chat rows in insertion order. With `projects`, filters server-side to rows
+   * whose project is in the set (OR / union) — an empty-string entry selects
+   * the `(No project)` group (project NULL or ''). An empty array filters to
+   * nothing; omitting `projects` returns every row.
+   */
+  listChatRows(opts?: { projects?: string[] }): ChatRow[];
   /** Resolve a chat by its source id; null when absent. */
   findChatBySourceId(sourceId: string): ChatRow | null;
   /** Resolve a chat by its bare chat_id code (the public handle); null when absent. */
@@ -66,7 +71,17 @@ export interface ArchiveReadSeam {
 
 export function createArchiveReadSeam(db: ArchiveDb): ArchiveReadSeam {
   return {
-    listChatRows() {
+    listChatRows(opts) {
+      const projects = opts?.projects;
+      if (projects) {
+        // Empty-string entries select the `(No project)` group, so compare
+        // against COALESCE(project,'') to fold NULL and '' into one bucket.
+        return db
+          .select()
+          .from(chats)
+          .where(inArray(sql`coalesce(${chats.project}, '')`, projects))
+          .all();
+      }
       return db.select().from(chats).all();
     },
     findChatBySourceId(sourceId) {

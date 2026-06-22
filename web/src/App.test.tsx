@@ -25,9 +25,13 @@ describe("Chat list", () => {
 
     await screen.findByText("Build a login page");
 
-    // Project name: last segment of path
-    expect(screen.getAllByText("my-web-app").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("backend-api")).toBeInTheDocument();
+    // Project name: last segment of path. Scope to the chat list — the
+    // navigation panel's Projects section also renders these names.
+    const list = screen.getByTestId("chat-list");
+    expect(
+      within(list).getAllByText("my-web-app").length
+    ).toBeGreaterThanOrEqual(1);
+    expect(within(list).getByText("backend-api")).toBeInTheDocument();
   });
 
   it("sorts sessions by updatedAt descending (most recent first)", async () => {
@@ -1627,5 +1631,101 @@ describe("Freeze sort order on background updates", () => {
     });
     rows = within(list).getAllByTestId("chat-row");
     expect(rows[rows.length - 1].textContent).toContain("Zzz renamed last");
+  });
+});
+
+describe("Project filter", () => {
+  it("filters the chat list to the clicked Project", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+    await user.click(screen.getByTestId("project-row-backend-api"));
+
+    const list = screen.getByTestId("chat-list");
+    await waitFor(() => {
+      expect(
+        within(list).queryByText("Build a login page")
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      within(list).getByText("Fix database migration")
+    ).toBeInTheDocument();
+  });
+
+  it("unions chats across several selected Projects (OR)", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+    await user.click(screen.getByTestId("project-row-my-web-app"));
+    await user.click(screen.getByTestId("project-row-backend-api"));
+
+    const list = screen.getByTestId("chat-list");
+    expect(within(list).getByText("Build a login page")).toBeInTheDocument();
+    expect(
+      within(list).getByText("Fix database migration")
+    ).toBeInTheDocument();
+    // some-project's chat ("Untitled") is in neither selected project.
+    await waitFor(() => {
+      expect(within(list).queryByText("Untitled")).not.toBeInTheDocument();
+    });
+  });
+
+  it("marks the selected Project row as pressed", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+    const row = screen.getByTestId("project-row-backend-api");
+    expect(row).toHaveAttribute("aria-pressed", "false");
+    await user.click(row);
+    expect(row).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("shows a 'filters active' summary and Clear restores the full list", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+    // No filter active: the summary bar is hidden.
+    expect(screen.queryByTestId("filters-summary")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("project-row-backend-api"));
+
+    const summary = screen.getByTestId("filters-summary");
+    expect(summary).toHaveTextContent("1 filter active");
+
+    const list = screen.getByTestId("chat-list");
+    await waitFor(() => {
+      expect(
+        within(list).queryByText("Build a login page")
+      ).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId("filters-clear"));
+    expect(
+      await within(list).findByText("Build a login page")
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("filters-summary")).not.toBeInTheDocument();
+  });
+
+  it("derives Project counts from the active view (main vs Trash)", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+    // Main view: backend-api has one active chat.
+    expect(screen.getByTestId("project-row-backend-api")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("trash-link"));
+
+    const section = await screen.findByTestId("projects-section");
+    // Trash has no backend-api chats, so its row is gone; my-web-app has two.
+    expect(
+      within(section).queryByTestId("project-row-backend-api")
+    ).not.toBeInTheDocument();
+    const webRow = within(section).getByTestId("project-row-my-web-app");
+    expect(within(webRow).getByText("2")).toBeInTheDocument();
   });
 });
