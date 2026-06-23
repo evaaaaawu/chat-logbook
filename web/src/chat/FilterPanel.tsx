@@ -15,6 +15,9 @@ interface FilterPanelProps {
   onClearFilters: () => void;
   tags: Tag[];
   countForTag: (tagId: string) => number;
+  untaggedCount: number;
+  selectedTags: ReadonlySet<string>;
+  onToggleTag: (tagId: string) => void;
   onRenameTag: (id: string, name: string) => void;
   onRecolorTag: (id: string, color: ColorToken) => void;
   onDeleteTag: (id: string) => void;
@@ -29,6 +32,9 @@ export function FilterPanel({
   onClearFilters,
   tags,
   countForTag,
+  untaggedCount,
+  selectedTags,
+  onToggleTag,
   onRenameTag,
   onRecolorTag,
   onDeleteTag,
@@ -41,7 +47,7 @@ export function FilterPanel({
       </div>
       <div className="flex-1 overflow-y-auto px-2 py-2">
         <FilterSummary
-          activeCount={selectedProjects.size}
+          activeCount={selectedProjects.size + selectedTags.size}
           onClear={onClearFilters}
         />
         <ProjectsSection
@@ -52,6 +58,9 @@ export function FilterPanel({
         <TagsSection
           tags={tags}
           countForTag={countForTag}
+          untaggedCount={untaggedCount}
+          selected={selectedTags}
+          onToggle={onToggleTag}
           onRename={onRenameTag}
           onRecolor={onRecolorTag}
           onDelete={onDeleteTag}
@@ -68,9 +77,13 @@ export function FilterPanel({
             <Trash2 size={14} aria-hidden="true" />
             Trash
           </span>
-          <span className="rounded-full bg-card px-2 text-xs font-semibold tabular-nums text-muted-foreground">
-            {deletedCount}
-          </span>
+          {/* A muted, pill-less count that only appears when Trash is non-empty:
+              a quiet "there's something in here" signal, not a headline metric. */}
+          {deletedCount > 0 && (
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {deletedCount}
+            </span>
+          )}
         </button>
       </div>
     </div>

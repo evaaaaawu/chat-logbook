@@ -611,6 +611,140 @@ describe("ChatReader.listChats project filter", () => {
   });
 });
 
+describe("ChatReader.listChats tag filter", () => {
+  it("returns only chats holding ALL selected tags (AND)", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const both = seedChat(archive, {
+      sourceId: "session-both",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const bugOnly = seedChat(archive, {
+      sourceId: "session-bug",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const bug = tags.createTag("bug", "red");
+    const idea = tags.createTag("idea", "violet");
+    tags.assignTag(both, bug.id);
+    tags.assignTag(both, idea.id);
+    tags.assignTag(bugOnly, bug.id);
+
+    const reader = createChatReader({ archive, metadata, tags });
+    const chats = reader.listChats({
+      includeTrashed: false,
+      tags: [bug.id, idea.id],
+    });
+    expect(chats.map((c) => c.sourceId)).toEqual(["session-both"]);
+  });
+
+  it("selects chats with zero tags for the Untagged group (empty-string entry)", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "session-bare",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const tagged = seedChat(archive, {
+      sourceId: "session-tagged",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const bug = tags.createTag("bug", "red");
+    tags.assignTag(tagged, bug.id);
+
+    const reader = createChatReader({ archive, metadata, tags });
+    const chats = reader.listChats({ includeTrashed: false, tags: [""] });
+    expect(chats.map((c) => c.sourceId)).toEqual(["session-bare"]);
+  });
+
+  it("yields nothing when Untagged is combined with a real tag", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "session-bare",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const tagged = seedChat(archive, {
+      sourceId: "session-tagged",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const bug = tags.createTag("bug", "red");
+    tags.assignTag(tagged, bug.id);
+
+    const reader = createChatReader({ archive, metadata, tags });
+    const chats = reader.listChats({
+      includeTrashed: false,
+      tags: ["", bug.id],
+    });
+    expect(chats).toEqual([]);
+  });
+
+  it("intersects the tag filter with the project filter (AND across types)", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const inA = seedChat(archive, {
+      sourceId: "session-a-tagged",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-a",
+    });
+    const inB = seedChat(archive, {
+      sourceId: "session-b-tagged",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-b",
+    });
+    const bug = tags.createTag("bug", "red");
+    tags.assignTag(inA, bug.id);
+    tags.assignTag(inB, bug.id);
+
+    const reader = createChatReader({ archive, metadata, tags });
+    const chats = reader.listChats({
+      includeTrashed: false,
+      projects: ["project-a"],
+      tags: [bug.id],
+    });
+    expect(chats.map((c) => c.sourceId)).toEqual(["session-a-tagged"]);
+  });
+
+  it("composes the tag filter with trash visibility (active view only)", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const active = seedChat(archive, {
+      sourceId: "session-active",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const trashed = seedChat(archive, {
+      sourceId: "session-trashed",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const bug = tags.createTag("bug", "red");
+    tags.assignTag(active, bug.id);
+    tags.assignTag(trashed, bug.id);
+    metadata.softDelete(trashed);
+
+    const reader = createChatReader({ archive, metadata, tags });
+    expect(
+      reader
+        .listChats({ includeTrashed: false, tags: [bug.id] })
+        .map((c) => c.sourceId)
+    ).toEqual(["session-active"]);
+    expect(
+      reader
+        .listChats({ includeTrashed: true, tags: [bug.id] })
+        .map((c) => c.sourceId)
+        .sort()
+    ).toEqual(["session-active", "session-trashed"]);
+  });
+});
+
 describe("ChatReader visibility", () => {
   it("excludes trashed chats by default", () => {
     const archive = createArchiveRepository({ dataDir });

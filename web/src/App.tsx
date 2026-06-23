@@ -6,6 +6,8 @@ import { useToast } from "@/shared/useToast";
 import { useChatOrder } from "@/chat/sort/useChatOrder";
 import { deriveProjects } from "@/chat/projects/deriveProjects";
 import { filterChatsByProjects } from "@/chat/projects/filterChatsByProjects";
+import { filterChatsByTags } from "@/tags/filterChatsByTags";
+import { toggleTagSelection } from "@/tags/toggleTagSelection";
 import { FilterPanel } from "@/chat/FilterPanel";
 import { ChatList } from "@/chat/ChatList";
 import { SortControl } from "@/chat/sort/SortControl";
@@ -75,24 +77,46 @@ function App() {
       return next;
     });
   }, []);
-  const clearProjects = useCallback(() => setSelectedProjects(new Set()), []);
+
+  // Tag filter: AND within (a chat must hold every selected Tag), combined with
+  // the Project filter (OR within) by intersecting the two filtered sets — AND
+  // across types. An empty selection means "all Tags". The `UNTAGGED` sentinel
+  // selects chats with zero Tags.
+  const [selectedTags, setSelectedTags] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+  const toggleTag = useCallback((tagId: string) => {
+    setSelectedTags((prev) => toggleTagSelection(prev, tagId));
+  }, []);
+  const clearFilters = useCallback(() => {
+    setSelectedProjects(new Set());
+    setSelectedTags(new Set());
+  }, []);
 
   const projectFacets = useMemo(
     () => deriveProjects(order.orderedChats, { ensure: [...selectedProjects] }),
     [order.orderedChats, selectedProjects]
   );
 
-  const visibleChats = filterChatsByProjects(
-    order.orderedChats,
-    selectedProjects
+  const visibleChats = filterChatsByTags(
+    filterChatsByProjects(order.orderedChats, selectedProjects),
+    selectedTags
   );
   const selectedChat = chats.find((c) => c.id === selectedId) ?? null;
 
+  // Tag and Untagged counts reflect the active view (main vs Trash), deriving
+  // from the same per-view list the Project facet counts use — so the two
+  // sections agree. They state each group's size in this view, not the
+  // post-filter result, so selecting a Tag never moves the numbers.
+  const viewChats = order.orderedChats;
   const countForTag = useCallback(
     (tagId: string) =>
-      chats.filter((c) => !c.isDeleted && c.tags?.some((t) => t.id === tagId))
-        .length,
-    [chats]
+      viewChats.filter((c) => c.tags?.some((t) => t.id === tagId)).length,
+    [viewChats]
+  );
+  const untaggedCount = useMemo(
+    () => viewChats.filter((c) => (c.tags?.length ?? 0) === 0).length,
+    [viewChats]
   );
   // Create a Tag and immediately assign it to the chat the popover is on.
   const createTagForChat = useCallback(
@@ -205,9 +229,12 @@ function App() {
             projectFacets={projectFacets}
             selectedProjects={selectedProjects}
             onToggleProject={toggleProject}
-            onClearFilters={clearProjects}
+            onClearFilters={clearFilters}
             tags={tagCatalog}
             countForTag={countForTag}
+            untaggedCount={untaggedCount}
+            selectedTags={selectedTags}
+            onToggleTag={toggleTag}
             onRenameTag={(id, name) => void renameTag(id, name)}
             onRecolorTag={(id, color) => void recolorTag(id, color)}
             onDeleteTag={(id) => void deleteTag(id)}

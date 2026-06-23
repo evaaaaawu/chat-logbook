@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { openStore } from "../storage/openStore.js";
 import * as schema from "./schema.js";
 import { chatTags, tags } from "./schema.js";
@@ -30,6 +30,14 @@ export interface TagRepository {
   /** Tags grouped by Chat id in one query — never one query per Chat
    * (ADR-0016). Pass `chatIds` to scope to a subset; omit for every Chat. */
   listTagsByChat(chatIds?: string[]): Map<string, Tag[]>;
+  /**
+   * Chat ids holding ALL of the given Tags — the AND-intersection that backs
+   * the multi-Tag filter (#11 / ADR-0016). `tag_id IN (...) GROUP BY chat_id
+   * HAVING COUNT = N`; the `(chat_id, tag_id)` PK guarantees no duplicate rows
+   * so the count is exact. Duplicate ids in the input are de-duplicated first
+   * so a repeated id can't inflate N past what any Chat can match. An empty
+   * input returns no ids (an AND over nothing has no candidate set here). */
+  listChatIdsWithAllTags(tagIds: string[]): string[];
 }
 
 interface TagRepositoryOptions {
@@ -165,6 +173,19 @@ export function createTagRepository({
         byChat.set(row.chatId, list);
       }
       return byChat;
+    },
+
+    listChatIdsWithAllTags(tagIds) {
+      const distinct = [...new Set(tagIds)];
+      if (distinct.length === 0) return [];
+      return db
+        .select({ chatId: chatTags.chatId })
+        .from(chatTags)
+        .where(inArray(chatTags.tagId, distinct))
+        .groupBy(chatTags.chatId)
+        .having(sql`count(${chatTags.tagId}) = ${distinct.length}`)
+        .all()
+        .map((r) => r.chatId);
     },
   };
 }
