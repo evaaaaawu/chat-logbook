@@ -9,6 +9,7 @@ import { createApp } from "./app.js";
 import { createArchiveRepository } from "./archive/repository.js";
 import { createCheckpointRepository } from "./checkpoint/repository.js";
 import { createMetadataRepository } from "./metadata/repository.js";
+import { createTagRepository } from "./metadata/tags.js";
 import { startIngestionInBackground } from "./ingestion/background.js";
 import { startWatcher } from "./ingestion/watcher.js";
 import { plugins } from "./plugins/registry.js";
@@ -47,7 +48,8 @@ const port = action.port;
 const archive = createArchiveRepository({ dataDir });
 const checkpoint = createCheckpointRepository({ dataDir });
 const metadata = createMetadataRepository({ dataDir });
-const app = createApp({ archive, metadata, webDistDir });
+const tags = createTagRepository({ dataDir });
+const app = createApp({ archive, metadata, tags, webDistDir });
 
 const initialIngest = startIngestionInBackground({
   plugins,
