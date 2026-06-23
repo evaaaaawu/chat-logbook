@@ -70,6 +70,13 @@ export interface ChatReader {
   listChats(opts: {
     includeTrashed: boolean;
     projects?: string[];
+    /**
+     * Tag filter, AND within: a Chat must hold every selected Tag to pass. An
+     * empty-string entry selects the `Untagged` group (zero Tags) — mixing it
+     * with a real Tag id naturally yields nothing. Combined with `projects` (OR
+     * within) the two AND across types. Omitting it leaves Tags unfiltered.
+     */
+    tags?: string[];
   }): ChatResponse[];
   /**
    * Messages for a Chat resolved by its public wire-form chat id (`clog_…`).
@@ -123,12 +130,38 @@ export function createChatReader({
   function listChats({
     includeTrashed,
     projects,
+    tags: tagSelection,
   }: {
     includeTrashed: boolean;
     projects?: string[];
+    tags?: string[];
   }): ChatResponse[] {
     const visibility = loadChatVisibility(metadata, { includeTrashed });
     const rows = archive.read.listChatRows(projects ? { projects } : undefined);
+
+    // Tag filter (AND within) is resolved as a per-Chat predicate intersected
+    // in app code with the Project-filtered Archive rows — the cross-store
+    // intersection ADR-0016 mandates instead of a single cross-database JOIN.
+    // A real-id set comes from the AND-intersection query; the `Untagged`
+    // group is "holds no Tag at all", so it excludes any Chat that appears in
+    // the grouped tags map. Selecting both at once leaves nothing, as intended.
+    let passesTagFilter: ((chatInternalId: string) => boolean) | null = null;
+    if (tagSelection) {
+      const realTagIds = tagSelection.filter((t) => t !== "");
+      const wantUntagged = tagSelection.includes("");
+      const allowedByTags =
+        realTagIds.length > 0
+          ? new Set(tags.listChatIdsWithAllTags(realTagIds))
+          : null;
+      const taggedChatIds = wantUntagged
+        ? new Set(tags.listTagsByChat().keys())
+        : null;
+      passesTagFilter = (chatInternalId) => {
+        if (allowedByTags && !allowedByTags.has(chatInternalId)) return false;
+        if (taggedChatIds && taggedChatIds.has(chatInternalId)) return false;
+        return true;
+      };
+    }
 
     // One grouped/windowed query per derived field, assembled in memory keyed
     // by (agent, source_id) — so listing N chats stays a constant query count
@@ -157,6 +190,7 @@ export function createChatReader({
     const chats: ChatResponse[] = [];
     for (const row of rows) {
       if (!visibility.isVisible(row.id)) continue;
+      if (passesTagFilter && !passesTagFilter(row.id)) continue;
       const isDeleted = visibility.isTrashed(row.id);
 
       const rowKey = key(row.agent, row.sourceId);

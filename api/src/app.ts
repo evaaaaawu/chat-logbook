@@ -21,9 +21,15 @@ export function createApp({ archive, metadata, tags, webDistDir }: AppOptions) {
     // Repeated `?project=` params union (OR); an empty value selects the
     // `(No project)` group. Absent param => undefined => unfiltered.
     const projects = c.req.queries("project");
+    // A single comma-separated `?tags=` param, AND within. `tags=` (empty)
+    // splits to `[""]` — the `Untagged` group — mirroring `project=`'s empty
+    // `(No project)` convention. Absent param => undefined => unfiltered.
+    const tagsParam = c.req.query("tags");
+    const tags = tagsParam === undefined ? undefined : tagsParam.split(",");
     const chats = reader.listChats({
       includeTrashed: c.req.query("includeTrashed") === "true",
       projects,
+      tags,
     });
     return c.json({ chats });
   });

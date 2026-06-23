@@ -765,6 +765,103 @@ describe("GET /api/chats?project= (server-side Project filter)", () => {
   });
 });
 
+describe("GET /api/chats?tags= (server-side Tag filter)", () => {
+  it("returns only chats holding ALL listed tags (AND intersection)", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+    const both = seedChat(archive, {
+      sourceId: "session-both",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const bugOnly = seedChat(archive, {
+      sourceId: "session-bug",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const bug = tags.createTag("bug", "red");
+    const idea = tags.createTag("idea", "violet");
+    tags.assignTag(both, bug.id);
+    tags.assignTag(both, idea.id);
+    tags.assignTag(bugOnly, bug.id);
+
+    const app = createApp({ archive, metadata, tags });
+    const res = await app.request(`/api/chats?tags=${bug.id},${idea.id}`);
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    expect(body.chats.map((c) => c.sourceId)).toEqual(["session-both"]);
+  });
+
+  it("combines the tag filter with the project filter (AND across types)", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+    const inA = seedChat(archive, {
+      sourceId: "session-a-tagged",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-a",
+    });
+    const inB = seedChat(archive, {
+      sourceId: "session-b-tagged",
+      firstSeenAt: new Date(1700000000000),
+      project: "project-b",
+    });
+    const bug = tags.createTag("bug", "red");
+    tags.assignTag(inA, bug.id);
+    tags.assignTag(inB, bug.id);
+
+    const app = createApp({ archive, metadata, tags });
+    const res = await app.request(
+      `/api/chats?tags=${bug.id}&project=project-a`
+    );
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    expect(body.chats.map((c) => c.sourceId)).toEqual(["session-a-tagged"]);
+  });
+
+  it("selects the Untagged group when tags= is empty", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+    seedChat(archive, {
+      sourceId: "session-bare",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const tagged = seedChat(archive, {
+      sourceId: "session-tagged",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const bug = tags.createTag("bug", "red");
+    tags.assignTag(tagged, bug.id);
+
+    const app = createApp({ archive, metadata, tags });
+    const res = await app.request("/api/chats?tags=");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    expect(body.chats.map((c) => c.sourceId)).toEqual(["session-bare"]);
+  });
+
+  it("returns every chat when no tags param is given", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+    const a = seedChat(archive, {
+      sourceId: "session-a",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedChat(archive, {
+      sourceId: "session-b",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const bug = tags.createTag("bug", "red");
+    tags.assignTag(a, bug.id);
+
+    const app = createApp({ archive, metadata, tags });
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    expect(body.chats.map((c) => c.sourceId).sort()).toEqual([
+      "session-a",
+      "session-b",
+    ]);
+  });
+});
+
 describe("GET /api/chats/:id (route status mapping)", () => {
   it("returns 404 when archive has no chat for the given id", async () => {
     const archive = createArchiveRepository({ dataDir });
