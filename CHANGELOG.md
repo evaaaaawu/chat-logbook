@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.13.0] - 2026-06-23
+
+Group and find chats your own way. You can now tag chats and filter the list by tag or by project, so the chats you care about are one click away.
+
+### Added
+
+- Tag your chats. Create a tag, assign it to any chat, and see it as a colored chip on the chat and a dot in the list. Rename or delete tags from the same place.
+- Filter the chat list by tag. Pick several tags and the list narrows to chats that have all of them.
+- Filter the chat list by project from a new Projects section in the navigation panel.
+
 ## [0.12.0] - 2026-06-17
 
 Every chat now has one stable, paste-anywhere id (`clog_a3f7kx`) shown across the API and the metadata panel. This is also a breaking change to the local HTTP API — see the upgrade note below.

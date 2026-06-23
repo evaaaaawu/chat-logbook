@@ -42,6 +42,8 @@ The full problem statement, user stories, and direction live in the [PRD](docs/P
 - **Local archive.** Every conversation chat-logbook reads is copied into `~/.chat-logbook/archive.db`. The UI reads from the archive, so a chat stays visible even after the source JSONL is gone.
 - **Live updates.** While Claude Code is actively writing to a chat, new messages appear in chat-logbook within seconds — no restart needed.
 - **Chat metadata at a glance.** A ⓘ button on the conversation header opens a popover showing when the chat started, when it was last updated, the agent, the project working directory, and the chat's IDs — with one-click copy.
+- **Tags.** Create tags, give them colors, and assign them to chats. They show as colored chips on the chat and in the list. Rename or delete them anytime.
+- **Filter by tag or project.** Narrow the chat list to a project, or to chats that carry all of several selected tags.
 
 ## Quick start
 
@@ -109,13 +111,9 @@ No. chat-logbook reads files those tools write on your machine. It doesn't talk 
 
 ## Roadmap
 
-Two phases of work are in flight, in this order.
-
-**Custom titles and tags.** Rename a chat to something you'll recognize, attach tags with custom colors, and filter the list by tag or by project. This is the path from "I have a lot of conversations" to "I can find the one I need."
-
 **Spotlight search.** A keyboard-driven overlay (`⌘K` or `/`) that searches across chats, messages, tags, and projects from one input. A match lands you on the exact message with the term highlighted, and you can jump between every match without leaving the overlay.
 
-Beyond these three, several smaller things are on the list without firm timing — live updates while an AI tool is writing, annotations and highlights for marking what matters, editing your own past messages, CLI commands for working with conversations from a terminal. Some will ship; some are still being weighed.
+Beyond this, several smaller things are on the list without firm timing — live updates while an AI tool is writing, annotations and highlights for marking what matters, editing your own past messages, CLI commands for working with conversations from a terminal. Some will ship; some are still being weighed.
 
 Explicit non-goals: semantic / vector search, cloud sync inside the OSS core, modification of source directories like `~/.claude/`, and bulk export to bespoke formats (the archive itself is the export). See the [PRD](docs/PRD.md) for the full out-of-scope list.
 
