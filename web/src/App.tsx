@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChats } from "@/chat/useChats";
+import { useTags } from "@/tags/useTags";
 import { useMessages } from "@/conversation/useMessages";
 import { useToast } from "@/shared/useToast";
 import { useChatOrder } from "@/chat/sort/useChatOrder";
@@ -17,7 +18,20 @@ import {
 } from "@/shared/ui/resizable";
 
 function App() {
-  const { chats, sortEpoch, softDelete, restore, setTitle } = useChats();
+  const { chats, sortEpoch, softDelete, restore, setTitle, reload } =
+    useChats();
+  const onAssignmentChange = useCallback(() => {
+    void reload();
+  }, [reload]);
+  const {
+    tags: tagCatalog,
+    createTag,
+    renameTag,
+    recolorTag,
+    deleteTag,
+    assignTag,
+    removeTag,
+  } = useTags({ onAssignmentChange });
   const handleRenameTitle = (id: string, title: string) => {
     void setTitle(id, title);
   };
@@ -74,6 +88,26 @@ function App() {
   );
   const selectedChat = chats.find((c) => c.id === selectedId) ?? null;
 
+  const countForTag = useCallback(
+    (tagId: string) =>
+      chats.filter((c) => !c.isDeleted && c.tags?.some((t) => t.id === tagId))
+        .length,
+    [chats]
+  );
+  // Create a Tag and immediately assign it to the chat the popover is on.
+  const createTagForChat = useCallback(
+    async (
+      chatId: string,
+      name: string,
+      color: Parameters<typeof createTag>[1]
+    ) => {
+      const created = await createTag(name, color);
+      if (created) await assignTag(chatId, created.id);
+      return created;
+    },
+    [createTag, assignTag]
+  );
+
   const handleRestore = (id: string) => {
     if (id === selectedId) {
       const idx = deletedChats.findIndex((c) => c.id === id);
@@ -115,6 +149,15 @@ function App() {
         target?.tagName === "TEXTAREA" ||
         target?.isContentEditable === true;
       if (isEditable) return;
+      // Keystrokes inside an open popover (find-or-create, recolor, metadata…)
+      // belong to that popover, not the global chat shortcuts. Without this,
+      // Enter/Backspace while focus sits on a non-input element in a popover
+      // (e.g. a color swatch) would start a title rename or trash the chat.
+      if (
+        target instanceof Element &&
+        target.closest('[data-slot="popover-content"]')
+      )
+        return;
 
       if (e.key === "Escape" && mode === "trash") {
         e.preventDefault();
@@ -163,6 +206,11 @@ function App() {
             selectedProjects={selectedProjects}
             onToggleProject={toggleProject}
             onClearFilters={clearProjects}
+            tags={tagCatalog}
+            countForTag={countForTag}
+            onRenameTag={(id, name) => void renameTag(id, name)}
+            onRecolorTag={(id, color) => void recolorTag(id, color)}
+            onDeleteTag={(id) => void deleteTag(id)}
           />
         </ResizablePanel>
         <ResizableHandle />
@@ -192,6 +240,10 @@ function App() {
             error={error}
             onRestore={handleRestore}
             onRenameTitle={handleRenameTitle}
+            allTags={tagCatalog}
+            onAssignTag={(chatId, tagId) => void assignTag(chatId, tagId)}
+            onRemoveTag={(chatId, tagId) => void removeTag(chatId, tagId)}
+            onCreateTag={createTagForChat}
           />
         </ResizablePanel>
       </ResizablePanelGroup>

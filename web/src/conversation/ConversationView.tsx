@@ -4,13 +4,26 @@ import { RotateCcw } from "lucide-react";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
-import type { Message, ContentBlock, Chat } from "@/types";
+import type { Message, ContentBlock, Chat, Tag } from "@/types";
 import { CollapsibleThinking } from "@/conversation/CollapsibleThinking";
 import { CollapsibleToolCall } from "@/conversation/CollapsibleToolCall";
 import { ChatMetadataPopover } from "@/metadata/ChatMetadataPopover";
 import { EditableTitle } from "@/metadata/EditableTitle";
+import { TagStrip } from "@/tags/TagStrip";
+import type { ColorToken } from "@/tags/palette";
 
-interface ConversationViewProps {
+interface TagControls {
+  allTags: Tag[];
+  onAssignTag: (chatId: string, tagId: string) => void;
+  onRemoveTag: (chatId: string, tagId: string) => void;
+  onCreateTag: (
+    chatId: string,
+    name: string,
+    color: ColorToken
+  ) => Promise<Tag | null>;
+}
+
+interface ConversationViewProps extends Partial<TagControls> {
   chat: Chat | null;
   messages: Message[];
   error?: string | null;
@@ -172,7 +185,15 @@ export function ConversationView({
   onRenameTitle,
   editingTitle,
   onEditingTitleChange,
+  allTags,
+  onAssignTag,
+  onRemoveTag,
+  onCreateTag,
 }: ConversationViewProps) {
+  const tagControls: TagControls | undefined =
+    allTags && onAssignTag && onRemoveTag && onCreateTag
+      ? { allTags, onAssignTag, onRemoveTag, onCreateTag }
+      : undefined;
   const [internalEditing, setInternalEditing] = useState(false);
   const headerEditing =
     editingTitle !== undefined ? editingTitle : internalEditing;
@@ -204,6 +225,16 @@ export function ConversationView({
         onEditingChange={setHeaderEditing}
         onRenameTitle={onRenameTitle}
       />
+      {chat && tagControls && (
+        <TagStrip
+          chatId={chat.id}
+          assigned={chat.tags ?? []}
+          allTags={tagControls.allTags}
+          onAssign={tagControls.onAssignTag}
+          onRemove={tagControls.onRemoveTag}
+          onCreate={tagControls.onCreateTag}
+        />
+      )}
       {chat?.isDeleted && onRestore && (
         <DeletedBanner chatId={chat.id} onRestore={onRestore} />
       )}

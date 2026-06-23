@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import { createApp } from "./app.js";
 import { createArchiveRepository } from "./archive/repository.js";
 import { createMetadataRepository } from "./metadata/repository.js";
+import { createTagRepository } from "./metadata/tags.js";
+import type { Tag } from "./metadata/tags.js";
 import { formatChatId } from "./archive/chat-id.js";
 
 interface ChatResponse {
@@ -114,7 +116,11 @@ describe("Chat id is the public API handle", () => {
     });
     const wireId = wireIdFor(archive, "session-1");
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const list = await app.request("/api/chats");
     const body = (await list.json()) as { chats: ChatResponse[] };
     const chat = body.chats.find((s) => s.sourceId === "session-1");
@@ -138,7 +144,11 @@ describe("Chat id is the public API handle", () => {
       blocks: [{ type: "text", text: "hi" }],
     });
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const res = await app.request("/api/chats/session-1");
     expect(res.status).toBe(404);
   });
@@ -160,7 +170,11 @@ describe("Chat id is the public API handle", () => {
     });
     const wireId = wireIdFor(archive, "session-1");
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const res = await app.request(`/api/chats/${wireId}`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { messages: MessageResponse[] };
@@ -178,7 +192,11 @@ describe("Soft delete and restore (archive-backed)", () => {
     });
     const wireId = wireIdFor(archive, "session-1");
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
 
     const res = await app.request("/api/chats?includeDeleted=true");
@@ -195,7 +213,11 @@ describe("Soft delete and restore (archive-backed)", () => {
     });
     const wireId = wireIdFor(archive, "session-1");
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const del = await app.request(`/api/chats/${wireId}`, {
       method: "DELETE",
     });
@@ -215,7 +237,11 @@ describe("Soft delete and restore (archive-backed)", () => {
     });
     const wireId = wireIdFor(archive, "session-1");
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
     const restore = await app.request(`/api/chats/${wireId}/restore`, {
       method: "POST",
@@ -236,7 +262,11 @@ describe("Soft delete and restore (archive-backed)", () => {
     });
     const wireId = wireIdFor(archive, "session-1");
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
 
     const row = archive.read.findChatBySourceId("session-1");
@@ -262,7 +292,11 @@ describe("GET /api/chats/:id visibility", () => {
     });
     const wireId = wireIdFor(archive, "session-1");
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
 
     const res = await app.request(`/api/chats/${wireId}`);
@@ -286,7 +320,11 @@ describe("GET /api/chats/:id visibility", () => {
     });
     const wireId = wireIdFor(archive, "session-1");
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
 
     const res = await app.request(`/api/chats/${wireId}?includeTrashed=true`);
@@ -304,7 +342,11 @@ describe("GET /api/chats/:id visibility", () => {
     });
     const wireId = wireIdFor(archive, "session-1");
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
     const restore = await app.request(`/api/chats/${wireId}/restore`, {
       method: "POST",
@@ -317,7 +359,11 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
   it("returns 404 when DELETE targets a chat absent from archive", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
 
     const res = await app.request("/api/chats/nonexistent", {
       method: "DELETE",
@@ -328,7 +374,11 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
   it("returns 404 when restore targets a chat absent from archive", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
 
     const res = await app.request("/api/chats/nonexistent/restore", {
       method: "POST",
@@ -344,7 +394,11 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
       firstSeenAt: new Date(1700000000000),
     });
     const wireId = wireIdFor(archive, "session-1");
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
 
     const first = await app.request(`/api/chats/${wireId}`, {
       method: "DELETE",
@@ -364,7 +418,11 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
       firstSeenAt: new Date(1700000000000),
     });
     const wireId = wireIdFor(archive, "session-1");
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
 
     const res = await app.request(`/api/chats/${wireId}/restore`, {
       method: "POST",
@@ -391,7 +449,11 @@ describe("PATCH /api/chats/:id/title", () => {
     });
     const wireId = wireIdFor(archive, "session-1");
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const patch = await app.request(`/api/chats/${wireId}/title`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -423,7 +485,11 @@ describe("PATCH /api/chats/:id/title", () => {
     metadata.setCustomTitle(internalId, "Custom");
     const wireId = wireIdFor(archive, "session-1");
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const patch = await app.request(`/api/chats/${wireId}/title`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -447,7 +513,11 @@ describe("PATCH /api/chats/:id/title", () => {
     metadata.setCustomTitle(internalId, "Custom");
     const wireId = wireIdFor(archive, "session-1");
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const patch = await app.request(`/api/chats/${wireId}/title`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -470,7 +540,11 @@ describe("PATCH /api/chats/:id/title", () => {
     });
     const wireId = wireIdFor(archive, "session-1");
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     await app.request(`/api/chats/${wireId}/title`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -486,7 +560,11 @@ describe("PATCH /api/chats/:id/title", () => {
   it("returns 404 when archive has no chat for the given id", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
 
     const res = await app.request("/api/chats/nonexistent/title", {
       method: "PATCH",
@@ -504,7 +582,11 @@ describe("PATCH /api/chats/:id/title", () => {
       firstSeenAt: new Date(1700000000000),
     });
     const wireId = wireIdFor(archive, "session-1");
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
 
     const wrongType = await app.request(`/api/chats/${wireId}/title`, {
       method: "PATCH",
@@ -522,7 +604,11 @@ describe("PATCH /api/chats/:id/title", () => {
       firstSeenAt: new Date(1700000000000),
     });
     const wireId = wireIdFor(archive, "session-1");
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
 
     const tooLong = "x".repeat(201);
     const res = await app.request(`/api/chats/${wireId}/title`, {
@@ -549,7 +635,11 @@ describe("GET /api/chats?project= (server-side Project filter)", () => {
       project: "project-b",
     });
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const res = await app.request("/api/chats?project=project-a");
     const body = (await res.json()) as { chats: ChatResponse[] };
     expect(body.chats.map((c) => c.sourceId)).toEqual(["session-a"]);
@@ -574,7 +664,11 @@ describe("GET /api/chats?project= (server-side Project filter)", () => {
       project: "project-c",
     });
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const res = await app.request(
       "/api/chats?project=project-a&project=project-c"
     );
@@ -599,7 +693,11 @@ describe("GET /api/chats?project= (server-side Project filter)", () => {
       project: "project-a",
     });
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const res = await app.request("/api/chats?project=");
     const body = (await res.json()) as { chats: ChatResponse[] };
     expect(body.chats.map((c) => c.sourceId)).toEqual(["session-none"]);
@@ -619,7 +717,11 @@ describe("GET /api/chats?project= (server-side Project filter)", () => {
       project: "project-b",
     });
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const res = await app.request("/api/chats");
     const body = (await res.json()) as { chats: ChatResponse[] };
     expect(body.chats.map((c) => c.sourceId).sort()).toEqual([
@@ -643,7 +745,11 @@ describe("GET /api/chats?project= (server-side Project filter)", () => {
     });
     metadata.softDelete(trashedId);
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const main = await app.request("/api/chats?project=project-a");
     const mainBody = (await main.json()) as { chats: ChatResponse[] };
     expect(mainBody.chats.map((c) => c.sourceId)).toEqual(["session-active"]);
@@ -664,8 +770,217 @@ describe("GET /api/chats/:id (route status mapping)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
-    const app = createApp({ archive, metadata });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const res = await app.request("/api/chats/does-not-exist");
     expect(res.status).toBe(404);
+  });
+});
+
+describe("Tag API", () => {
+  function setup() {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+    const app = createApp({ archive, metadata, tags });
+    return { archive, metadata, tags, app };
+  }
+
+  it("POST /api/tags creates a tag and lists it via GET /api/tags", async () => {
+    const { app } = setup();
+
+    const created = await app.request("/api/tags", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "bug", color: "red" }),
+    });
+    expect(created.status).toBe(201);
+    const { tag } = (await created.json()) as { tag: Tag };
+    expect(tag).toMatchObject({ name: "bug", color: "red" });
+
+    const list = await app.request("/api/tags");
+    const { tags } = (await list.json()) as { tags: Tag[] };
+    expect(tags).toEqual([tag]);
+  });
+
+  it("POST /api/tags rejects a color outside the palette with 400", async () => {
+    const { app } = setup();
+
+    const res = await app.request("/api/tags", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "bug", color: "#ff0000" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("PATCH /api/tags/:id renames and recolors a tag", async () => {
+    const { app, tags } = setup();
+    const tag = tags.createTag("bug", "red");
+
+    const res = await app.request(`/api/tags/${tag.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "defect", color: "blue" }),
+    });
+    expect(res.status).toBe(204);
+    expect(tags.listTags()).toEqual([
+      { id: tag.id, name: "defect", color: "blue" },
+    ]);
+  });
+
+  it("PATCH /api/tags/:id 404s for an unknown tag", async () => {
+    const { app } = setup();
+
+    const res = await app.request("/api/tags/ghost", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "x" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("PATCH /api/tags/:id rejects a color outside the palette with 400", async () => {
+    const { app, tags } = setup();
+    const tag = tags.createTag("bug", "red");
+
+    const res = await app.request(`/api/tags/${tag.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ color: "#abc" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("DELETE /api/tags/:id removes it from chats and reports the count", async () => {
+    const { archive, app, tags } = setup();
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const wireId = wireIdFor(archive, "session-1");
+    const tag = tags.createTag("bug", "red");
+    await app.request(`/api/chats/${wireId}/tags`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tagId: tag.id }),
+    });
+
+    const res = await app.request(`/api/tags/${tag.id}`, { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ removedFromChats: 1 });
+    expect(tags.listTags()).toEqual([]);
+  });
+
+  it("DELETE /api/tags/:id 404s for an unknown tag", async () => {
+    const { app } = setup();
+
+    const res = await app.request("/api/tags/ghost", { method: "DELETE" });
+    expect(res.status).toBe(404);
+  });
+
+  it("POST /api/chats/:id/tags assigns a tag to the chat", async () => {
+    const { archive, app, tags } = setup();
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const wireId = wireIdFor(archive, "session-1");
+    const tag = tags.createTag("bug", "red");
+
+    const res = await app.request(`/api/chats/${wireId}/tags`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tagId: tag.id }),
+    });
+    expect(res.status).toBe(204);
+
+    const row = archive.read.findChatBySourceId("session-1")!;
+    expect(tags.listTagsForChat(row.id)).toEqual([tag]);
+  });
+
+  it("POST /api/chats/:id/tags 404s for an unknown chat", async () => {
+    const { app, tags } = setup();
+    const tag = tags.createTag("bug", "red");
+
+    const res = await app.request("/api/chats/clog_zzzzzz/tags", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tagId: tag.id }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("POST /api/chats/:id/tags 404s for an unknown tag", async () => {
+    const { archive, app } = setup();
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const wireId = wireIdFor(archive, "session-1");
+
+    const res = await app.request(`/api/chats/${wireId}/tags`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tagId: "ghost" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("GET /api/chats embeds each chat's assigned tags", async () => {
+    const { archive, app, tags } = setup();
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const row = archive.read.findChatBySourceId("session-1")!;
+    const bug = tags.createTag("bug", "red");
+    const idea = tags.createTag("idea", "violet");
+    tags.assignTag(row.id, bug.id);
+    tags.assignTag(row.id, idea.id);
+
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as {
+      chats: Array<{ sourceId: string; tags: Tag[] }>;
+    };
+    const chat = body.chats.find((c) => c.sourceId === "session-1");
+    expect(chat?.tags).toEqual([bug, idea]);
+  });
+
+  it("GET /api/chats returns an empty tags array for an untagged chat", async () => {
+    const { archive, app } = setup();
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+
+    const res = await app.request("/api/chats");
+    const body = (await res.json()) as {
+      chats: Array<{ sourceId: string; tags: Tag[] }>;
+    };
+    expect(body.chats.find((c) => c.sourceId === "session-1")?.tags).toEqual(
+      []
+    );
+  });
+
+  it("DELETE /api/chats/:id/tags/:tagId removes the assignment", async () => {
+    const { archive, app, tags } = setup();
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const wireId = wireIdFor(archive, "session-1");
+    const tag = tags.createTag("bug", "red");
+    const row = archive.read.findChatBySourceId("session-1")!;
+    tags.assignTag(row.id, tag.id);
+
+    const res = await app.request(`/api/chats/${wireId}/tags/${tag.id}`, {
+      method: "DELETE",
+    });
+    expect(res.status).toBe(204);
+    expect(tags.listTagsForChat(row.id)).toEqual([]);
   });
 });

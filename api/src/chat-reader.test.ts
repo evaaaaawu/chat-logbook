@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import { createChatReader } from "./chat-reader.js";
 import { createArchiveRepository } from "./archive/repository.js";
 import { createMetadataRepository } from "./metadata/repository.js";
+import { createTagRepository } from "./metadata/tags.js";
 import { CROCKFORD_ALPHABET, formatChatId } from "./archive/chat-id.js";
 import type { ArchiveReadSeam } from "./archive/read-seam.js";
 
@@ -125,7 +126,11 @@ describe("ChatReader.listChats", () => {
       firstSeenAt: new Date(1700000000000),
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chats = reader.listChats({ includeTrashed: false });
     expect(chats.map((c) => c.sourceId)).toContain("session-1");
   });
@@ -140,7 +145,11 @@ describe("ChatReader.listChats", () => {
       project: "project-a",
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.sourceId === "session-1");
@@ -172,7 +181,11 @@ describe("ChatReader.listChats", () => {
       blocks: [{ type: "text", text: "Build a login page" }],
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.sourceId === "session-1");
@@ -197,7 +210,11 @@ describe("ChatReader.listChats", () => {
     });
     metadata.setCustomTitle(internalId, "My favourite chat");
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.sourceId === "session-1");
@@ -213,7 +230,11 @@ describe("ChatReader.listChats", () => {
       firstSeenAt: new Date(1700000000000),
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.sourceId === "session-1");
@@ -245,7 +266,11 @@ describe("ChatReader.listChats", () => {
       blocks: [{ type: "text", text: "ok" }],
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.sourceId === "session-1");
@@ -262,7 +287,11 @@ describe("ChatReader.listChats", () => {
       firstSeenAt: new Date(1700000000000),
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.sourceId === "session-1");
@@ -280,7 +309,11 @@ describe("ChatReader.listChats", () => {
     });
     const code = archive.read.findChatBySourceId("session-1")!.chatId;
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.sourceId === "session-1");
@@ -302,7 +335,11 @@ describe("ChatReader.listChats", () => {
       firstSeenAt: new Date(1700000000000),
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.sourceId === "session-1");
@@ -331,7 +368,11 @@ describe("ChatReader.listChats", () => {
       ingestedAt: new Date(1700000900000),
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.sourceId === "session-1");
@@ -347,7 +388,11 @@ describe("ChatReader.listChats", () => {
       firstSeenAt: new Date(1700000000000),
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.sourceId === "session-1");
@@ -363,7 +408,11 @@ describe("ChatReader.listChats", () => {
       firstSeenAt: new Date(1700000000000),
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.sourceId === "session-1");
@@ -381,7 +430,11 @@ describe("ChatReader.listChats", () => {
       projectPath: "/Users/evaaaaawu/Documents/chat-logbook",
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.sourceId === "session-1");
@@ -397,7 +450,11 @@ describe("ChatReader.listChats", () => {
       firstSeenAt: new Date(1700000000000),
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.sourceId === "session-1");
@@ -414,7 +471,11 @@ describe("ChatReader.listChats", () => {
       project: null,
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.sourceId === "session-1");
@@ -438,7 +499,11 @@ describe("ChatReader.listChats project filter", () => {
       project: "project-b",
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chats = reader.listChats({
       includeTrashed: false,
       projects: ["project-a"],
@@ -466,7 +531,11 @@ describe("ChatReader.listChats project filter", () => {
       project: "project-c",
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chats = reader.listChats({
       includeTrashed: false,
       projects: ["project-a", "project-c"],
@@ -492,7 +561,11 @@ describe("ChatReader.listChats project filter", () => {
       project: "project-a",
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chats = reader.listChats({
       includeTrashed: false,
       projects: [""],
@@ -516,7 +589,11 @@ describe("ChatReader.listChats project filter", () => {
     });
     metadata.softDelete(trashedId);
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const active = reader.listChats({
       includeTrashed: false,
       projects: ["project-a"],
@@ -544,7 +621,11 @@ describe("ChatReader visibility", () => {
     });
     metadata.softDelete(internalId);
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chats = reader.listChats({ includeTrashed: false });
     expect(chats.map((c) => c.sourceId)).not.toContain("session-1");
   });
@@ -558,7 +639,11 @@ describe("ChatReader visibility", () => {
     });
     metadata.softDelete(internalId);
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: true })
       .find((c) => c.sourceId === "session-1");
@@ -579,7 +664,11 @@ describe("ChatReader visibility", () => {
     const before = Date.now();
     metadata.softDelete(trashedId);
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chats = reader.listChats({ includeTrashed: true });
     const active = chats.find((c) => c.sourceId === "session-active");
     const trashed = chats.find((c) => c.sourceId === "session-trashed");
@@ -615,7 +704,11 @@ describe("ChatReader.getMessages", () => {
       blocks: [{ type: "text", text: "Build a login page" }],
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const messages = reader.getMessages(wireIdFor(archive, "session-1"), {
       includeTrashed: false,
     });
@@ -646,7 +739,11 @@ describe("ChatReader.getMessages", () => {
     const wireId = wireIdFor(archive, "session-1");
     metadata.softDelete(internalId);
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     expect(reader.getMessages(wireId, { includeTrashed: false })).toBeNull();
   });
 
@@ -654,7 +751,11 @@ describe("ChatReader.getMessages", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     expect(
       reader.getMessages("does-not-exist", { includeTrashed: false })
     ).toBeNull();
@@ -676,7 +777,11 @@ describe("ChatReader.getMessages", () => {
       blocks: [{ type: "text", text: "hi" }],
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     // Source id is no longer a public lookup key — only the wire-form chat id is.
     expect(
       reader.getMessages("session-1", { includeTrashed: false })
@@ -700,7 +805,11 @@ describe("ChatReader.getMessages", () => {
     });
     const bareCode = archive.read.findChatBySourceId("session-1")!.chatId;
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     // Strict: only the clog_ wire form resolves; the bare code does not.
     expect(reader.getMessages(bareCode, { includeTrashed: false })).toBeNull();
   });
@@ -722,7 +831,11 @@ describe("ChatReader.getMessages", () => {
       blocks: [{ type: "tool_result", toolUseId: "tool-1", content: "result" }],
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const messages = reader.getMessages(wireIdFor(archive, "session-1"), {
       includeTrashed: false,
     });
@@ -752,7 +865,11 @@ describe("ChatReader is agent-agnostic", () => {
       agent: "codex",
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chat = reader
       .listChats({ includeTrashed: false })
       .find((c) => c.sourceId === "session-codex");
@@ -859,6 +976,7 @@ describe("ChatReader.listChats query batching", () => {
     const readerSmall = createChatReader({
       archive: archiveSmall,
       metadata: metadataSmall,
+      tags: createTagRepository({ dataDir }),
     });
     const smallCount = countArchiveQueries(archiveSmall, () => {
       readerSmall.listChats({ includeTrashed: false });
@@ -876,6 +994,7 @@ describe("ChatReader.listChats query batching", () => {
       const readerBig = createChatReader({
         archive: archiveBig,
         metadata: metadataBig,
+        tags: createTagRepository({ dataDir: bigDir }),
       });
       const bigCount = countArchiveQueries(archiveBig, () => {
         readerBig.listChats({ includeTrashed: false });
@@ -954,7 +1073,11 @@ describe("ChatReader.listChats query batching", () => {
       firstSeenAt: new Date(1700000050000),
     });
 
-    const reader = createChatReader({ archive, metadata });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+    });
     const chats = reader.listChats({ includeTrashed: false });
 
     // Ordering mirrors the chat-row insertion order.

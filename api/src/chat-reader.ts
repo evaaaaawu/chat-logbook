@@ -2,6 +2,7 @@ import type { ArchiveRepository } from "./archive/repository.js";
 import { formatChatId, parseChatId } from "./archive/chat-id.js";
 import type { ChatRow } from "./archive/read-seam.js";
 import type { MetadataRepository } from "./metadata/repository.js";
+import type { Tag, TagRepository } from "./metadata/tags.js";
 import { loadChatVisibility } from "./visibility.js";
 
 /**
@@ -28,6 +29,8 @@ export interface ChatResponse {
   updatedAt: number;
   deletedAt: number | null;
   isDeleted?: boolean;
+  /** Tags assigned to this chat, batched in one grouped query (ADR-0016). */
+  tags: Tag[];
 }
 
 export type ApiContentBlock =
@@ -88,11 +91,13 @@ export interface ChatReader {
 interface ChatReaderDeps {
   archive: ArchiveRepository;
   metadata: MetadataRepository;
+  tags: TagRepository;
 }
 
 export function createChatReader({
   archive,
   metadata,
+  tags,
 }: ChatReaderDeps): ChatReader {
   function findChat(id: string): ChatRecord | null {
     const code = parseChatId(id);
@@ -145,6 +150,9 @@ export function createChatReader({
     );
 
     const customTitleById = metadata.listCustomTitles();
+    // One grouped query for every chat's tags, keyed by internal id — never one
+    // query per chat (ADR-0016).
+    const tagsByChatId = tags.listTagsByChat();
 
     const chats: ChatResponse[] = [];
     for (const row of rows) {
@@ -168,6 +176,7 @@ export function createChatReader({
         createdAt: tsRange?.minTs ?? firstSeenAtMs,
         updatedAt: tsRange?.maxTs ?? firstSeenAtMs,
         deletedAt: visibility.deletedAt(row.id),
+        tags: tagsByChatId.get(row.id) ?? [],
       };
       if (isDeleted) chat.isDeleted = true;
       chats.push(chat);

@@ -1,3 +1,11 @@
+import type { ColorToken } from "@/tags/palette";
+
+export interface Tag {
+  id: string;
+  name: string;
+  color: ColorToken;
+}
+
 export interface Chat {
   /** Public wire-form chat id (`clog_…`) — the canonical handle used for routing. */
   id: string;
@@ -13,6 +21,8 @@ export interface Chat {
   /** Soft-delete time in ms; null while the chat is active. */
   deletedAt?: number | null;
   isDeleted?: boolean;
+  /** Tags assigned to this chat (batched server-side; see ADR-0016). */
+  tags?: Tag[];
 }
 
 export type ContentBlock =

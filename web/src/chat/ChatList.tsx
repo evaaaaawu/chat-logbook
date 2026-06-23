@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import type { Chat } from "@/types";
 import { EditableTitle } from "@/metadata/EditableTitle";
+import { TagChipList } from "@/tags/TagChipList";
 
 interface ChatListProps {
   mode?: "main" | "trash";
@@ -256,6 +257,9 @@ export function ChatList({
             const rowContent = (
               <>
                 <div className="min-w-0">{titleNode}</div>
+                {chat.tags && chat.tags.length > 0 && (
+                  <TagChipList tags={chat.tags} />
+                )}
                 <span className="flex items-center justify-between text-xs text-muted-foreground">
                   <span className="truncate">
                     {getProjectName(chat.project)}
