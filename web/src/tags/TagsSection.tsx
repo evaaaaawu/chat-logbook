@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   ArrowLeft,
+  Check,
   ChevronDown,
   MoreHorizontal,
   Pencil,
@@ -12,11 +13,17 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { TAG_COLOR_HEX, type ColorToken } from "@/tags/palette";
 import { ColorSwatches } from "@/tags/ColorSwatches";
 import { sortTagsByName } from "@/tags/sortTags";
+import { UNTAGGED } from "@/tags/filterChatsByTags";
 
 interface TagsSectionProps {
   tags: Tag[];
   // How many chats carry a given tag — drives the row count and delete-confirm.
   countForTag: (tagId: string) => number;
+  // How many chats hold no tags at all — the count on the `Untagged` row.
+  untaggedCount: number;
+  // The active Tag filter: tag ids plus the `UNTAGGED` sentinel. AND within.
+  selected: ReadonlySet<string>;
+  onToggle: (tagId: string) => void;
   onRename: (id: string, name: string) => void;
   onRecolor: (id: string, color: ColorToken) => void;
   onDelete: (id: string) => void;
@@ -83,7 +90,7 @@ function ManageMenu({
     >
       <PopoverTrigger
         aria-label={`Manage tag ${tag.name}`}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-white/10 hover:text-foreground focus-visible:opacity-100 group-hover/tag:opacity-100 data-[popup-open]:opacity-100"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-card text-muted-foreground opacity-0 transition hover:bg-white/10 hover:text-foreground focus-visible:opacity-100 group-hover/tag:opacity-100 data-[popup-open]:opacity-100 pointer-events-none focus-visible:pointer-events-auto group-hover/tag:pointer-events-auto data-[popup-open]:pointer-events-auto"
       >
         <MoreHorizontal size={14} aria-hidden="true" />
       </PopoverTrigger>
@@ -91,7 +98,11 @@ function ManageMenu({
         data-testid="tag-manage-menu"
         align="end"
         sideOffset={4}
-        className="w-60 gap-1 p-1"
+        // Width is anchored by the Recolor view's 8-swatch palette (~218px on
+        // one row); w-56 keeps it single-row while staying as tight as the
+        // widest view allows. The three views share one width to avoid resizing
+        // jank when switching between them.
+        className="w-56 gap-1 p-1"
       >
         {view === "menu" && (
           <>
@@ -187,30 +198,39 @@ function ManageMenu({
 function TagRow({
   tag,
   count,
+  isSelected,
+  dimmed,
+  onToggle,
   onRename,
   onRecolor,
   onDelete,
 }: {
   tag: Tag;
   count: number;
+  isSelected: boolean;
+  // Dimmed while the `Untagged` group is active: a real Tag can't combine with
+  // it, so the row reads as "not applicable right now". Still clickable —
+  // clicking switches the filter to this Tag (and drops `Untagged`).
+  dimmed: boolean;
+  onToggle: () => void;
   onRename: (name: string) => void;
   onRecolor: (color: ColorToken) => void;
   onDelete: () => void;
 }) {
   const [editing, setEditing] = useState(false);
 
-  return (
-    <li
-      data-testid="tag-manage-row"
-      data-tag-id={tag.id}
-      className="group/tag relative flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground/90 hover:bg-card"
-    >
-      <span
-        aria-hidden="true"
-        className="h-2.5 w-2.5 shrink-0 rounded-full"
-        style={{ backgroundColor: TAG_COLOR_HEX[tag.color] }}
-      />
-      {editing ? (
+  if (editing) {
+    return (
+      <li
+        data-testid="tag-manage-row"
+        data-tag-id={tag.id}
+        className="group/tag relative flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground/90"
+      >
+        <span
+          aria-hidden="true"
+          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{ backgroundColor: TAG_COLOR_HEX[tag.color] }}
+        />
         <RenameRow
           tag={tag}
           onCommit={(name) => {
@@ -219,21 +239,105 @@ function TagRow({
           }}
           onCancel={() => setEditing(false)}
         />
-      ) : (
-        <>
-          <span className="min-w-0 flex-1 truncate">{tag.name}</span>
-          <ManageMenu
-            tag={tag}
-            count={count}
-            onRenameStart={() => setEditing(true)}
-            onRecolor={onRecolor}
-            onDelete={onDelete}
+      </li>
+    );
+  }
+
+  // The row body is a filter toggle; the ⋯ menu floats over the count slot so it
+  // never takes a layout column. That keeps the ✓ and count flush-right, exactly
+  // like a Project row — and matches #10's intent of count and menu sharing one
+  // spot, swapped on hover. We never nest interactive elements (the menu is a
+  // sibling of the toggle, not a child). Selecting AND-narrows the chat list.
+  return (
+    <li
+      data-testid="tag-manage-row"
+      data-tag-id={tag.id}
+      className={`group/tag relative flex items-center rounded-md pr-2 text-sm transition ${
+        isSelected ? "bg-primary/15" : "hover:bg-card"
+      } ${dimmed ? "opacity-40 hover:opacity-100" : ""}`}
+    >
+      <button
+        type="button"
+        data-testid={`tag-filter-${tag.id}`}
+        aria-pressed={isSelected}
+        onClick={onToggle}
+        className={`flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left group-hover/tag:pr-8 ${
+          isSelected ? "text-foreground" : "text-foreground/90"
+        }`}
+      >
+        <span
+          aria-hidden="true"
+          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{ backgroundColor: TAG_COLOR_HEX[tag.color] }}
+        />
+        <span className="min-w-0 flex-1 truncate">{tag.name}</span>
+        {isSelected && (
+          <Check
+            size={14}
+            aria-hidden="true"
+            // Hover hands the trailing slot to the ⋯ control; the row's tint
+            // still carries the selected state, so the ✓ steps aside cleanly
+            // instead of colliding with the menu.
+            className="shrink-0 text-primary group-hover/tag:hidden"
           />
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground group-hover/tag:hidden">
-            {count}
-          </span>
-        </>
-      )}
+        )}
+      </button>
+      <span className="shrink-0 text-xs tabular-nums text-muted-foreground group-hover/tag:hidden">
+        {count}
+      </span>
+      <span className="absolute right-1.5 top-1/2 -translate-y-1/2">
+        <ManageMenu
+          tag={tag}
+          count={count}
+          onRenameStart={() => setEditing(true)}
+          onRecolor={onRecolor}
+          onDelete={onDelete}
+        />
+      </span>
+    </li>
+  );
+}
+
+// The `Untagged` group is pinned last: no color, no management menu, just a
+// filter toggle for "Chats with zero Tags".
+function UntaggedRow({
+  count,
+  isSelected,
+  onToggle,
+}: {
+  count: number;
+  isSelected: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <li
+      className={`relative flex items-center rounded-md pr-2 text-sm transition-colors ${
+        isSelected ? "bg-primary/15" : "hover:bg-card"
+      }`}
+    >
+      <button
+        type="button"
+        data-testid="tag-filter-untagged"
+        aria-pressed={isSelected}
+        onClick={onToggle}
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-muted-foreground"
+      >
+        <span
+          aria-hidden="true"
+          className="h-2.5 w-2.5 shrink-0 rounded-full border border-muted-foreground/40"
+        />
+        <span className="min-w-0 flex-1 truncate italic">Untagged</span>
+        {isSelected && (
+          <Check
+            size={14}
+            aria-hidden="true"
+            className="shrink-0 text-primary"
+          />
+        )}
+      </button>
+      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+        {count}
+      </span>
     </li>
   );
 }
@@ -241,12 +345,18 @@ function TagRow({
 export function TagsSection({
   tags,
   countForTag,
+  untaggedCount,
+  selected,
+  onToggle,
   onRename,
   onRecolor,
   onDelete,
 }: TagsSectionProps) {
   const [collapsed, setCollapsed] = useState(false);
   const sorted = useMemo(() => sortTagsByName(tags), [tags]);
+  // While Untagged is the active filter, real Tags can't combine with it, so
+  // they read as dimmed-but-available (clicking one switches the filter).
+  const untaggedActive = selected.has(UNTAGGED);
 
   return (
     <div data-testid="tags-section" className="flex flex-col">
@@ -283,11 +393,19 @@ export function TagsSection({
                 key={tag.id}
                 tag={tag}
                 count={countForTag(tag.id)}
+                isSelected={selected.has(tag.id)}
+                dimmed={untaggedActive}
+                onToggle={() => onToggle(tag.id)}
                 onRename={(name) => onRename(tag.id, name)}
                 onRecolor={(color) => onRecolor(tag.id, color)}
                 onDelete={() => onDelete(tag.id)}
               />
             ))}
+            <UntaggedRow
+              count={untaggedCount}
+              isSelected={selected.has(UNTAGGED)}
+              onToggle={() => onToggle(UNTAGGED)}
+            />
           </ul>
         ))}
     </div>
