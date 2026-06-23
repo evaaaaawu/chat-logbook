@@ -100,8 +100,34 @@ const initialFakeChats: FakeChat[] = [
 
 export let fakeChats: FakeChat[] = structuredClone(initialFakeChats);
 
+type FakeTag = { id: string; name: string; color: string };
+
+export let fakeTags: FakeTag[] = [];
+// chatId -> ordered list of tag ids assigned to it.
+export let fakeChatTags: Record<string, string[]> = {};
+
+const PALETTE = [
+  "yellow",
+  "orange",
+  "red",
+  "magenta",
+  "violet",
+  "blue",
+  "cyan",
+  "green",
+];
+
 export function resetFakeChats(): void {
   fakeChats = structuredClone(initialFakeChats);
+  fakeTags = [];
+  fakeChatTags = {};
+}
+
+function tagsForChat(chatId: string): FakeTag[] {
+  const ids = fakeChatTags[chatId] ?? [];
+  return ids
+    .map((id) => fakeTags.find((t) => t.id === id))
+    .filter((t): t is FakeTag => t !== undefined);
 }
 
 export const fakeMessages = {
@@ -179,7 +205,11 @@ export const fakeMessages = {
 
 function projectChat(c: FakeChat) {
   const { defaultTitle, customTitle, ...rest } = c;
-  return { ...rest, title: customTitle ?? defaultTitle };
+  return {
+    ...rest,
+    title: customTitle ?? defaultTitle,
+    tags: tagsForChat(c.id),
+  };
 }
 
 export const handlers = [
@@ -234,6 +264,90 @@ export const handlers = [
     }
     chat.isDeleted = false;
     chat.deletedAt = null;
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.get("/api/tags", () => {
+    return HttpResponse.json({ tags: fakeTags });
+  }),
+  http.post("/api/tags", async ({ request }) => {
+    const body = (await request.json()) as { name?: unknown; color?: unknown };
+    if (typeof body?.name !== "string" || body.name.trim().length === 0) {
+      return HttpResponse.json({ error: "Invalid name" }, { status: 400 });
+    }
+    if (typeof body?.color !== "string" || !PALETTE.includes(body.color)) {
+      return HttpResponse.json({ error: "Invalid color" }, { status: 400 });
+    }
+    const tag: FakeTag = {
+      id: `tag-${fakeTags.length + 1}-${body.name.trim()}`,
+      name: body.name.trim(),
+      color: body.color,
+    };
+    fakeTags = [...fakeTags, tag];
+    return HttpResponse.json({ tag }, { status: 201 });
+  }),
+  http.patch("/api/tags/:id", async ({ params, request }) => {
+    const id = params.id as string;
+    const tag = fakeTags.find((t) => t.id === id);
+    if (!tag) {
+      return HttpResponse.json({ error: "Tag not found" }, { status: 404 });
+    }
+    const body = (await request.json()) as { name?: unknown; color?: unknown };
+    if (typeof body?.name === "string" && body.name.trim().length > 0) {
+      tag.name = body.name.trim();
+    }
+    if (typeof body?.color === "string") {
+      if (!PALETTE.includes(body.color)) {
+        return HttpResponse.json({ error: "Invalid color" }, { status: 400 });
+      }
+      tag.color = body.color;
+    }
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.delete("/api/tags/:id", ({ params }) => {
+    const id = params.id as string;
+    const exists = fakeTags.some((t) => t.id === id);
+    if (!exists) {
+      return HttpResponse.json({ error: "Tag not found" }, { status: 404 });
+    }
+    let removedFromChats = 0;
+    for (const [chatId, ids] of Object.entries(fakeChatTags)) {
+      if (ids.includes(id)) {
+        removedFromChats += 1;
+        fakeChatTags[chatId] = ids.filter((t) => t !== id);
+      }
+    }
+    fakeTags = fakeTags.filter((t) => t.id !== id);
+    return HttpResponse.json({ removedFromChats });
+  }),
+  http.post("/api/chats/:id/tags", async ({ params, request }) => {
+    const chatId = params.id as string;
+    const chat = fakeChats.find((c) => c.id === chatId);
+    if (!chat) {
+      return HttpResponse.json({ error: "Chat not found" }, { status: 404 });
+    }
+    const body = (await request.json()) as { tagId?: unknown };
+    if (
+      typeof body?.tagId !== "string" ||
+      !fakeTags.some((t) => t.id === body.tagId)
+    ) {
+      return HttpResponse.json({ error: "Tag not found" }, { status: 404 });
+    }
+    const current = fakeChatTags[chatId] ?? [];
+    if (!current.includes(body.tagId)) {
+      fakeChatTags[chatId] = [...current, body.tagId];
+    }
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.delete("/api/chats/:id/tags/:tagId", ({ params }) => {
+    const chatId = params.id as string;
+    const tagId = params.tagId as string;
+    const chat = fakeChats.find((c) => c.id === chatId);
+    if (!chat) {
+      return HttpResponse.json({ error: "Chat not found" }, { status: 404 });
+    }
+    fakeChatTags[chatId] = (fakeChatTags[chatId] ?? []).filter(
+      (t) => t !== tagId
+    );
     return new HttpResponse(null, { status: 204 });
   }),
 ];

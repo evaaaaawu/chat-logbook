@@ -2,6 +2,9 @@ import { Trash2 } from "lucide-react";
 import { ProjectsSection } from "@/chat/projects/ProjectsSection";
 import { FilterSummary } from "@/chat/FilterSummary";
 import type { ProjectFacet } from "@/chat/projects/deriveProjects";
+import { TagsSection } from "@/tags/TagsSection";
+import type { Tag } from "@/types";
+import type { ColorToken } from "@/tags/palette";
 
 interface FilterPanelProps {
   deletedCount: number;
@@ -10,6 +13,11 @@ interface FilterPanelProps {
   selectedProjects: ReadonlySet<string>;
   onToggleProject: (project: string) => void;
   onClearFilters: () => void;
+  tags: Tag[];
+  countForTag: (tagId: string) => number;
+  onRenameTag: (id: string, name: string) => void;
+  onRecolorTag: (id: string, color: ColorToken) => void;
+  onDeleteTag: (id: string) => void;
 }
 
 export function FilterPanel({
@@ -19,6 +27,11 @@ export function FilterPanel({
   selectedProjects,
   onToggleProject,
   onClearFilters,
+  tags,
+  countForTag,
+  onRenameTag,
+  onRecolorTag,
+  onDeleteTag,
 }: FilterPanelProps) {
   return (
     <div data-testid="filter-panel" className="flex h-full flex-col">
@@ -35,6 +48,13 @@ export function FilterPanel({
           facets={projectFacets}
           selected={selectedProjects}
           onToggle={onToggleProject}
+        />
+        <TagsSection
+          tags={tags}
+          countForTag={countForTag}
+          onRename={onRenameTag}
+          onRecolor={onRecolorTag}
+          onDelete={onDeleteTag}
         />
       </div>
       <div className="flex h-12 shrink-0 items-center border-t border-border px-2">

@@ -17,6 +17,10 @@ interface UseChatsResult {
   softDelete: (id: string) => Promise<void>;
   restore: (id: string) => Promise<void>;
   setTitle: (id: string, title: string) => Promise<void>;
+  // Re-pull the list and re-sort. Used after a tag assignment changes the
+  // chips/dots a chat shows, so the change lands without waiting for the
+  // background refresh interval.
+  reload: () => Promise<void>;
 }
 
 export function useChats(): UseChatsResult {
@@ -121,5 +125,5 @@ export function useChats(): UseChatsResult {
     [bumpEpoch, reload]
   );
 
-  return { chats, loading, sortEpoch, softDelete, restore, setTitle };
+  return { chats, loading, sortEpoch, softDelete, restore, setTitle, reload };
 }
