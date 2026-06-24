@@ -24,7 +24,11 @@ function makeChats(count: number): Chat[] {
 
 describe("ChatList virtualization", () => {
   it("renders only the visible window of a large list, not every row", async () => {
-    const total = 1000;
+    // Kept modest: jsdom does no layout, so react-virtual mounts and measures a
+    // count proportional to the list size here (a real browser renders ~one
+    // screenful regardless). A larger list just makes the test slow without
+    // strengthening the invariant below.
+    const total = 100;
     render(
       <ChatList
         chats={makeChats(total)}
@@ -66,7 +70,7 @@ describe("ChatList virtualization", () => {
   });
 
   it("windows the Trash view with the same rendering", async () => {
-    const total = 1000;
+    const total = 100;
     render(
       <ChatList
         mode="trash"
