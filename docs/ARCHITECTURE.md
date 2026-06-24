@@ -19,6 +19,10 @@ Today the codebase implements three stores under `~/.chat-logbook/`:
 
 The product is designed around five separate stores. Do not merge them.
 
+All four chat-logbook stores live under one data directory, `~/.chat-logbook` by default. Set `CHAT_LOGBOOK_DATA_DIR` to relocate the entire directory — one knob for all stores, resolved once at startup by `resolveDataDir` (`api/src/config/data-dir.ts`). Unset means the default, so existing installs are unaffected; a relative value is resolved against the current working directory. This is how development, tests, and seeded datasets each point at an isolated directory without touching the real `~/.chat-logbook` (Twelve-Factor Config). The Source directory below is separate and never moves with this setting.
+
+`pnpm dev` builds on this knob to keep manual development off the real archive. When `CHAT_LOGBOOK_DATA_DIR` is unset, the dev launcher (`api/scripts/dev.ts`, via `resolveDevDataDir`) defaults it to an isolated `~/.chat-logbook-dev`, so branch work, manual clicking, Tag/title experiments, soft-deletes, and purges never mutate `~/.chat-logbook`. Running dev against the real archive is then a deliberate opt-out — clear the variable explicitly with `CHAT_LOGBOOK_DATA_DIR= pnpm dev` — and pointing dev at a seeded dataset still works by setting the variable to that path. Ingestion still reads the real, read-only Source directories, so the dev archive fills with real conversations; only the derived stores and user-owned Metadata are isolated. Automated tests are unaffected: they pass their own ephemeral temp directories to each store and never read this variable.
+
 | Store      | Path                            | Backed up?            |
 | ---------- | ------------------------------- | --------------------- |
 | Source     | `~/.claude/`, `~/.codex/`, etc. | Out of our hands      |
