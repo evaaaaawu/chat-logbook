@@ -15,6 +15,7 @@ import { startWatcher } from "./ingestion/watcher.js";
 import { plugins } from "./plugins/registry.js";
 import { parseCliArgs } from "./cli/argv.js";
 import { helpText } from "./cli/help.js";
+import { resolveDataDir } from "./config/data-dir.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgPath = path.join(__dirname, "../../package.json");
@@ -41,7 +42,10 @@ if (action.kind === "error") {
 
 updateNotifier({ pkg }).notify({ defer: false, isGlobal: true });
 
-const dataDir = path.join(os.homedir(), ".chat-logbook");
+const dataDir = resolveDataDir(
+  { CHAT_LOGBOOK_DATA_DIR: process.env.CHAT_LOGBOOK_DATA_DIR },
+  os.homedir()
+);
 const webDistDir = path.join(__dirname, "../../web/dist");
 const port = action.port;
 

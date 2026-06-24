@@ -19,6 +19,8 @@ Today the codebase implements three stores under `~/.chat-logbook/`:
 
 The product is designed around five separate stores. Do not merge them.
 
+All four chat-logbook stores live under one data directory, `~/.chat-logbook` by default. Set `CHAT_LOGBOOK_DATA_DIR` to relocate the entire directory — one knob for all stores, resolved once at startup by `resolveDataDir` (`api/src/config/data-dir.ts`). Unset means the default, so existing installs are unaffected; a relative value is resolved against the current working directory. This is how development, tests, and seeded datasets each point at an isolated directory without touching the real `~/.chat-logbook` (Twelve-Factor Config). The Source directory below is separate and never moves with this setting.
+
 | Store      | Path                            | Backed up?            |
 | ---------- | ------------------------------- | --------------------- |
 | Source     | `~/.claude/`, `~/.codex/`, etc. | Out of our hands      |
