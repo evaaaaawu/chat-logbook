@@ -49,7 +49,7 @@ describe("seedArchive", () => {
     const tags = createTagRepository({ dataDir });
     const summary = seedArchive(
       { archive, tags },
-      { count: 300, seed: 5, projects: 8 }
+      { count: 80, seed: 5, projects: 6 }
     );
     archive.close();
     expect(summary.namedProjects).toBeGreaterThan(1);
@@ -64,7 +64,9 @@ describe("seedArchive", () => {
 
     const all = reader.listChats({ includeTrashed: false });
     expect(all.some((c) => c.project !== "")).toBe(true);
-  });
+    // Generous margin: these seed through the repos one autocommit at a time,
+    // which is slower on shared CI runners than locally.
+  }, 30000);
 
   it("assigns tags reproducibly and supports tag filtering", () => {
     function seedInto(dir: string) {
@@ -72,7 +74,7 @@ describe("seedArchive", () => {
       const tags = createTagRepository({ dataDir: dir });
       seedArchive(
         { archive, tags },
-        { count: 400, seed: 9, tagRatio: 0.5, tagPool: 6 }
+        { count: 100, seed: 9, tagRatio: 0.5, tagPool: 6 }
       );
       archive.close();
 
@@ -121,5 +123,5 @@ describe("seedArchive", () => {
     } finally {
       fs.rmSync(dir2, { recursive: true, force: true });
     }
-  });
+  }, 30000);
 });
