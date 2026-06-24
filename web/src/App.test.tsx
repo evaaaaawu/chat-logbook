@@ -180,21 +180,24 @@ describe("Chat List sort", () => {
   });
 
   it("scrolls the selected chat into view after a sort change", async () => {
-    const scrollIntoView = vi.fn();
-    Element.prototype.scrollIntoView = scrollIntoView;
+    // The virtualized list keeps the selection visible via the virtualizer,
+    // which scrolls the container by index (Element.scrollTo) rather than
+    // calling scrollIntoView on a row that may not be rendered.
+    const scrollTo = vi.fn();
+    Element.prototype.scrollTo = scrollTo;
 
     const user = userEvent.setup();
     render(<App />);
 
     await user.click(await screen.findByText("Build a login page"));
-    scrollIntoView.mockClear();
+    scrollTo.mockClear();
 
     const list = screen.getByTestId("chat-list");
     await user.click(within(list).getByRole("button", { name: /sort/i }));
     const popover = await screen.findByTestId("chat-sort-popover");
     await user.click(within(popover).getByText("Title"));
 
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    expect(scrollTo).toHaveBeenCalled();
   });
 
   it("scrolls the list to top after a sort change when nothing is selected", async () => {
@@ -1288,8 +1291,9 @@ describe("Custom chat titles — inline edit", () => {
     render(<App />);
 
     const list = await screen.findByTestId("chat-list");
-    // First click selects the session
-    await user.click(within(list).getByText("Fix database migration"));
+    // First click selects the session. The virtualized list mounts its rows a
+    // tick after the container, so wait for the row before clicking.
+    await user.click(await within(list).findByText("Fix database migration"));
     // Second click on the title of the already-selected row enters edit
     await user.click(within(list).getByText("Fix database migration"));
 
