@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx scripts/dev.ts",
+    "seed": "tsx scripts/seed.ts",
     "build": "tsup",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
