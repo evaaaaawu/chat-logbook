@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowLeft, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import type { Chat } from "@/types";
 import { EditableTitle } from "@/metadata/EditableTitle";
@@ -123,19 +124,37 @@ export function ChatList({
   const isTrash = mode === "trash";
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const selectedRowRef = useRef<HTMLDivElement>(null);
   const prevSortSignature = useRef(sortSignature);
 
+  // TanStack Virtual's useVirtualizer returns functions (e.g. measureElement)
+  // that the React Compiler cannot memoize without risking stale UI, so the
+  // compiler intentionally skips memoizing this component. This is expected and
+  // safe here: the virtualizer values are consumed locally and not passed into
+  // other memoized components/hooks.
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const virtualizer = useVirtualizer({
+    count: chats.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 84,
+    overscan: 8,
+    initialRect: { width: 320, height: 600 },
+  });
+
   // Keep the selected chat visible after a sort change; otherwise scroll to top.
+  // The selected row may be far outside the rendered window, so scroll by index
+  // through the virtualizer rather than relying on a DOM ref.
   useEffect(() => {
     if (prevSortSignature.current === sortSignature) return;
     prevSortSignature.current = sortSignature;
-    if (selectedId && selectedRowRef.current) {
-      selectedRowRef.current.scrollIntoView?.({ block: "nearest" });
+    const selectedIndex = selectedId
+      ? chats.findIndex((chat) => chat.id === selectedId)
+      : -1;
+    if (selectedIndex >= 0) {
+      virtualizer.scrollToIndex(selectedIndex, { align: "auto" });
     } else if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0;
     }
-  }, [sortSignature, selectedId]);
+  }, [sortSignature, selectedId, chats, virtualizer]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -224,102 +243,110 @@ export function ChatList({
             )}
           </div>
         ) : (
-          chats.map((chat) => {
-            const isSelected = chat.id === selectedId;
-            const isEditing = editingId === chat.id && !!onRenameTitle;
-            const rowClassName = `flex w-full flex-col gap-1 border-b border-border px-4 py-3 text-left transition-colors hover:bg-card ${
-              isSelected
-                ? "border-l-2 border-l-primary bg-card"
-                : "border-l-2 border-l-transparent"
-            }`;
-            const titleNode =
-              onRenameTitle && !isTrash ? (
-                <EditableTitle
-                  value={chat.title}
-                  editing={isEditing}
-                  onEditStart={() => setEditingId(chat.id)}
-                  onEditEnd={() => setEditingId(null)}
-                  onSave={(next) => onRenameTitle(chat.id, next)}
-                  onDisplayClick={(e) => {
-                    if (isSelected) {
-                      e.stopPropagation();
-                    } else {
-                      e.preventDefault();
-                    }
-                  }}
-                  displayClassName={TITLE_DISPLAY_CLASS}
-                  inputClassName={TITLE_INPUT_CLASS}
-                  inputAriaLabel="Chat title"
-                />
-              ) : (
-                <span className={TITLE_DISPLAY_CLASS}>{chat.title}</span>
-              );
-            const rowContent = (
-              <>
-                <div className="min-w-0">{titleNode}</div>
-                {chat.tags && chat.tags.length > 0 && (
-                  <TagChipList tags={chat.tags} />
-                )}
-                <span className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span className="truncate">
-                    {getProjectName(chat.project)}
-                  </span>
-                  <span className="ml-2 shrink-0">
-                    {getRelativeTime(chat.updatedAt)}
-                  </span>
-                </span>
-              </>
-            );
-            return (
-              <div
-                key={chat.id}
-                ref={isSelected ? selectedRowRef : undefined}
-                data-testid="chat-row"
-                className="group relative"
-                onContextMenu={(e) => handleContextMenu(e, chat.id)}
-              >
-                {isEditing ? (
-                  <div className={rowClassName}>{rowContent}</div>
+          <div
+            className="relative w-full"
+            style={{ height: `${virtualizer.getTotalSize()}px` }}
+          >
+            {virtualizer.getVirtualItems().map((virtualItem) => {
+              const chat = chats[virtualItem.index];
+              const isSelected = chat.id === selectedId;
+              const isEditing = editingId === chat.id && !!onRenameTitle;
+              const rowClassName = `flex w-full flex-col gap-1 border-b border-border px-4 py-3 text-left transition-colors hover:bg-card ${
+                isSelected
+                  ? "border-l-2 border-l-primary bg-card"
+                  : "border-l-2 border-l-transparent"
+              }`;
+              const titleNode =
+                onRenameTitle && !isTrash ? (
+                  <EditableTitle
+                    value={chat.title}
+                    editing={isEditing}
+                    onEditStart={() => setEditingId(chat.id)}
+                    onEditEnd={() => setEditingId(null)}
+                    onSave={(next) => onRenameTitle(chat.id, next)}
+                    onDisplayClick={(e) => {
+                      if (isSelected) {
+                        e.stopPropagation();
+                      } else {
+                        e.preventDefault();
+                      }
+                    }}
+                    displayClassName={TITLE_DISPLAY_CLASS}
+                    inputClassName={TITLE_INPUT_CLASS}
+                    inputAriaLabel="Chat title"
+                  />
                 ) : (
-                  <button
-                    onClick={() => onSelect(chat.id)}
-                    className={rowClassName}
-                  >
-                    {rowContent}
-                  </button>
-                )}
-                <div className="absolute top-2 right-2 flex items-center gap-1">
-                  {isTrash && onRestore ? (
-                    <span className="group/action relative">
-                      <button
-                        type="button"
-                        aria-label={`Restore: ${chat.title}`}
-                        onClick={() => onRestore(chat.id)}
-                        className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground opacity-0 shadow-sm transition-all hover:border-[#5f7a26] hover:bg-[#1f2e15] hover:text-[#859900] group-hover:opacity-100 focus:opacity-100"
-                      >
-                        <RotateCcw size={14} aria-hidden="true" />
-                      </button>
-                      <ActionTooltip label="Restore" hint="⌫" />
+                  <span className={TITLE_DISPLAY_CLASS}>{chat.title}</span>
+                );
+              const rowContent = (
+                <>
+                  <div className="min-w-0">{titleNode}</div>
+                  {chat.tags && chat.tags.length > 0 && (
+                    <TagChipList tags={chat.tags} />
+                  )}
+                  <span className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="truncate">
+                      {getProjectName(chat.project)}
                     </span>
+                    <span className="ml-2 shrink-0">
+                      {getRelativeTime(chat.updatedAt)}
+                    </span>
+                  </span>
+                </>
+              );
+              return (
+                <div
+                  key={chat.id}
+                  data-index={virtualItem.index}
+                  ref={virtualizer.measureElement}
+                  data-testid="chat-row"
+                  className="group absolute left-0 right-0 top-0"
+                  style={{ transform: `translateY(${virtualItem.start}px)` }}
+                  onContextMenu={(e) => handleContextMenu(e, chat.id)}
+                >
+                  {isEditing ? (
+                    <div className={rowClassName}>{rowContent}</div>
                   ) : (
-                    !isEditing && (
+                    <button
+                      onClick={() => onSelect(chat.id)}
+                      className={rowClassName}
+                    >
+                      {rowContent}
+                    </button>
+                  )}
+                  <div className="absolute top-2 right-2 flex items-center gap-1">
+                    {isTrash && onRestore ? (
                       <span className="group/action relative">
                         <button
                           type="button"
-                          aria-label={`Move to trash: ${chat.title}`}
-                          onClick={() => onDelete(chat.id)}
-                          className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground opacity-0 shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive group-hover:opacity-100 focus:opacity-100"
+                          aria-label={`Restore: ${chat.title}`}
+                          onClick={() => onRestore(chat.id)}
+                          className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground opacity-0 shadow-sm transition-all hover:border-[#5f7a26] hover:bg-[#1f2e15] hover:text-[#859900] group-hover:opacity-100 focus:opacity-100"
                         >
-                          <Trash2 size={14} aria-hidden="true" />
+                          <RotateCcw size={14} aria-hidden="true" />
                         </button>
-                        <ActionTooltip label="Move to Trash" hint="⌫" />
+                        <ActionTooltip label="Restore" hint="⌫" />
                       </span>
-                    )
-                  )}
+                    ) : (
+                      !isEditing && (
+                        <span className="group/action relative">
+                          <button
+                            type="button"
+                            aria-label={`Move to trash: ${chat.title}`}
+                            onClick={() => onDelete(chat.id)}
+                            className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground opacity-0 shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive group-hover:opacity-100 focus:opacity-100"
+                          >
+                            <Trash2 size={14} aria-hidden="true" />
+                          </button>
+                          <ActionTooltip label="Move to Trash" hint="⌫" />
+                        </span>
+                      )
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })
+              );
+            })}
+          </div>
         )}
       </div>
       {contextMenu && (
