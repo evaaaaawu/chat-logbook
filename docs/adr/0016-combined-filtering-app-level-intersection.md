@@ -5,5 +5,5 @@ Combined Project + Tag + search filtering computes a candidate Chat id set per s
 ## Consequences
 
 - Each store keeps its own indexes: `chat_tags` with PK `(chat_id, tag_id)` plus a secondary index on `(tag_id)`; the Archive's `chats.project` gets an index. Tag display batches one grouped query into a `Map`, never one query per Chat.
-- The `ATTACH`-based single-query approach (one SQL pass doing intersection + `ORDER BY` + keyset pagination across stores) is deferred to the later list-pipeline refactor, where server-side sort + pagination actually needs it. That is the point to revisit this decision and weigh `ATTACH` against the ADR-0001 isolation it would relax.
+- The `ATTACH`-based single-query approach (one SQL pass doing intersection + `ORDER BY` + keyset pagination across stores) is deferred to the later list-pipeline refactor, where server-side sort + pagination actually needs it. That is the point to revisit this decision and weigh `ATTACH` against the ADR-0001 isolation it would relax. **Resolved by [ADR-0017](0017-cross-store-pagination-uses-attach.md):** the paginated path uses `ATTACH`; this app-level intersection stays the shape for the full-list model.
 - Trade-off: app-side intersection is fine while the frontend loads the full filtered list (the current model), but is not the final shape once the server paginates.
