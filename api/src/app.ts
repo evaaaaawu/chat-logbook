@@ -5,19 +5,63 @@ import type { MetadataRepository } from "./metadata/repository.js";
 import type { TagRepository } from "./metadata/tags.js";
 import { isColorToken } from "./metadata/tag-colors.js";
 import { createChatReader } from "./chat-reader.js";
+import type { ChatPageQuery } from "./list-pagination.js";
 
 interface AppOptions {
   archive: ArchiveRepository;
   metadata: MetadataRepository;
   tags: TagRepository;
+  /**
+   * The keyset page query (ADR-0017). When present, `GET /api/chats?limit=…`
+   * serves one sorted, keyset-paginated page; without it (or without `limit`)
+   * the endpoint keeps the legacy full-list behavior.
+   */
+  pageQuery?: ChatPageQuery;
   webDistDir?: string;
 }
 
-export function createApp({ archive, metadata, tags, webDistDir }: AppOptions) {
+// Upper bound on a single page; keeps a hostile `?limit=` from materializing an
+// unbounded result. The default page size lives on the client.
+const MAX_PAGE_LIMIT = 200;
+
+export function createApp({
+  archive,
+  metadata,
+  tags,
+  pageQuery,
+  webDistDir,
+}: AppOptions) {
   const app = new Hono();
-  const reader = createChatReader({ archive, metadata, tags });
+  const reader = createChatReader({ archive, metadata, tags, pageQuery });
 
   app.get("/api/chats", (c) => {
+    const includeTrashed = c.req.query("includeTrashed") === "true";
+
+    // Paginated mode: `?limit=` opts into one server-sorted keyset page. The
+    // legacy full-list path below stays for callers that omit `limit` (Trash and
+    // the title sort, until they migrate).
+    const limitParam = c.req.query("limit");
+    if (limitParam !== undefined) {
+      if (!pageQuery) {
+        return c.json({ error: "Pagination is not available" }, 501);
+      }
+      const limit = Number.parseInt(limitParam, 10);
+      if (!Number.isInteger(limit) || limit <= 0 || limit > MAX_PAGE_LIMIT) {
+        return c.json({ error: "Invalid limit" }, 400);
+      }
+      const sort = c.req.query("sort") ?? "updatedAt";
+      if (sort !== "createdAt" && sort !== "updatedAt") {
+        return c.json({ error: "Invalid sort" }, 400);
+      }
+      const { chats, nextCursor } = reader.listChatsPage({
+        sort,
+        limit,
+        cursor: c.req.query("cursor"),
+        includeTrashed,
+      });
+      return c.json({ chats, nextCursor });
+    }
+
     // Repeated `?project=` params union (OR); an empty value selects the
     // `(No project)` group. Absent param => undefined => unfiltered.
     const projects = c.req.queries("project");
@@ -27,7 +71,7 @@ export function createApp({ archive, metadata, tags, webDistDir }: AppOptions) {
     const tagsParam = c.req.query("tags");
     const tags = tagsParam === undefined ? undefined : tagsParam.split(",");
     const chats = reader.listChats({
-      includeTrashed: c.req.query("includeTrashed") === "true",
+      includeTrashed,
       projects,
       tags,
     });

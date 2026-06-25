@@ -8,6 +8,7 @@ import { createMetadataRepository } from "./metadata/repository.js";
 import { createTagRepository } from "./metadata/tags.js";
 import type { Tag } from "./metadata/tags.js";
 import { formatChatId } from "./archive/chat-id.js";
+import { createChatPageQuery } from "./list-pagination.js";
 
 interface ChatResponse {
   id: string;
@@ -104,6 +105,57 @@ beforeEach(() => {
 
 afterEach(() => {
   fs.rmSync(dataDir, { recursive: true, force: true });
+});
+
+describe("GET /api/chats — keyset pagination mode", () => {
+  it("serves one sorted page and round-trips the cursor to the next", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    for (let i = 1; i <= 3; i++) {
+      seedChat(archive, { sourceId: `c${i}`, firstSeenAt: new Date(i * 1000) });
+    }
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+
+    const first = await app.request("/api/chats?sort=createdAt&limit=2");
+    expect(first.status).toBe(200);
+    const firstBody = (await first.json()) as {
+      chats: ChatResponse[];
+      nextCursor: string | null;
+    };
+    expect(firstBody.chats.map((c) => c.sourceId)).toEqual(["c3", "c2"]);
+    expect(typeof firstBody.nextCursor).toBe("string");
+
+    const next = await app.request(
+      `/api/chats?sort=createdAt&limit=2&cursor=${encodeURIComponent(
+        firstBody.nextCursor as string
+      )}`
+    );
+    const nextBody = (await next.json()) as {
+      chats: ChatResponse[];
+      nextCursor: string | null;
+    };
+    expect(nextBody.chats.map((c) => c.sourceId)).toEqual(["c1"]);
+    expect(nextBody.nextCursor).toBeNull();
+  });
+
+  it("rejects an invalid sort with 400", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const res = await app.request("/api/chats?sort=bogus&limit=2");
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("Chat id is the public API handle", () => {

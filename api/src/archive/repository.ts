@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { openStore } from "../storage/openStore.js";
 import * as schema from "./schema.js";
 import {
@@ -218,6 +218,8 @@ export function createArchiveRepository({
           agent,
           sourceId,
           firstSeenAt,
+          // Seed the activity sort key; message upserts bump it as ts arrive.
+          updatedAt: firstSeenAt,
           project: project ?? null,
           projectPath: projectPath ?? null,
         })
@@ -273,6 +275,17 @@ export function createArchiveRepository({
         .get();
 
       const ts = parseTs(message.ts);
+
+      // Keep the denormalized activity sort key current: max of the stored value
+      // and this message's ts. Applied on every upsert (max() makes an older,
+      // dropped ts a no-op) so chats.updated_at always equals max(messages.ts),
+      // matching the reader's derived `updatedAt` (ADR-0017).
+      db.update(chats)
+        .set({
+          updatedAt: sql`max(coalesce(${chats.updatedAt}, 0), ${ts.getTime()})`,
+        })
+        .where(and(eq(chats.agent, agent), eq(chats.sourceId, sourceId)))
+        .run();
 
       if (!existing) {
         db.insert(messages)
