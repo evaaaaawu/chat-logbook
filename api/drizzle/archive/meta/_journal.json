@@ -64,6 +64,13 @@
       "when": 1779300000000,
       "tag": "0008_add_chats_project_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1779400000000,
+      "tag": "0009_add_chats_updated_at",
+      "breakpoints": true
     }
   ]
 }

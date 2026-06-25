@@ -16,6 +16,7 @@ import { plugins } from "./plugins/registry.js";
 import { parseCliArgs } from "./cli/argv.js";
 import { helpText } from "./cli/help.js";
 import { resolveDataDir } from "./config/data-dir.js";
+import { createChatPageQuery } from "./list-pagination.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgPath = path.join(__dirname, "../../package.json");
@@ -53,7 +54,10 @@ const archive = createArchiveRepository({ dataDir });
 const checkpoint = createCheckpointRepository({ dataDir });
 const metadata = createMetadataRepository({ dataDir });
 const tags = createTagRepository({ dataDir });
-const app = createApp({ archive, metadata, tags, webDistDir });
+// The page query owns its own Archive connection with metadata.db ATTACHed
+// read-only; it lives for the process lifetime (ADR-0017).
+const pageQuery = createChatPageQuery({ dataDir });
+const app = createApp({ archive, metadata, tags, pageQuery, webDistDir });
 
 const initialIngest = startIngestionInBackground({
   plugins,

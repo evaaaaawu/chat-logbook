@@ -4,6 +4,12 @@ import type { ChatRow } from "./archive/read-seam.js";
 import type { MetadataRepository } from "./metadata/repository.js";
 import type { Tag, TagRepository } from "./metadata/tags.js";
 import { loadChatVisibility } from "./visibility.js";
+import {
+  decodeCursor,
+  encodeCursor,
+  type ChatPageQuery,
+  type ListSort,
+} from "./list-pagination.js";
 
 /**
  * The Chat read face. At read time it composes Archive + Metadata into the
@@ -79,6 +85,19 @@ export interface ChatReader {
     tags?: string[];
   }): ChatResponse[];
   /**
+   * One keyset-paginated, server-sorted page of visible chats (ADR-0017). The
+   * sort + windowing run inside the cross-store SQL pass, so the caller never
+   * loads the full list. `cursor` is the opaque token returned as a prior page's
+   * `nextCursor`; omitting it returns the first page. Trashed chats are excluded
+   * unless `includeTrashed` is set. `nextCursor` is null on the last page.
+   */
+  listChatsPage(opts: {
+    sort: ListSort;
+    limit: number;
+    cursor?: string;
+    includeTrashed?: boolean;
+  }): { chats: ChatResponse[]; nextCursor: string | null };
+  /**
    * Messages for a Chat resolved by its public wire-form chat id (`clog_…`).
    * Returns null when the id is malformed, no chat matches, or it is not visible
    * — the caller maps all of these to 404 (the 404 paths collapse into one).
@@ -99,12 +118,19 @@ interface ChatReaderDeps {
   archive: ArchiveRepository;
   metadata: MetadataRepository;
   tags: TagRepository;
+  /**
+   * The keyset page query that runs the cross-store sorted + paginated listing
+   * (ADR-0017). Optional so the full-list read paths (and their tests) compose
+   * without it; `listChatsPage` requires it.
+   */
+  pageQuery?: ChatPageQuery;
 }
 
 export function createChatReader({
   archive,
   metadata,
   tags,
+  pageQuery,
 }: ChatReaderDeps): ChatReader {
   function findChat(id: string): ChatRecord | null {
     const code = parseChatId(id);
@@ -163,36 +189,45 @@ export function createChatReader({
       };
     }
 
-    // One grouped/windowed query per derived field, assembled in memory keyed
-    // by (agent, source_id) — so listing N chats stays a constant query count
-    // rather than ~3 per row. See issue #106.
-    const tsRangeByKey = new Map(
-      archive.read.listChatTsRanges().map((r) => [key(r.agent, r.sourceId), r])
-    );
-
-    const sourcePathByKey = new Map(
-      archive.read
-        .listLatestRawSourcePaths()
-        .map((r) => [key(r.agent, r.sourceId), r.sourcePath])
-    );
-
-    const firstUserTextByKey = new Map(
-      archive.read
-        .listFirstUserTexts()
-        .map((r) => [key(r.agent, r.sourceId), r.text])
-    );
-
-    const customTitleById = metadata.listCustomTitles();
-    // One grouped query for every chat's tags, keyed by internal id — never one
-    // query per chat (ADR-0016).
-    const tagsByChatId = tags.listTagsByChat();
+    const toResponse = loadHydration();
 
     const chats: ChatResponse[] = [];
     for (const row of rows) {
       if (!visibility.isVisible(row.id)) continue;
       if (passesTagFilter && !passesTagFilter(row.id)) continue;
-      const isDeleted = visibility.isTrashed(row.id);
+      chats.push(toResponse(row, visibility));
+    }
 
+    return chats;
+  }
+
+  // Loads the grouped/windowed derivation maps once (one query per derived
+  // field, never ~3 per row — issue #106) and returns an assembler that turns a
+  // single Archive chat row + visibility into the public Chat shape. Shared by
+  // the full-list (`listChats`) and paginated (`listChatsPage`) read paths.
+  function loadHydration(): (
+    row: ChatRow,
+    visibility: ReturnType<typeof loadChatVisibility>
+  ) => ChatResponse {
+    const tsRangeByKey = new Map(
+      archive.read.listChatTsRanges().map((r) => [key(r.agent, r.sourceId), r])
+    );
+    const sourcePathByKey = new Map(
+      archive.read
+        .listLatestRawSourcePaths()
+        .map((r) => [key(r.agent, r.sourceId), r.sourcePath])
+    );
+    const firstUserTextByKey = new Map(
+      archive.read
+        .listFirstUserTexts()
+        .map((r) => [key(r.agent, r.sourceId), r.text])
+    );
+    const customTitleById = metadata.listCustomTitles();
+    // One grouped query for every chat's tags, keyed by internal id — never one
+    // query per chat (ADR-0016).
+    const tagsByChatId = tags.listTagsByChat();
+
+    return (row, visibility) => {
       const rowKey = key(row.agent, row.sourceId);
       const tsRange = tsRangeByKey.get(rowKey);
       const firstSeenAtMs = row.firstSeenAt.getTime();
@@ -212,11 +247,52 @@ export function createChatReader({
         deletedAt: visibility.deletedAt(row.id),
         tags: tagsByChatId.get(row.id) ?? [],
       };
-      if (isDeleted) chat.isDeleted = true;
-      chats.push(chat);
+      if (visibility.isTrashed(row.id)) chat.isDeleted = true;
+      return chat;
+    };
+  }
+
+  function listChatsPage({
+    sort,
+    limit,
+    cursor,
+    includeTrashed = false,
+  }: {
+    sort: ListSort;
+    limit: number;
+    cursor?: string;
+    includeTrashed?: boolean;
+  }): { chats: ChatResponse[]; nextCursor: string | null } {
+    if (!pageQuery) {
+      throw new Error("listChatsPage requires a pageQuery dependency");
+    }
+    // A malformed cursor decodes to null; treat it as "no cursor" (first page)
+    // rather than throwing — the window simply re-anchors.
+    const decoded = cursor ? (decodeCursor(cursor) ?? undefined) : undefined;
+    const page = pageQuery.queryPage({
+      sort,
+      limit,
+      cursor: decoded,
+      includeTrashed,
+    });
+
+    // The keyset SQL already applied visibility + ordering; hydration is pure
+    // assembly over the page's ids, in page order. Visibility is still loaded so
+    // `deletedAt`/`isDeleted` render on the (includeTrashed) Trash path.
+    const visibility = loadChatVisibility(metadata, { includeTrashed });
+    const rowById = new Map(archive.read.listChatRows().map((r) => [r.id, r]));
+    const toResponse = loadHydration();
+
+    const chats: ChatResponse[] = [];
+    for (const item of page.items) {
+      const row = rowById.get(item.id);
+      if (row) chats.push(toResponse(row, visibility));
     }
 
-    return chats;
+    return {
+      chats,
+      nextCursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
+    };
   }
 
   function getMessages(
@@ -238,5 +314,5 @@ export function createChatReader({
     }));
   }
 
-  return { listChats, getMessages, findChat };
+  return { listChats, listChatsPage, getMessages, findChat };
 }
