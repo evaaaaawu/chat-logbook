@@ -9,7 +9,10 @@ import {
   TRASH_SORT_AXES,
   TRASH_SORT_CONFIG,
 } from "@/chat/sort/sortConfig";
-import { useSortPreference } from "@/chat/sort/useSortPreference";
+import {
+  useSortPreference,
+  type UseSortPreferenceResult,
+} from "@/chat/sort/useSortPreference";
 import { useFrozenSort } from "@/chat/sort/useFrozenSort";
 
 export type ChatView = "main" | "trash";
@@ -46,13 +49,22 @@ const VIEWS = {
 // it once per view (main, trash). `flushSignal` is passed in — the hook is a
 // pure function of (view, chats, flushSignal) and does not know the signal is
 // itself composed of a data-action epoch and a view-switch generation.
+//
+// `externalPref` lets the caller own the preference instead of the hook. App
+// uses this for the main view so it can read the same field/direction the
+// SortControl drives and decide whether the data path paginates — the two must
+// agree on a single preference instance, not two copies of the same storage.
 export function useChatOrder(
   view: ChatView,
   chats: Chat[],
-  flushSignal: string
+  flushSignal: string,
+  externalPref?: UseSortPreferenceResult<SortField>
 ): ChatOrder {
   const { config, axes, directionLabels, testId, includes } = VIEWS[view];
-  const pref = useSortPreference(config);
+  // Hooks must run unconditionally; when the caller supplies a preference the
+  // internal one is left idle (its setters are never wired up).
+  const ownPref = useSortPreference(config);
+  const pref = externalPref ?? ownPref;
   const orderedChats = useFrozenSort(
     chats.filter(includes),
     pref.field,

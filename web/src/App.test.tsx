@@ -503,14 +503,17 @@ describe("Chat metadata popover", () => {
 });
 
 describe("Trash link in filter panel", () => {
-  it("shows the count of deleted sessions in a Trash link", async () => {
+  it("shows a Trash link without a count badge", async () => {
     render(<App />);
 
     await screen.findByText("Build a login page");
 
+    // The list reads paginated pages that exclude trashed chats, so the active
+    // window cannot know the full trashed total without a full load. The count
+    // is dropped rather than shown per-mode (#129); the link still opens Trash.
     const trashLink = await screen.findByTestId("trash-link");
     expect(within(trashLink).getByText(/trash/i)).toBeInTheDocument();
-    expect(within(trashLink).getByText("2")).toBeInTheDocument();
+    expect(within(trashLink).queryByText(/^\d+$/)).not.toBeInTheDocument();
   });
 });
 
@@ -621,7 +624,7 @@ describe("Trash sort", () => {
 });
 
 describe("Soft delete from chat list", () => {
-  it("removes the session from the list and increments trash count", async () => {
+  it("removes the session from the list and moves it to Trash", async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -643,9 +646,13 @@ describe("Soft delete from chat list", () => {
       ).not.toBeInTheDocument();
     });
 
-    // Trash count: 2 → 3
-    const trashLink = screen.getByTestId("trash-link");
-    expect(within(trashLink).getByText("3")).toBeInTheDocument();
+    // It now lives in Trash (the count badge was dropped; the move is what the
+    // user cares about).
+    await user.click(screen.getByTestId("trash-link"));
+    const list = screen.getByTestId("chat-list");
+    expect(
+      await within(list).findByText("Fix database migration")
+    ).toBeInTheDocument();
   });
 });
 
@@ -697,9 +704,6 @@ describe("Undo toast on delete", () => {
         within(list).getByText("Fix database migration")
       ).toBeInTheDocument();
     });
-
-    const trashLink = screen.getByTestId("trash-link");
-    expect(within(trashLink).getByText("2")).toBeInTheDocument();
   });
 });
 
@@ -1002,8 +1006,11 @@ describe("Empty states", () => {
     render(<App />);
 
     expect(await screen.findByText(/no chats/i)).toBeInTheDocument();
+    // The hint points to Trash without a count (counts were dropped, #129).
+    // Scope to the list — the sidebar also has a "Trash" link.
+    const list = screen.getByTestId("chat-list");
     expect(
-      screen.getByRole("button", { name: /^trash \(1\)$/i })
+      within(list).getByRole("button", { name: /^trash$/i })
     ).toBeInTheDocument();
   });
 });
@@ -1731,5 +1738,97 @@ describe("Project filter", () => {
     ).not.toBeInTheDocument();
     const webRow = within(section).getByTestId("project-row-my-web-app");
     expect(within(webRow).getByText("2")).toBeInTheDocument();
+  });
+});
+
+describe("Chat list pagination", () => {
+  // Capture the search string of every /api/chats GET, so a test can tell the
+  // paginated path (`?...limit=`) apart from the full-load path (no `limit`).
+  function captureChatListRequests(): string[] {
+    const searches: string[] = [];
+    server.events.on("request:start", ({ request }) => {
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.pathname === "/api/chats") {
+        searches.push(url.search);
+      }
+    });
+    return searches;
+  }
+
+  it("loads the main chat list via the paginated keyset endpoint", async () => {
+    const searches = captureChatListRequests();
+    render(<App />);
+
+    await screen.findByText("Fix database migration");
+
+    // Default sort is Updated time · Newest first — a paginated time axis, so
+    // the main list is fetched as keyset pages (`limit` present) rather than the
+    // full list.
+    expect(searches.some((s) => s.includes("limit="))).toBe(true);
+    expect(searches.some((s) => s.includes("sort=updatedAt"))).toBe(true);
+    // The full-load path (no `limit`) is not used for the main view.
+    expect(searches.every((s) => s.includes("limit="))).toBe(true);
+
+    // Rows still render in Updated-time descending order.
+    const list = screen.getByTestId("chat-list");
+    const titles = within(list)
+      .getAllByTestId("chat-row")
+      .map((r) => r.textContent);
+    expect(titles[0]).toContain("Fix database migration");
+    expect(titles[1]).toContain("Build a login page");
+  });
+
+  it("uses the full-load path when sorting by Title", async () => {
+    const user = userEvent.setup();
+    const searches = captureChatListRequests();
+    render(<App />);
+    await screen.findByText("Build a login page");
+
+    const list = screen.getByTestId("chat-list");
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+    const popover = await screen.findByTestId("chat-sort-popover");
+    await user.click(within(popover).getByText("Title"));
+
+    // Title is not a keyset axis, so it falls back to the full list (no `limit`).
+    await waitFor(() =>
+      expect(searches.some((s) => !s.includes("limit="))).toBe(true)
+    );
+    const titles = within(list)
+      .getAllByTestId("chat-row")
+      .map((r) => r.textContent);
+    expect(titles[0]).toContain("Build a login page");
+  });
+
+  it("uses the full-load path when sorting by an ascending time axis", async () => {
+    const user = userEvent.setup();
+    const searches = captureChatListRequests();
+    render(<App />);
+    await screen.findByText("Build a login page");
+
+    const list = screen.getByTestId("chat-list");
+    // Default is Updated time · Newest first. Clicking the active axis again
+    // flips it to ascending (Oldest first), which the keyset index does not
+    // serve — so the list falls back to the full-load path.
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+    const popover = await screen.findByTestId("chat-sort-popover");
+    await user.click(within(popover).getByText("Updated time"));
+
+    await waitFor(() =>
+      expect(searches.some((s) => !s.includes("limit="))).toBe(true)
+    );
+  });
+
+  it("uses the full-load path for the Trash view", async () => {
+    const user = userEvent.setup();
+    const searches = captureChatListRequests();
+    render(<App />);
+    await screen.findByText("Build a login page");
+
+    await user.click(screen.getByTestId("trash-link"));
+
+    // Trash stays on the client-side full-load path; its deleted chats load.
+    const list = screen.getByTestId("chat-list");
+    expect(await within(list).findByText("Old prototype")).toBeInTheDocument();
+    expect(searches.some((s) => !s.includes("limit="))).toBe(true);
   });
 });

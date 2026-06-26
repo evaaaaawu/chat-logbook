@@ -16,12 +16,20 @@ interface ChatListProps {
   onRestore?: (id: string) => void;
   onRenameTitle?: (id: string, title: string) => void;
   onBack?: () => void;
-  deletedCount?: number;
   onOpenTrash?: () => void;
   sortControl?: React.ReactNode;
   /** Changes whenever the active sort changes; drives keep-selection-visible scrolling. */
   sortSignature?: string;
+  /** True while a further page can be fetched; gates near-bottom loading. */
+  hasMore?: boolean;
+  /** Called when the user scrolls within a few rows of the loaded window's end. */
+  onLoadMore?: () => void;
 }
+
+// Trigger the next page once the rendered window reaches within this many rows
+// of the end, so the fetch overlaps the remaining scroll rather than stalling
+// at the very bottom.
+const LOAD_MORE_THRESHOLD = 5;
 
 function getProjectName(projectPath: string): string {
   const segments = projectPath.split("/").filter(Boolean);
@@ -107,10 +115,11 @@ export function ChatList({
   onRestore,
   onRenameTitle,
   onBack,
-  deletedCount = 0,
   onOpenTrash,
   sortControl,
   sortSignature,
+  hasMore = false,
+  onLoadMore,
 }: ChatListProps) {
   const [internalEditingId, setInternalEditingId] = useState<string | null>(
     null
@@ -145,16 +154,34 @@ export function ChatList({
   // through the virtualizer rather than relying on a DOM ref.
   useEffect(() => {
     if (prevSortSignature.current === sortSignature) return;
-    prevSortSignature.current = sortSignature;
     const selectedIndex = selectedId
       ? chats.findIndex((chat) => chat.id === selectedId)
       : -1;
+    // A sort change can swap the data source (paginated <-> full-load), whose
+    // chats arrive a tick later. If a selection exists but is not in the list
+    // yet, wait for it rather than consuming the signal and scrolling to top —
+    // the effect re-runs when chats update.
+    if (selectedId && selectedIndex < 0) return;
+    prevSortSignature.current = sortSignature;
     if (selectedIndex >= 0) {
       virtualizer.scrollToIndex(selectedIndex, { align: "auto" });
     } else if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0;
     }
   }, [sortSignature, selectedId, chats, virtualizer]);
+
+  // Fetch the next page as the rendered window nears the end of the loaded
+  // chats. The virtualizer only renders rows around the viewport, so the last
+  // virtual item's index tracks how far the user has scrolled without a manual
+  // scroll listener. onLoadMore guards against overlapping fetches itself.
+  const virtualItems = virtualizer.getVirtualItems();
+  const lastVisibleIndex = virtualItems[virtualItems.length - 1]?.index ?? -1;
+  useEffect(() => {
+    if (!hasMore || !onLoadMore) return;
+    if (lastVisibleIndex >= chats.length - 1 - LOAD_MORE_THRESHOLD) {
+      onLoadMore();
+    }
+  }, [hasMore, onLoadMore, lastVisibleIndex, chats.length]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -226,7 +253,7 @@ export function ChatList({
             ) : (
               <>
                 <div className="font-medium text-foreground">No chats</div>
-                {deletedCount > 0 && onOpenTrash && (
+                {onOpenTrash && (
                   <div className="mt-1 text-xs">
                     Check{" "}
                     <button
@@ -234,7 +261,7 @@ export function ChatList({
                       onClick={onOpenTrash}
                       className="text-primary hover:underline"
                     >
-                      Trash ({deletedCount})
+                      Trash
                     </button>{" "}
                     to restore deleted ones.
                   </div>
