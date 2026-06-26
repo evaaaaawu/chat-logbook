@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import type { Chat } from "@/types";
@@ -86,5 +86,43 @@ describe("ChatList virtualization", () => {
     const rows = await screen.findAllByTestId("chat-row");
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.length).toBeLessThan(total);
+  });
+});
+
+describe("ChatList infinite scroll", () => {
+  it("requests the next page when the rendered window nears the end", async () => {
+    const onLoadMore = vi.fn();
+    render(
+      <ChatList
+        chats={makeChats(8)}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onDelete={vi.fn()}
+        hasMore
+        onLoadMore={onLoadMore}
+      />
+    );
+
+    await screen.findAllByTestId("chat-row");
+    await waitFor(() => expect(onLoadMore).toHaveBeenCalled());
+  });
+
+  it("does not request more when there is no next page", async () => {
+    const onLoadMore = vi.fn();
+    render(
+      <ChatList
+        chats={makeChats(8)}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onDelete={vi.fn()}
+        hasMore={false}
+        onLoadMore={onLoadMore}
+      />
+    );
+
+    await screen.findAllByTestId("chat-row");
+    // Let the virtualizer settle (ResizeObserver fires asynchronously).
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(onLoadMore).not.toHaveBeenCalled();
   });
 });

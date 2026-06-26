@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChats } from "@/chat/useChats";
+import { usePaginatedChats, type ListSort } from "@/chat/usePaginatedChats";
 import { useTags } from "@/tags/useTags";
 import { useMessages } from "@/conversation/useMessages";
 import { useToast } from "@/shared/useToast";
 import { useChatOrder } from "@/chat/sort/useChatOrder";
+import { useSortPreference } from "@/chat/sort/useSortPreference";
+import { CHAT_SORT_CONFIG } from "@/chat/sort/sortConfig";
 import { deriveProjects } from "@/chat/projects/deriveProjects";
 import { filterChatsByProjects } from "@/chat/projects/filterChatsByProjects";
 import { filterChatsByTags } from "@/tags/filterChatsByTags";
@@ -20,8 +23,31 @@ import {
 } from "@/shared/ui/resizable";
 
 function App() {
-  const { chats, sortEpoch, softDelete, restore, setTitle, reload } =
-    useChats();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mode, setMode] = useState<"main" | "trash">("main");
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+
+  // The main view's sort preference is owned here, not inside useChatOrder, so
+  // the data path and the SortControl agree on one instance: the same field and
+  // direction decide whether to paginate.
+  const mainPref = useSortPreference(CHAT_SORT_CONFIG);
+
+  // Only the main view's descending time sorts page server-side (the keyset
+  // index covers createdAt/updatedAt DESC, per ADR-0017). Title sort, ascending
+  // time, and the Trash view stay on the full-load client path. The two read
+  // hooks always run (hooks rule); `enabled` decides which one fetches.
+  const paginate =
+    mode === "main" &&
+    (mainPref.field === "createdAt" || mainPref.field === "updatedAt") &&
+    mainPref.direction === "desc";
+  const pageSort: ListSort =
+    mainPref.field === "createdAt" ? "createdAt" : "updatedAt";
+
+  const full = useChats({ enabled: !paginate });
+  const paginated = usePaginatedChats(pageSort, { enabled: paginate });
+  const source = paginate ? paginated : full;
+  const { chats, sortEpoch, softDelete, restore, setTitle, reload } = source;
+
   const onAssignmentChange = useCallback(() => {
     void reload();
   }, [reload]);
@@ -37,9 +63,6 @@ function App() {
   const handleRenameTitle = (id: string, title: string) => {
     void setTitle(id, title);
   };
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [mode, setMode] = useState<"main" | "trash">("main");
-  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const { messages, error } = useMessages(selectedId);
   const { toast, showToast, dismissToast } = useToast();
 
@@ -56,7 +79,7 @@ function App() {
   // sortEpoch (user data actions) and viewGen (view switches) both flush the
   // frozen order; sort field/direction changes flush it inside the hook.
   const resortKey = `${sortEpoch}:${viewGen}`;
-  const mainOrder = useChatOrder("main", chats, resortKey);
+  const mainOrder = useChatOrder("main", chats, resortKey, mainPref);
   const trashOrder = useChatOrder("trash", chats, resortKey);
   const order = mode === "trash" ? trashOrder : mainOrder;
   const mainChats = mainOrder.orderedChats;
@@ -224,7 +247,6 @@ function App() {
       <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel defaultSize={15} minSize={10}>
           <FilterPanel
-            deletedCount={deletedChats.length}
             onOpenTrash={() => switchMode("trash")}
             projectFacets={projectFacets}
             selectedProjects={selectedProjects}
@@ -253,10 +275,11 @@ function App() {
             onRestore={handleRestore}
             onRenameTitle={handleRenameTitle}
             onBack={() => switchMode("main")}
-            deletedCount={deletedChats.length}
             onOpenTrash={() => switchMode("trash")}
             sortSignature={`${mode}:${order.sortControlProps.field}:${order.sortControlProps.direction}`}
             sortControl={<SortControl {...order.sortControlProps} />}
+            hasMore={source.hasMore}
+            onLoadMore={source.loadMore}
           />
         </ResizablePanel>
         <ResizableHandle />
