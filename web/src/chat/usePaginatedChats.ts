@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MAX_PAGE_LIMIT } from "@contract";
 import type { Chat } from "@/types";
 import { useChatMutations, type ChatListSource } from "@/chat/useChatMutations";
@@ -42,6 +42,23 @@ interface UsePaginatedChatsOptions {
   // the hook holds an empty window and issues no requests (the full-load path
   // is serving instead).
   enabled?: boolean;
+  /**
+   * Active Project filter (OR / union), sent to the keyset query so filtering
+   * pages server-side (#130). An empty array leaves Projects unfiltered. The
+   * loaded window re-anchors (refetches the first page) whenever this changes.
+   */
+  projects?: readonly string[];
+  /**
+   * Active Tag filter (AND / intersection). The empty-string entry selects the
+   * Untagged group. An empty array leaves Tags unfiltered. Re-anchors on change.
+   */
+  tags?: readonly string[];
+}
+
+/** The active list filter sent to the keyset query alongside sort + cursor. */
+interface ActiveFilter {
+  projects: readonly string[];
+  tags: readonly string[];
 }
 
 // Adds the window-reconciling background refresh to the shared source shape; the
@@ -59,9 +76,19 @@ function pageUrl(
   sort: ListSort,
   direction: ListDirection,
   limit: number,
+  filter: ActiveFilter,
   cursor?: string
 ): string {
-  const base = `/api/chats?sort=${sort}&direction=${direction}&limit=${limit}`;
+  let base = `/api/chats?sort=${sort}&direction=${direction}&limit=${limit}`;
+  // Repeated `?project=` unions (OR); a single comma-separated `?tags=` ANDs.
+  // An empty-string entry rides through as `?project=` / `?tags=`, selecting the
+  // (No project) / Untagged group — the same wire form the server parses (#130).
+  for (const project of filter.projects) {
+    base += `&project=${encodeURIComponent(project)}`;
+  }
+  if (filter.tags.length > 0) {
+    base += `&tags=${filter.tags.map(encodeURIComponent).join(",")}`;
+  }
   return cursor ? `${base}&cursor=${encodeURIComponent(cursor)}` : base;
 }
 
@@ -90,8 +117,25 @@ export function usePaginatedChats(
   {
     pageSize = DEFAULT_PAGE_SIZE,
     enabled = true,
+    projects = [],
+    tags = [],
   }: UsePaginatedChatsOptions = {}
 ): UsePaginatedChatsResult {
+  // The selection arrays change identity every render (App spreads a Set), so a
+  // canonical JSON key drives the effect/callback deps — a re-anchor fires only
+  // when the selection's contents actually change, not on every render. The
+  // memoized filter object is rebuilt from the keys, giving the fetch sites one
+  // stable reference per distinct selection.
+  const projectsKey = JSON.stringify([...projects].sort());
+  const tagsKey = JSON.stringify([...tags].sort());
+  const filter = useMemo<ActiveFilter>(
+    () => ({
+      projects: JSON.parse(projectsKey) as string[],
+      tags: JSON.parse(tagsKey) as string[],
+    }),
+    [projectsKey, tagsKey]
+  );
+
   const [chats, setChats] = useState<Chat[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -112,14 +156,15 @@ export function usePaginatedChats(
     chatsRef.current = chats;
   }, [chats]);
 
-  // (Re)load the first page whenever the sort axis changes or the hook is
-  // enabled — resetting the window so the new axis re-anchors from its top.
+  // (Re)load the first page whenever the sort axis, the active filter, or the
+  // enabled flag changes — resetting the window so the new axis or filter
+  // re-anchors from its top (#130).
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
     cursorRef.current = null;
     fetchingRef.current = true;
-    void fetchPage(pageUrl(sort, direction, pageSize)).then((data) => {
+    void fetchPage(pageUrl(sort, direction, pageSize, filter)).then((data) => {
       if (cancelled) return;
       if (data) {
         setChats(data.chats);
@@ -132,21 +177,23 @@ export function usePaginatedChats(
     return () => {
       cancelled = true;
     };
-  }, [sort, direction, pageSize, enabled]);
+  }, [sort, direction, pageSize, enabled, filter]);
 
   const loadMore = useCallback(() => {
     if (fetchingRef.current || cursorRef.current === null) return;
     const cursor = cursorRef.current;
     fetchingRef.current = true;
-    void fetchPage(pageUrl(sort, direction, pageSize, cursor)).then((data) => {
-      if (data) {
-        setChats((prev) => [...prev, ...data.chats]);
-        setNextCursor(data.nextCursor);
-        cursorRef.current = data.nextCursor;
+    void fetchPage(pageUrl(sort, direction, pageSize, filter, cursor)).then(
+      (data) => {
+        if (data) {
+          setChats((prev) => [...prev, ...data.chats]);
+          setNextCursor(data.nextCursor);
+          cursorRef.current = data.nextCursor;
+        }
+        fetchingRef.current = false;
       }
-      fetchingRef.current = false;
-    });
-  }, [sort, direction, pageSize]);
+    );
+  }, [sort, direction, pageSize, filter]);
 
   // Re-read the top of the loaded window. Sized to the current window so a
   // brand-new chat ranking into it is surfaced, but clamped to the page-limit
@@ -158,9 +205,9 @@ export function usePaginatedChats(
       Math.max(chatsRef.current.length, pageSize),
       MAX_PAGE_LIMIT
     );
-    const data = await fetchPage(pageUrl(sort, direction, limit));
+    const data = await fetchPage(pageUrl(sort, direction, limit, filter));
     if (data) setChats((prev) => mergeWindow(prev, data.chats));
-  }, [sort, direction, pageSize]);
+  }, [sort, direction, pageSize, filter]);
 
   useEffect(() => {
     if (!enabled) return;

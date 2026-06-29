@@ -48,9 +48,25 @@ function App() {
     mainPref.field === "createdAt" ? "createdAt" : "updatedAt";
   const pageDirection: ListDirection = mainPref.direction;
 
+  // The active filter is owned here so the paginated read path can push it into
+  // the keyset query (#130): an empty selection means "all". Declared above the
+  // read hooks because `usePaginatedChats` re-anchors on the selection. The
+  // empty-string entry selects the (No project) / Untagged group on each axis.
+  const [selectedProjects, setSelectedProjects] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+  const [selectedTags, setSelectedTags] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+
   const full = useChats({ enabled: !paginate });
+  // The paginated path filters server-side: the selection rides the keyset query
+  // and re-anchors the window on change (#130). The full-load path (Title sort,
+  // Trash) keeps filtering its loaded window client-side below.
   const paginated = usePaginatedChats(pageSort, pageDirection, {
     enabled: paginate,
+    projects: [...selectedProjects],
+    tags: [...selectedTags],
   });
   const source = paginate ? paginated : full;
   const { chats, sortEpoch, softDelete, restore, setTitle, reload } = source;
@@ -101,13 +117,11 @@ function App() {
   const mainChats = mainOrder.orderedChats;
   const deletedChats = trashOrder.orderedChats;
 
-  // Project filter: an empty selection means "all Projects". Facets are derived
-  // from the active view's chats (so counts are per-view), and the selected
-  // Projects are ensured into the list so a selected Project stays visible even
-  // after its last chat leaves the view (count 0).
-  const [selectedProjects, setSelectedProjects] = useState<ReadonlySet<string>>(
-    () => new Set()
-  );
+  // Project filter toggles: an empty selection means "all Projects". Facets are
+  // derived from the active view's chats (so counts are per-view), and the
+  // selected Projects are ensured into the list so a selected Project stays
+  // visible even after its last chat leaves the view (count 0). The state itself
+  // is declared above the read hooks so the paginated path can re-anchor on it.
   const toggleProject = useCallback((project: string) => {
     setSelectedProjects((prev) => {
       const next = new Set(prev);
@@ -117,13 +131,10 @@ function App() {
     });
   }, []);
 
-  // Tag filter: AND within (a chat must hold every selected Tag), combined with
-  // the Project filter (OR within) by intersecting the two filtered sets — AND
-  // across types. An empty selection means "all Tags". The `UNTAGGED` sentinel
-  // selects chats with zero Tags.
-  const [selectedTags, setSelectedTags] = useState<ReadonlySet<string>>(
-    () => new Set()
-  );
+  // Tag filter toggles: AND within (a chat must hold every selected Tag),
+  // combined with the Project filter (OR within) — AND across types. An empty
+  // selection means "all Tags". The `UNTAGGED` sentinel selects chats with zero
+  // Tags. The state is declared above the read hooks (see selectedProjects).
   const toggleTag = useCallback((tagId: string) => {
     setSelectedTags((prev) => toggleTagSelection(prev, tagId));
   }, []);
@@ -143,10 +154,16 @@ function App() {
     [counts.counts.projects, selectedProjects]
   );
 
-  const visibleChats = filterChatsByTags(
-    filterChatsByProjects(order.orderedChats, selectedProjects),
-    selectedTags
-  );
+  // The paginated path already filtered server-side inside the keyset query
+  // (#130), so its window is the filtered set — applying the client-side window
+  // filter again would be redundant and would fight pagination. The full-load
+  // path (Title sort, Trash) still filters its loaded window here.
+  const visibleChats = paginate
+    ? order.orderedChats
+    : filterChatsByTags(
+        filterChatsByProjects(order.orderedChats, selectedProjects),
+        selectedTags
+      );
   const selectedChat = chats.find((c) => c.id === selectedId) ?? null;
 
   // Tag and Untagged counts are server-derived per view (main vs Trash). They
