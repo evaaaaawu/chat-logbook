@@ -122,6 +122,41 @@ describe("usePaginatedChats", () => {
     expect(byId.get("chat-1")!.updatedAt).toBe(1700000400000);
   });
 
+  it("sends the active Project filter to the server (#130)", async () => {
+    // Active by updatedAt desc: chat-2 (backend-api), chat-1 (my-web-app),
+    // chat-3 (my-web-app), chat-missing (some-project). Filtering to my-web-app
+    // server-side leaves only chat-1 and chat-3.
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", {
+        pageSize: 10,
+        projects: ["my-web-app"],
+      })
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.chats.map((c) => c.id)).toEqual(["chat-1", "chat-3"]);
+  });
+
+  it("re-anchors the window when the active filter changes (#130)", async () => {
+    const { result, rerender } = renderHook(
+      ({ projects }: { projects: string[] }) =>
+        usePaginatedChats("updatedAt", "desc", { pageSize: 10, projects }),
+      { initialProps: { projects: ["my-web-app"] } }
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.chats.map((c) => c.id)).toEqual(["chat-1", "chat-3"]);
+
+    // Changing the selection re-anchors: the window refetches the first page for
+    // the new filter rather than appending to or keeping the old one.
+    rerender({ projects: ["backend-api"] });
+
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual(["chat-2"])
+    );
+  });
+
   it("ignores a failed background refresh instead of crashing", async () => {
     const { result } = renderHook(() =>
       usePaginatedChats("updatedAt", "desc", { pageSize: 2 })

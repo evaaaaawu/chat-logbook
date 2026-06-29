@@ -453,3 +453,334 @@ describe("ChatReader.listChatsPage — keyset pagination", () => {
     pageQuery.close();
   });
 });
+
+describe("ChatReader.listChatsPage — server-side filtering (#130)", () => {
+  it("filters a page to chats in any of the selected Projects (OR)", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "a1",
+      firstSeenAt: new Date(1_000),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "b1",
+      firstSeenAt: new Date(2_000),
+      project: "beta",
+    });
+    seedChat(archive, {
+      sourceId: "g1",
+      firstSeenAt: new Date(3_000),
+      project: "gamma",
+    });
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+    const page = reader.listChatsPage({
+      sort: "createdAt",
+      limit: 10,
+      projects: ["alpha", "gamma"],
+    });
+
+    // Newest-first within the selected Projects; beta is excluded.
+    expect(page.chats.map((c) => c.sourceId)).toEqual(["g1", "a1"]);
+
+    pageQuery.close();
+  });
+
+  it("selects the (No project) group with an empty-string entry", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    // null and "" both belong to the (No project) bucket; "alpha" does not.
+    seedChat(archive, {
+      sourceId: "none1",
+      firstSeenAt: new Date(1_000),
+      project: null,
+    });
+    seedChat(archive, {
+      sourceId: "empty1",
+      firstSeenAt: new Date(2_000),
+      project: "",
+    });
+    seedChat(archive, {
+      sourceId: "a1",
+      firstSeenAt: new Date(3_000),
+      project: "alpha",
+    });
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+    const page = reader.listChatsPage({
+      sort: "createdAt",
+      limit: 10,
+      projects: [""],
+    });
+
+    expect(page.chats.map((c) => c.sourceId)).toEqual(["empty1", "none1"]);
+
+    pageQuery.close();
+  });
+
+  it("filters a page to chats holding every selected Tag (AND)", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const both = seedChat(archive, {
+      sourceId: "both",
+      firstSeenAt: new Date(1_000),
+    });
+    const onlyX = seedChat(archive, {
+      sourceId: "onlyX",
+      firstSeenAt: new Date(2_000),
+    });
+    seedChat(archive, { sourceId: "onlyY", firstSeenAt: new Date(3_000) });
+
+    const x = tags.createTag("x", "violet");
+    const y = tags.createTag("y", "blue");
+    tags.assignTag(both, x.id);
+    tags.assignTag(both, y.id);
+    tags.assignTag(onlyX, x.id);
+    // onlyY (sourceId) holds neither in this seed — only "both" has both Tags.
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+    const page = reader.listChatsPage({
+      sort: "createdAt",
+      limit: 10,
+      tags: [x.id, y.id],
+    });
+
+    // Only the chat holding BOTH selected Tags passes the AND filter.
+    expect(page.chats.map((c) => c.sourceId)).toEqual(["both"]);
+
+    pageQuery.close();
+  });
+
+  it("selects the Untagged group with '', and yields nothing when '' is mixed with a real Tag", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    seedChat(archive, { sourceId: "bare", firstSeenAt: new Date(1_000) });
+    const tagged = seedChat(archive, {
+      sourceId: "tagged",
+      firstSeenAt: new Date(2_000),
+    });
+    const x = tags.createTag("x", "violet");
+    tags.assignTag(tagged, x.id);
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+
+    // '' alone keeps only the zero-Tag chat.
+    expect(
+      reader
+        .listChatsPage({ sort: "createdAt", limit: 10, tags: [""] })
+        .chats.map((c) => c.sourceId)
+    ).toEqual(["bare"]);
+
+    // A real Tag AND '' (holds the Tag AND holds zero Tags) is unsatisfiable.
+    expect(
+      reader.listChatsPage({ sort: "createdAt", limit: 10, tags: [x.id, ""] })
+        .chats
+    ).toEqual([]);
+
+    pageQuery.close();
+  });
+
+  it("ANDs the Project and Tag filters across types", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    // alpha+x is the only chat satisfying both the Project and the Tag filter.
+    const alphaX = seedChat(archive, {
+      sourceId: "alphaX",
+      firstSeenAt: new Date(1_000),
+      project: "alpha",
+    });
+    const alphaNoTag = seedChat(archive, {
+      sourceId: "alphaNoTag",
+      firstSeenAt: new Date(2_000),
+      project: "alpha",
+    });
+    const betaX = seedChat(archive, {
+      sourceId: "betaX",
+      firstSeenAt: new Date(3_000),
+      project: "beta",
+    });
+    const x = tags.createTag("x", "violet");
+    tags.assignTag(alphaX, x.id);
+    tags.assignTag(betaX, x.id);
+    void alphaNoTag;
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+    const page = reader.listChatsPage({
+      sort: "createdAt",
+      limit: 10,
+      projects: ["alpha"],
+      tags: [x.id],
+    });
+
+    // betaX has the Tag but the wrong Project; alphaNoTag has the Project but no
+    // Tag — only alphaX clears both.
+    expect(page.chats.map((c) => c.sourceId)).toEqual(["alphaX"]);
+
+    pageQuery.close();
+  });
+
+  it("walks filtered keyset pages with no overlap or gap", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    // Five alpha chats interleaved with beta chats by createdAt. The filter must
+    // page only the alpha set, in full newest-first order, across the cursor.
+    for (let i = 1; i <= 5; i++) {
+      seedChat(archive, {
+        sourceId: `a${i}`,
+        firstSeenAt: new Date(i * 2000),
+        project: "alpha",
+      });
+      seedChat(archive, {
+        sourceId: `b${i}`,
+        firstSeenAt: new Date(i * 2000 + 1000),
+        project: "beta",
+      });
+    }
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    let guard = 0;
+    do {
+      const page = reader.listChatsPage({
+        sort: "createdAt",
+        limit: 2,
+        projects: ["alpha"],
+        cursor,
+      });
+      seen.push(...page.chats.map((c) => c.sourceId));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor && ++guard < 10);
+
+    // Only alpha chats, newest-first, each exactly once — the cursor stays
+    // strictly past the previous filtered page.
+    expect(seen).toEqual(["a5", "a4", "a3", "a2", "a1"]);
+
+    pageQuery.close();
+  });
+
+  it("composes a filter with the asc direction", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "a1",
+      firstSeenAt: new Date(1_000),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "b1",
+      firstSeenAt: new Date(2_000),
+      project: "beta",
+    });
+    seedChat(archive, {
+      sourceId: "a2",
+      firstSeenAt: new Date(3_000),
+      project: "alpha",
+    });
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+    const page = reader.listChatsPage({
+      sort: "createdAt",
+      direction: "asc",
+      limit: 10,
+      projects: ["alpha"],
+    });
+
+    // Oldest-first within the filtered set; beta excluded.
+    expect(page.chats.map((c) => c.sourceId)).toEqual(["a1", "a2"]);
+
+    pageQuery.close();
+  });
+
+  it("composes a filter with the Trash view (includeTrashed)", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "active",
+      firstSeenAt: new Date(1_000),
+      project: "alpha",
+    });
+    const trashed = seedChat(archive, {
+      sourceId: "trashed",
+      firstSeenAt: new Date(2_000),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "betaTrashed",
+      firstSeenAt: new Date(3_000),
+      project: "beta",
+    });
+    metadata.softDelete(trashed);
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+
+    // Main view: the trashed alpha chat is excluded, leaving only the active one.
+    expect(
+      reader
+        .listChatsPage({ sort: "createdAt", limit: 10, projects: ["alpha"] })
+        .chats.map((c) => c.sourceId)
+    ).toEqual(["active"]);
+
+    // includeTrashed opts trashed chats back in (active + trashed, the existing
+    // page-query contract), but the Project filter still applies: both alpha
+    // chats show, the beta chat never does.
+    expect(
+      reader
+        .listChatsPage({
+          sort: "createdAt",
+          limit: 10,
+          projects: ["alpha"],
+          includeTrashed: true,
+        })
+        .chats.map((c) => c.sourceId)
+    ).toEqual(["trashed", "active"]);
+
+    pageQuery.close();
+  });
+
+  it("treats an empty filter selection as unfiltered (clear-all)", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "a1",
+      firstSeenAt: new Date(1_000),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "b1",
+      firstSeenAt: new Date(2_000),
+      project: "beta",
+    });
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+
+    // Empty arrays mean "no filter" — every chat shows, exactly as omitting them.
+    expect(
+      reader
+        .listChatsPage({ sort: "createdAt", limit: 10, projects: [], tags: [] })
+        .chats.map((c) => c.sourceId)
+    ).toEqual(["b1", "a1"]);
+
+    pageQuery.close();
+  });
+});

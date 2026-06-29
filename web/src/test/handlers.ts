@@ -244,9 +244,30 @@ export const handlers = [
       const dir = direction === "asc" ? -1 : 1;
       const sortKeyOf = (c: FakeChat) =>
         sort === "createdAt" ? c.createdAt : c.updatedAt;
+      // Project (OR) + Tag (AND) filtering inside the paginated query, mirroring
+      // the server (#130). Repeated `?project=` unions; `?tags=` is one
+      // comma-separated AND set. An empty value selects the (No project) /
+      // Untagged group. Absent params leave that axis unfiltered.
+      const projectSel = url.searchParams.getAll("project");
+      const tagsParam = url.searchParams.get("tags");
+      const tagSel = tagsParam === null ? null : tagsParam.split(",");
+      const filtered = visible.filter((c) => {
+        if (projectSel.length > 0 && !projectSel.includes(c.project)) {
+          return false;
+        }
+        if (tagSel) {
+          const ids = new Set(fakeChatTags[c.id] ?? []);
+          const wantUntagged = tagSel.includes("");
+          if (wantUntagged && ids.size > 0) return false;
+          if (!tagSel.filter((t) => t !== "").every((t) => ids.has(t))) {
+            return false;
+          }
+        }
+        return true;
+      });
       // dir flips the sort and the tiebreak together: desc is (sortKey DESC, id
       // DESC), asc is (sortKey ASC, id ASC).
-      const sorted = [...visible].sort(
+      const sorted = [...filtered].sort(
         (a, b) =>
           dir * (sortKeyOf(b) - sortKeyOf(a)) ||
           dir * (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)

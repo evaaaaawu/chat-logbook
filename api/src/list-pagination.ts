@@ -54,6 +54,22 @@ export interface KeysetPageQuery {
   cursor?: KeysetCursor;
   /** Default false: trashed chats are excluded from the page. */
   includeTrashed?: boolean;
+  /**
+   * Project filter (OR / union): the page keeps only chats in any of these
+   * `chats.project` values. An empty-string entry selects the `(No project)`
+   * group (NULL or ''). Omit or pass an empty array to leave Projects
+   * unfiltered. Pushed into the keyset SQL so filtering and the page `LIMIT`
+   * compose at scale (ADR-0017).
+   */
+  projects?: string[];
+  /**
+   * Tag filter (AND / intersection): the page keeps only chats holding every
+   * selected real Tag. An empty-string entry selects the `Untagged` group (zero
+   * Tags) — mixing it with a real Tag id naturally yields nothing. Omit or pass
+   * an empty array to leave Tags unfiltered. Runs as a subquery against the
+   * `ATTACH`ed `meta.chat_tags` (ADR-0017); ANDs across types with `projects`.
+   */
+  tags?: string[];
 }
 
 export interface ChatPageQuery {
@@ -126,6 +142,45 @@ export function createChatPageQuery({
       clauses.push(
         "c.id NOT IN (SELECT id FROM meta.chats_meta WHERE is_deleted = 1)"
       );
+    }
+
+    // Project filter (OR / union): coalesce folds NULL and '' into one
+    // `(No project)` bucket, so an empty-string entry selects it. An empty
+    // selection leaves Projects unfiltered (no clause). The placeholders are a
+    // fixed count built from the array length, never interpolated values.
+    if (query.projects && query.projects.length > 0) {
+      const placeholders = query.projects.map(() => "?").join(", ");
+      clauses.push(`coalesce(c.project, '') IN (${placeholders})`);
+      params.push(...query.projects);
+    }
+
+    // Tag filter (AND / intersection). A real-Tag selection keeps only chats
+    // holding every selected Tag — the grouped subquery counts matched Tags per
+    // chat and requires the full set. The `Untagged` group (the '' marker) keeps
+    // only chats with zero Tags. Both reference the `ATTACH`ed `meta.chat_tags`,
+    // so with no Metadata store there are no tags: a real-Tag filter matches
+    // nothing, and `Untagged` matches everything (no clause). Selecting both a
+    // real Tag and '' at once ANDs to nothing, as intended.
+    if (query.tags && query.tags.length > 0) {
+      const realTagIds = query.tags.filter((t) => t !== "");
+      const wantUntagged = query.tags.includes("");
+      if (realTagIds.length > 0) {
+        if (!hasMetadata) {
+          // No tags exist, so no chat can hold the selected Tag.
+          clauses.push("0");
+        } else {
+          const placeholders = realTagIds.map(() => "?").join(", ");
+          clauses.push(
+            `c.id IN (SELECT chat_id FROM meta.chat_tags
+                      WHERE tag_id IN (${placeholders})
+                      GROUP BY chat_id HAVING count(*) = ?)`
+          );
+          params.push(...realTagIds, realTagIds.length);
+        }
+      }
+      if (wantUntagged && hasMetadata) {
+        clauses.push("c.id NOT IN (SELECT chat_id FROM meta.chat_tags)");
+      }
     }
 
     // The direction flips both the keyset comparison and the ORDER BY in lock
