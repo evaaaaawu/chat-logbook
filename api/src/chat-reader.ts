@@ -8,6 +8,7 @@ import {
   decodeCursor,
   encodeCursor,
   type ChatPageQuery,
+  type ListDirection,
   type ListSort,
 } from "./list-pagination.js";
 
@@ -93,6 +94,8 @@ export interface ChatReader {
    */
   listChatsPage(opts: {
     sort: ListSort;
+    /** Sort direction along the time axis; defaults to "desc" (newest-first). */
+    direction?: ListDirection;
     limit: number;
     cursor?: string;
     includeTrashed?: boolean;
@@ -254,11 +257,13 @@ export function createChatReader({
 
   function listChatsPage({
     sort,
+    direction,
     limit,
     cursor,
     includeTrashed = false,
   }: {
     sort: ListSort;
+    direction?: ListDirection;
     limit: number;
     cursor?: string;
     includeTrashed?: boolean;
@@ -271,6 +276,7 @@ export function createChatReader({
     const decoded = cursor ? (decodeCursor(cursor) ?? undefined) : undefined;
     const page = pageQuery.queryPage({
       sort,
+      direction,
       limit,
       cursor: decoded,
       includeTrashed,

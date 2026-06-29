@@ -25,6 +25,15 @@ export const chats = sqliteTable(
     agent: text("agent").notNull(),
     sourceId: text("source_id").notNull(),
     firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).notNull(),
+    // Denormalized "conversation start" = min(messages.ts), kept current at
+    // ingest and backfilled in migration 0010. The createdAt sort pages by this
+    // (not first_seen_at, the ingest time) so the paged order matches the
+    // reader's displayed createdAt (issue #143, reconciling ADR-0017's caveat).
+    // Initialized to first_seen_at for a chat with no messages; since
+    // first_seen_at is the ingest time and so >= every message ts, the running
+    // min over (first_seen_at, message ts) equals min(messages.ts) once any
+    // message exists, and first_seen_at when none — never NULL.
+    createdAt: integer("created_at", { mode: "timestamp_ms" }),
     // Denormalized "most recent activity" = max(messages.ts), kept current at
     // ingest and backfilled in migration 0009. Lets the activity sort run as a
     // keyset index range scan instead of an aggregate that defeats the index
@@ -39,8 +48,8 @@ export const chats = sqliteTable(
     // Backs the server-side Project filter (`WHERE coalesce(project,'') IN …`).
     index("chats_project_idx").on(t.project),
     // Covering keyset indexes for the two server-side list sorts (ADR-0017):
-    // (sortKey DESC, id DESC) so the ORDER BY + LIMIT is an index range scan.
-    index("chats_created_keyset_idx").on(t.firstSeenAt, t.id),
+    // (sortKey, id) so the ORDER BY + LIMIT is an index range scan either way.
+    index("chats_created_keyset_idx").on(t.createdAt, t.id),
     index("chats_updated_keyset_idx").on(t.updatedAt, t.id),
   ]
 );

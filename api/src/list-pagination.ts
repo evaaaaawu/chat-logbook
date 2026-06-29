@@ -18,6 +18,13 @@ import Database from "better-sqlite3";
 /** The two time axes the keyset index supports (ADR-0017). */
 export type ListSort = "createdAt" | "updatedAt";
 
+/**
+ * Sort direction along the time axis. The covering `(sortKey, id)` indexes scan
+ * either way, so asc and desc both stay a page-bounded index range scan — only
+ * the keyset comparison and `ORDER BY` flip (issue #143).
+ */
+export type ListDirection = "asc" | "desc";
+
 /** Keyset cursor: the (sortKey, id) of the last item on the previous page. */
 export interface KeysetCursor {
   /** The sort column value in epoch ms (`first_seen_at` or `updated_at`). */
@@ -41,6 +48,8 @@ export interface KeysetPage {
 
 export interface KeysetPageQuery {
   sort: ListSort;
+  /** Default "desc" (newest-first): the original keyset direction. */
+  direction?: ListDirection;
   limit: number;
   cursor?: KeysetCursor;
   /** Default false: trashed chats are excluded from the page. */
@@ -58,7 +67,7 @@ const METADATA_DB = "metadata.db";
 // The sort axis maps to a real, indexed column on `chats` — never interpolated
 // from caller input, so the column name in the SQL stays a fixed whitelist.
 const SORT_COLUMN: Record<ListSort, string> = {
-  createdAt: "first_seen_at",
+  createdAt: "created_at",
   updatedAt: "updated_at",
 };
 
@@ -119,10 +128,19 @@ export function createChatPageQuery({
       );
     }
 
+    // The direction flips both the keyset comparison and the ORDER BY in lock
+    // step, so the cursor stays strictly past the previous page's last row and
+    // the page order matches. `desc` (default) walks newest-first with `<`;
+    // `asc` walks oldest-first with `>`. The operator is a fixed whitelist, not
+    // interpolated caller input.
+    const direction: ListDirection = query.direction ?? "desc";
+    const cmp = direction === "asc" ? ">" : "<";
+    const order = direction === "asc" ? "ASC" : "DESC";
+
     // Keyset cursor: strictly after the last row of the previous page in the
-    // (sortKey DESC, id DESC) order.
+    // (sortKey, id) order for this direction.
     if (query.cursor) {
-      clauses.push(`(c.${col} < ? OR (c.${col} = ? AND c.id < ?))`);
+      clauses.push(`(c.${col} ${cmp} ? OR (c.${col} = ? AND c.id ${cmp} ?))`);
       params.push(query.cursor.sortKey, query.cursor.sortKey, query.cursor.id);
     }
 
@@ -132,7 +150,7 @@ export function createChatPageQuery({
       .prepare(
         `SELECT c.id AS id, c.${col} AS sortKey
          FROM chats c ${where}
-         ORDER BY c.${col} DESC, c.id DESC
+         ORDER BY c.${col} ${order}, c.id ${order}
          LIMIT ?`
       )
       .all(...params, query.limit + 1) as KeysetPageItem[];

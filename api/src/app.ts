@@ -6,6 +6,7 @@ import type { TagRepository } from "./metadata/tags.js";
 import { isColorToken } from "./metadata/tag-colors.js";
 import { createChatReader } from "./chat-reader.js";
 import type { ChatPageQuery } from "./list-pagination.js";
+import { MAX_PAGE_LIMIT } from "./list-contract.js";
 
 interface AppOptions {
   archive: ArchiveRepository;
@@ -19,10 +20,6 @@ interface AppOptions {
   pageQuery?: ChatPageQuery;
   webDistDir?: string;
 }
-
-// Upper bound on a single page; keeps a hostile `?limit=` from materializing an
-// unbounded result. The default page size lives on the client.
-const MAX_PAGE_LIMIT = 200;
 
 export function createApp({
   archive,
@@ -53,8 +50,15 @@ export function createApp({
       if (sort !== "createdAt" && sort !== "updatedAt") {
         return c.json({ error: "Invalid sort" }, 400);
       }
+      // Direction defaults to "desc" (newest-first) so existing callers that
+      // omit it are unchanged; the covering index scans either way (#143).
+      const direction = c.req.query("direction") ?? "desc";
+      if (direction !== "asc" && direction !== "desc") {
+        return c.json({ error: "Invalid direction" }, 400);
+      }
       const { chats, nextCursor } = reader.listChatsPage({
         sort,
+        direction,
         limit,
         cursor: c.req.query("cursor"),
         includeTrashed,
