@@ -17,6 +17,7 @@ import { parseCliArgs } from "./cli/argv.js";
 import { helpText } from "./cli/help.js";
 import { resolveDataDir } from "./config/data-dir.js";
 import { createChatPageQuery } from "./list-pagination.js";
+import { createChatCountsQuery } from "./list-counts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgPath = path.join(__dirname, "../../package.json");
@@ -57,7 +58,17 @@ const tags = createTagRepository({ dataDir });
 // The page query owns its own Archive connection with metadata.db ATTACHed
 // read-only; it lives for the process lifetime (ADR-0017).
 const pageQuery = createChatPageQuery({ dataDir });
-const app = createApp({ archive, metadata, tags, pageQuery, webDistDir });
+// The counts query shares the same cross-store ATTACH shape and process
+// lifetime (issue #131 Phase A).
+const countsQuery = createChatCountsQuery({ dataDir });
+const app = createApp({
+  archive,
+  metadata,
+  tags,
+  pageQuery,
+  countsQuery,
+  webDistDir,
+});
 
 const initialIngest = startIngestionInBackground({
   plugins,

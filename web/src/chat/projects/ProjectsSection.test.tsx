@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import { ProjectsSection } from "./ProjectsSection";
-import type { ProjectFacet } from "./deriveProjects";
+import type { ProjectFacet } from "./projectFacets";
 
 const facets: ProjectFacet[] = [
   { project: "web", label: "web", count: 3, lastActiveAt: 30 },

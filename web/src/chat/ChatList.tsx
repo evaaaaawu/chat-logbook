@@ -18,6 +18,13 @@ interface ChatListProps {
   onBack?: () => void;
   onOpenTrash?: () => void;
   sortControl?: React.ReactNode;
+  /**
+   * The List count shown in the "Chats N" header (#131 Phase A). Server-derived
+   * so it reflects the view's whole universe, not just the loaded page window.
+   * Falls back to the loaded count when omitted (e.g. a filtered list, whose
+   * accurate total is Phase B).
+   */
+  total?: number;
   /** Changes whenever the active sort changes; drives keep-selection-visible scrolling. */
   sortSignature?: string;
   /** True while a further page can be fetched; gates near-bottom loading. */
@@ -117,6 +124,7 @@ export function ChatList({
   onBack,
   onOpenTrash,
   sortControl,
+  total,
   sortSignature,
   hasMore = false,
   onLoadMore,
@@ -227,7 +235,7 @@ export function ChatList({
                 Chats
               </span>
               <span className="rounded-full bg-card px-2 text-xs font-semibold tabular-nums text-muted-foreground">
-                {chats.length}
+                {total ?? chats.length}
               </span>
             </span>
             {sortControl}

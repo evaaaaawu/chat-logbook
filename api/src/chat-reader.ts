@@ -11,6 +11,7 @@ import {
   type ListDirection,
   type ListSort,
 } from "./list-pagination.js";
+import type { ChatCountsQuery, ListCounts } from "./list-counts.js";
 
 /**
  * The Chat read face. At read time it composes Archive + Metadata into the
@@ -101,6 +102,14 @@ export interface ChatReader {
     includeTrashed?: boolean;
   }): { chats: ChatResponse[]; nextCursor: string | null };
   /**
+   * The filter-panel facet counts and the unfiltered List count for a view
+   * (issue #131 Phase A). Static per view (main vs Trash) — they count the
+   * view's whole universe and do not change when a filter is selected — so this
+   * takes no filter. Server-derived so the paginated frontend need not hold the
+   * full Chat list to count from. Requires a `countsQuery` dependency.
+   */
+  listCounts(opts: { includeTrashed?: boolean }): ListCounts;
+  /**
    * Messages for a Chat resolved by its public wire-form chat id (`clog_…`).
    * Returns null when the id is malformed, no chat matches, or it is not visible
    * — the caller maps all of these to 404 (the 404 paths collapse into one).
@@ -127,6 +136,12 @@ interface ChatReaderDeps {
    * without it; `listChatsPage` requires it.
    */
   pageQuery?: ChatPageQuery;
+  /**
+   * The facet-count aggregation that runs the cross-store per-view counts
+   * (issue #131 Phase A). Optional so the read paths that don't count compose
+   * without it; `listCounts` requires it.
+   */
+  countsQuery?: ChatCountsQuery;
 }
 
 export function createChatReader({
@@ -134,6 +149,7 @@ export function createChatReader({
   metadata,
   tags,
   pageQuery,
+  countsQuery,
 }: ChatReaderDeps): ChatReader {
   function findChat(id: string): ChatRecord | null {
     const code = parseChatId(id);
@@ -301,6 +317,17 @@ export function createChatReader({
     };
   }
 
+  function listCounts({
+    includeTrashed = false,
+  }: {
+    includeTrashed?: boolean;
+  }): ListCounts {
+    if (!countsQuery) {
+      throw new Error("listCounts requires a countsQuery dependency");
+    }
+    return countsQuery.queryCounts({ includeTrashed });
+  }
+
   function getMessages(
     id: string,
     { includeTrashed }: { includeTrashed: boolean }
@@ -320,5 +347,5 @@ export function createChatReader({
     }));
   }
 
-  return { listChats, listChatsPage, getMessages, findChat };
+  return { listChats, listChatsPage, listCounts, getMessages, findChat };
 }

@@ -9,6 +9,7 @@ import { createTagRepository } from "./metadata/tags.js";
 import type { Tag } from "./metadata/tags.js";
 import { formatChatId } from "./archive/chat-id.js";
 import { createChatPageQuery } from "./list-pagination.js";
+import { createChatCountsQuery } from "./list-counts.js";
 import { MAX_PAGE_LIMIT } from "./list-contract.js";
 
 interface ChatResponse {
@@ -222,6 +223,57 @@ describe("GET /api/chats — keyset pagination mode", () => {
       "/api/chats?sort=createdAt&direction=sideways&limit=2"
     );
     expect(res.status).toBe(400);
+  });
+});
+
+describe("GET /api/chats/counts — server-side facet counts", () => {
+  it("serves per-view counts (main excludes trashed, Trash counts only trashed)", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "a1",
+      firstSeenAt: new Date(1000),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "a2",
+      firstSeenAt: new Date(2000),
+      project: "alpha",
+    });
+    const trashedId = seedChat(archive, {
+      sourceId: "b1",
+      firstSeenAt: new Date(3000),
+      project: "beta",
+    });
+    metadata.softDelete(trashedId);
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+      countsQuery: createChatCountsQuery({ dataDir }),
+    });
+
+    const main = await app.request("/api/chats/counts");
+    expect(main.status).toBe(200);
+    const mainBody = (await main.json()) as {
+      total: number;
+      projects: { project: string; count: number }[];
+      untagged: number;
+    };
+    expect(mainBody.total).toBe(2);
+    const mainByProject = new Map(
+      mainBody.projects.map((p) => [p.project, p.count])
+    );
+    expect(mainByProject.get("alpha")).toBe(2);
+    expect(mainByProject.has("beta")).toBe(false);
+
+    const trash = await app.request("/api/chats/counts?includeTrashed=true");
+    const trashBody = (await trash.json()) as { total: number };
+    expect(trashBody.total).toBe(1);
   });
 });
 
