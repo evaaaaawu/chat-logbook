@@ -9,6 +9,7 @@ import { createTagRepository } from "./metadata/tags.js";
 import type { Tag } from "./metadata/tags.js";
 import { formatChatId } from "./archive/chat-id.js";
 import { createChatPageQuery } from "./list-pagination.js";
+import { MAX_PAGE_LIMIT } from "./list-contract.js";
 
 interface ChatResponse {
   id: string;
@@ -144,6 +145,33 @@ describe("GET /api/chats — keyset pagination mode", () => {
     expect(nextBody.nextCursor).toBeNull();
   });
 
+  it("serves an ascending page when direction=asc, defaulting to desc", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    for (let i = 1; i <= 3; i++) {
+      seedChat(archive, { sourceId: `c${i}`, firstSeenAt: new Date(i * 1000) });
+    }
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+
+    const asc = await app.request(
+      "/api/chats?sort=createdAt&direction=asc&limit=2"
+    );
+    expect(asc.status).toBe(200);
+    const ascBody = (await asc.json()) as { chats: ChatResponse[] };
+    expect(ascBody.chats.map((c) => c.sourceId)).toEqual(["c1", "c2"]);
+
+    // Omitting direction keeps the newest-first default.
+    const def = await app.request("/api/chats?sort=createdAt&limit=2");
+    const defBody = (await def.json()) as { chats: ChatResponse[] };
+    expect(defBody.chats.map((c) => c.sourceId)).toEqual(["c3", "c2"]);
+  });
+
   it("rejects an invalid sort with 400", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
@@ -154,6 +182,45 @@ describe("GET /api/chats — keyset pagination mode", () => {
       pageQuery: createChatPageQuery({ dataDir }),
     });
     const res = await app.request("/api/chats?sort=bogus&limit=2");
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts a limit at the shared cap and rejects one past it", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+
+    // The endpoint's accept/reject boundary is the single shared MAX_PAGE_LIMIT,
+    // so a window-sized refresh clamped to it on the client is never rejected
+    // (the drift that blanked the app in #147).
+    const atCap = await app.request(
+      `/api/chats?sort=createdAt&limit=${MAX_PAGE_LIMIT}`
+    );
+    expect(atCap.status).toBe(200);
+
+    const overCap = await app.request(
+      `/api/chats?sort=createdAt&limit=${MAX_PAGE_LIMIT + 1}`
+    );
+    expect(overCap.status).toBe(400);
+  });
+
+  it("rejects an invalid direction with 400", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const res = await app.request(
+      "/api/chats?sort=createdAt&direction=sideways&limit=2"
+    );
     expect(res.status).toBe(400);
   });
 });

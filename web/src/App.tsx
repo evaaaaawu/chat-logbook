@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChats } from "@/chat/useChats";
-import { usePaginatedChats, type ListSort } from "@/chat/usePaginatedChats";
+import {
+  usePaginatedChats,
+  type ListDirection,
+  type ListSort,
+} from "@/chat/usePaginatedChats";
 import { useTags } from "@/tags/useTags";
 import { useMessages } from "@/conversation/useMessages";
 import { useToast } from "@/shared/useToast";
@@ -32,19 +36,21 @@ function App() {
   // direction decide whether to paginate.
   const mainPref = useSortPreference(CHAT_SORT_CONFIG);
 
-  // Only the main view's descending time sorts page server-side (the keyset
-  // index covers createdAt/updatedAt DESC, per ADR-0017). Title sort, ascending
-  // time, and the Trash view stay on the full-load client path. The two read
-  // hooks always run (hooks rule); `enabled` decides which one fetches.
+  // The main view's time sorts page server-side in both directions: the keyset
+  // index covers createdAt/updatedAt either way (ADR-0017, #143). Title sort and
+  // the Trash view stay on the full-load client path. The two read hooks always
+  // run (hooks rule); `enabled` decides which one fetches.
   const paginate =
     mode === "main" &&
-    (mainPref.field === "createdAt" || mainPref.field === "updatedAt") &&
-    mainPref.direction === "desc";
+    (mainPref.field === "createdAt" || mainPref.field === "updatedAt");
   const pageSort: ListSort =
     mainPref.field === "createdAt" ? "createdAt" : "updatedAt";
+  const pageDirection: ListDirection = mainPref.direction;
 
   const full = useChats({ enabled: !paginate });
-  const paginated = usePaginatedChats(pageSort, { enabled: paginate });
+  const paginated = usePaginatedChats(pageSort, pageDirection, {
+    enabled: paginate,
+  });
   const source = paginate ? paginated : full;
   const { chats, sortEpoch, softDelete, restore, setTitle, reload } = source;
 
