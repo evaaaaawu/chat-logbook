@@ -284,6 +284,41 @@ export const handlers = [
 
     return HttpResponse.json({ chats: visible.map(projectChat) });
   }),
+  // Server-side facet + list counts (#131 Phase A). Static per view: counts the
+  // view's whole universe (main vs Trash) and does not change with a selected
+  // filter. Registered before `/api/chats/:id` so `counts` is not read as an id.
+  http.get("/api/chats/counts", ({ request }) => {
+    const url = new URL(request.url);
+    const includeTrashed = url.searchParams.get("includeTrashed") === "true";
+    const inView = includeTrashed
+      ? fakeChats.filter((c) => c.isDeleted)
+      : fakeChats.filter((c) => !c.isDeleted);
+
+    const projMap = new Map<string, { count: number; lastActiveAt: number }>();
+    const tagMap = new Map<string, number>();
+    let untagged = 0;
+    for (const c of inView) {
+      const prev = projMap.get(c.project) ?? { count: 0, lastActiveAt: 0 };
+      projMap.set(c.project, {
+        count: prev.count + 1,
+        lastActiveAt: Math.max(prev.lastActiveAt, c.updatedAt),
+      });
+      const ids = fakeChatTags[c.id] ?? [];
+      if (ids.length === 0) untagged += 1;
+      for (const id of ids) tagMap.set(id, (tagMap.get(id) ?? 0) + 1);
+    }
+
+    return HttpResponse.json({
+      total: inView.length,
+      projects: [...projMap.entries()].map(([project, v]) => ({
+        project,
+        count: v.count,
+        lastActiveAt: v.lastActiveAt,
+      })),
+      tags: [...tagMap.entries()].map(([tagId, count]) => ({ tagId, count })),
+      untagged,
+    });
+  }),
   http.patch("/api/chats/:id/title", async ({ params, request }) => {
     const id = params.id as string;
     const chat = fakeChats.find((c) => c.id === id);

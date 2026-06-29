@@ -11,6 +11,7 @@ import { http, HttpResponse } from "msw";
 import { describe, it, expect, vi } from "vitest";
 import App from "./App";
 import { server } from "./test/server";
+import { fakeChats } from "./test/handlers";
 
 describe("Chat list", () => {
   it("displays session titles fetched from the API", async () => {
@@ -503,14 +504,28 @@ describe("Chat metadata popover", () => {
 });
 
 describe("Trash link in filter panel", () => {
-  it("shows a Trash link without a count badge", async () => {
+  it("shows the server-derived trashed count on the Trash link", async () => {
     render(<App />);
 
     await screen.findByText("Build a login page");
 
-    // The list reads paginated pages that exclude trashed chats, so the active
-    // window cannot know the full trashed total without a full load. The count
-    // is dropped rather than shown per-mode (#129); the link still opens Trash.
+    // The trashed total comes from the server counts aggregation (#131 Phase A),
+    // so it is correct even though the paginated main list never loads trashed
+    // chats. Two fake chats are trashed.
+    const trashLink = await screen.findByTestId("trash-link");
+    expect(within(trashLink).getByText(/trash/i)).toBeInTheDocument();
+    expect(await within(trashLink).findByText("2")).toBeInTheDocument();
+  });
+
+  it("hides the count when Trash is empty", async () => {
+    fakeChats.forEach((c) => {
+      c.isDeleted = false;
+      c.deletedAt = null;
+    });
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+
     const trashLink = await screen.findByTestId("trash-link");
     expect(within(trashLink).getByText(/trash/i)).toBeInTheDocument();
     expect(within(trashLink).queryByText(/^\d+$/)).not.toBeInTheDocument();

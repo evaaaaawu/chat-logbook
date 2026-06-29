@@ -1,12 +1,14 @@
 import { Trash2 } from "lucide-react";
 import { ProjectsSection } from "@/chat/projects/ProjectsSection";
 import { FilterSummary } from "@/chat/FilterSummary";
-import type { ProjectFacet } from "@/chat/projects/deriveProjects";
+import type { ProjectFacet } from "@/chat/projects/projectFacets";
 import { TagsSection } from "@/tags/TagsSection";
 import type { Tag } from "@/types";
 import type { ColorToken } from "@/tags/palette";
 
 interface FilterPanelProps {
+  /** How many chats are in Trash — the server-derived trashed total (#131). */
+  deletedCount: number;
   onOpenTrash: () => void;
   projectFacets: ProjectFacet[];
   selectedProjects: ReadonlySet<string>;
@@ -23,6 +25,7 @@ interface FilterPanelProps {
 }
 
 export function FilterPanel({
+  deletedCount,
   onOpenTrash,
   projectFacets,
   selectedProjects,
@@ -65,18 +68,24 @@ export function FilterPanel({
         />
       </div>
       <div className="flex h-12 shrink-0 items-center border-t border-border px-2">
-        {/* No count badge: the active window does not know the full trashed
-            total without a full load, and the list is moving to paginated reads,
-            so the count is dropped rather than shown
-            per-mode. The Trash view itself still lists everything. */}
         <button
           type="button"
           data-testid="trash-link"
           onClick={onOpenTrash}
-          className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-card"
+          className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-card"
         >
-          <Trash2 size={14} aria-hidden="true" />
-          Trash
+          <span className="flex items-center gap-2">
+            <Trash2 size={14} aria-hidden="true" />
+            Trash
+          </span>
+          {/* A muted, pill-less count that only appears when Trash is non-empty:
+              a quiet "there's something in here" signal, not a headline metric.
+              Server-derived (#131) so it stays correct under the paginated list. */}
+          {deletedCount > 0 && (
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {deletedCount}
+            </span>
+          )}
         </button>
       </div>
     </div>

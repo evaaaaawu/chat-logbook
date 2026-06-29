@@ -1,5 +1,3 @@
-import type { Chat } from "@/types";
-
 /** The pinned label for chats whose Project (working directory) is empty. */
 export const NO_PROJECT_LABEL = "(No project)";
 
@@ -13,24 +11,29 @@ export interface ProjectFacet {
   project: string;
   /** Display label: the project name, or `(No project)` for the empty group. */
   label: string;
-  /** How many of the given chats fall in this project. */
+  /** How many chats in the view fall in this project. */
   count: number;
   /** Most-recent `updatedAt` across the group — the recency sort key. */
   lastActiveAt: number;
 }
 
+/** One per-Project count row as the server aggregation returns it (#131). */
+export interface ProjectCount {
+  project: string;
+  count: number;
+  lastActiveAt: number;
+}
+
 /**
- * Fold a chat list into the Projects facet list for the navigation panel:
- * grouped by `project`, counted, and ordered by recency (most-recently-active
- * Project first). The `(No project)` group is always pinned last, whatever its
- * recency. Pure: returns a fresh array and never mutates the input.
- *
- * `ensure` keeps named Projects in the list even when no chat falls in them
- * (count 0) — so a selected Project stays visible after its last chat leaves
- * the active view.
+ * Build the Projects facet list for the navigation panel from the server count
+ * aggregation (#131 Phase A) — so the counts reflect the view's whole universe,
+ * not just what has paged into the loaded window. Ordered by recency
+ * (most-recently-active Project first), with the `(No project)` group pinned
+ * last whatever its recency. `ensure` keeps a selected Project visible at count
+ * 0 when the view holds none of it. Pure: returns a fresh array.
  */
-export function deriveProjects(
-  chats: Chat[],
+export function facetsFromCounts(
+  counts: ProjectCount[],
   opts?: { ensure?: string[] }
 ): ProjectFacet[] {
   const byProject = new Map<string, ProjectFacet>();
@@ -42,22 +45,13 @@ export function deriveProjects(
       lastActiveAt: 0,
     });
   }
-  for (const c of chats) {
-    const existing = byProject.get(c.project);
-    if (existing) {
-      byProject.set(c.project, {
-        ...existing,
-        count: existing.count + 1,
-        lastActiveAt: Math.max(existing.lastActiveAt, c.updatedAt),
-      });
-    } else {
-      byProject.set(c.project, {
-        project: c.project,
-        label: labelFor(c.project),
-        count: 1,
-        lastActiveAt: c.updatedAt,
-      });
-    }
+  for (const c of counts) {
+    byProject.set(c.project, {
+      project: c.project,
+      label: labelFor(c.project),
+      count: c.count,
+      lastActiveAt: c.lastActiveAt,
+    });
   }
 
   return [...byProject.values()].sort((a, b) => {

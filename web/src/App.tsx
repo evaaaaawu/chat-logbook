@@ -11,7 +11,8 @@ import { useToast } from "@/shared/useToast";
 import { useChatOrder } from "@/chat/sort/useChatOrder";
 import { useSortPreference } from "@/chat/sort/useSortPreference";
 import { CHAT_SORT_CONFIG } from "@/chat/sort/sortConfig";
-import { deriveProjects } from "@/chat/projects/deriveProjects";
+import { facetsFromCounts } from "@/chat/projects/projectFacets";
+import { useChatCounts } from "@/chat/useChatCounts";
 import { filterChatsByProjects } from "@/chat/projects/filterChatsByProjects";
 import { filterChatsByTags } from "@/tags/filterChatsByTags";
 import { toggleTagSelection } from "@/tags/toggleTagSelection";
@@ -54,9 +55,18 @@ function App() {
   const source = paginate ? paginated : full;
   const { chats, sortEpoch, softDelete, restore, setTitle, reload } = source;
 
+  // Filter-panel facet counts and the unfiltered List count come from a server
+  // aggregation (#131 Phase A), not from folding the loaded window — so they
+  // reflect the whole view (main vs Trash) even when the list is paginated.
+  const counts = useChatCounts(mode);
+  // The Trash link badge needs the trashed total in any view, so it reads the
+  // Trash counts independently of the active view's counts.
+  const trashCounts = useChatCounts("trash");
+
   const onAssignmentChange = useCallback(() => {
     void reload();
-  }, [reload]);
+    void counts.reload();
+  }, [reload, counts.reload]);
   const {
     tags: tagCatalog,
     createTag,
@@ -122,9 +132,15 @@ function App() {
     setSelectedTags(new Set());
   }, []);
 
+  // Project facets come from the server count aggregation; a selected Project is
+  // ensured into the list so it stays visible at count 0 once its last chat
+  // leaves the view.
   const projectFacets = useMemo(
-    () => deriveProjects(order.orderedChats, { ensure: [...selectedProjects] }),
-    [order.orderedChats, selectedProjects]
+    () =>
+      facetsFromCounts(counts.counts.projects, {
+        ensure: [...selectedProjects],
+      }),
+    [counts.counts.projects, selectedProjects]
   );
 
   const visibleChats = filterChatsByTags(
@@ -133,20 +149,17 @@ function App() {
   );
   const selectedChat = chats.find((c) => c.id === selectedId) ?? null;
 
-  // Tag and Untagged counts reflect the active view (main vs Trash), deriving
-  // from the same per-view list the Project facet counts use — so the two
-  // sections agree. They state each group's size in this view, not the
-  // post-filter result, so selecting a Tag never moves the numbers.
-  const viewChats = order.orderedChats;
-  const countForTag = useCallback(
-    (tagId: string) =>
-      viewChats.filter((c) => c.tags?.some((t) => t.id === tagId)).length,
-    [viewChats]
-  );
-  const untaggedCount = useMemo(
-    () => viewChats.filter((c) => (c.tags?.length ?? 0) === 0).length,
-    [viewChats]
-  );
+  // Tag and Untagged counts are server-derived per view (main vs Trash). They
+  // state each group's size in this view, not the post-filter result, so
+  // selecting a Tag never moves the numbers.
+  const countForTag = counts.tagCount;
+  const untaggedCount = counts.counts.untagged;
+
+  // The "Chats N" header total: server-derived when unfiltered (#131 Phase A);
+  // the accurate filtered total is Phase B (#130), so a filtered list falls
+  // back to the loaded window count.
+  const filterActive = selectedProjects.size + selectedTags.size > 0;
+  const listTotal = filterActive ? undefined : counts.counts.total;
   // Create a Tag and immediately assign it to the chat the popover is on.
   const createTagForChat = useCallback(
     async (
@@ -169,6 +182,8 @@ function App() {
       setSelectedId(next?.id ?? null);
     }
     void restore(id);
+    void counts.reload();
+    void trashCounts.reload();
     showToast({
       message: "Chat restored.",
       actionLabel: "View",
@@ -187,10 +202,16 @@ function App() {
       setSelectedId(next?.id ?? null);
     }
     void softDelete(id);
+    void counts.reload();
+    void trashCounts.reload();
     showToast({
       message: "Chat deleted.",
       actionLabel: "Undo",
-      onAction: () => void restore(id),
+      onAction: () => {
+        void restore(id);
+        void counts.reload();
+        void trashCounts.reload();
+      },
     });
   };
 
@@ -253,6 +274,7 @@ function App() {
       <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel defaultSize={15} minSize={10}>
           <FilterPanel
+            deletedCount={trashCounts.counts.total}
             onOpenTrash={() => switchMode("trash")}
             projectFacets={projectFacets}
             selectedProjects={selectedProjects}
@@ -282,6 +304,7 @@ function App() {
             onRenameTitle={handleRenameTitle}
             onBack={() => switchMode("main")}
             onOpenTrash={() => switchMode("trash")}
+            total={listTotal}
             sortSignature={`${mode}:${order.sortControlProps.field}:${order.sortControlProps.direction}`}
             sortControl={<SortControl {...order.sortControlProps} />}
             hasMore={source.hasMore}
