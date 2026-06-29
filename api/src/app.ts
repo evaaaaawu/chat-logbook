@@ -6,6 +6,7 @@ import type { TagRepository } from "./metadata/tags.js";
 import { isColorToken } from "./metadata/tag-colors.js";
 import { createChatReader } from "./chat-reader.js";
 import type { ChatPageQuery } from "./list-pagination.js";
+import type { ChatCountsQuery } from "./list-counts.js";
 import { MAX_PAGE_LIMIT } from "./list-contract.js";
 
 interface AppOptions {
@@ -18,6 +19,12 @@ interface AppOptions {
    * the endpoint keeps the legacy full-list behavior.
    */
   pageQuery?: ChatPageQuery;
+  /**
+   * The facet-count aggregation (issue #131 Phase A). When present,
+   * `GET /api/chats/counts` serves the per-view facet + list counts; without it
+   * that route reports 501.
+   */
+  countsQuery?: ChatCountsQuery;
   webDistDir?: string;
 }
 
@@ -26,10 +33,17 @@ export function createApp({
   metadata,
   tags,
   pageQuery,
+  countsQuery,
   webDistDir,
 }: AppOptions) {
   const app = new Hono();
-  const reader = createChatReader({ archive, metadata, tags, pageQuery });
+  const reader = createChatReader({
+    archive,
+    metadata,
+    tags,
+    pageQuery,
+    countsQuery,
+  });
 
   app.get("/api/chats", (c) => {
     const includeTrashed = c.req.query("includeTrashed") === "true";
@@ -80,6 +94,17 @@ export function createApp({
       tags,
     });
     return c.json({ chats });
+  });
+
+  // The filter panel's static, per-view counts (issue #131 Phase A). Registered
+  // before `/api/chats/:id` so the literal `counts` segment is not captured as
+  // an id. `includeTrashed=true` scopes the counts to the Trash view.
+  app.get("/api/chats/counts", (c) => {
+    if (!countsQuery) {
+      return c.json({ error: "Counts are not available" }, 501);
+    }
+    const includeTrashed = c.req.query("includeTrashed") === "true";
+    return c.json(reader.listCounts({ includeTrashed }));
   });
 
   app.delete("/api/chats/:id", (c) => {
