@@ -10,7 +10,7 @@ import { server } from "@/test/server";
 describe("usePaginatedChats", () => {
   it("loads the first page sorted by updatedAt descending", async () => {
     const { result } = renderHook(() =>
-      usePaginatedChats("updatedAt", { pageSize: 2 })
+      usePaginatedChats("updatedAt", "desc", { pageSize: 2 })
     );
 
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -23,7 +23,7 @@ describe("usePaginatedChats", () => {
     // Active by createdAt desc: chat-2 (1700000100000), chat-3 (1700000050000),
     // chat-1 (1700000000000), chat-missing (1699999900000).
     const { result } = renderHook(() =>
-      usePaginatedChats("createdAt", { pageSize: 2 })
+      usePaginatedChats("createdAt", "desc", { pageSize: 2 })
     );
 
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -31,9 +31,25 @@ describe("usePaginatedChats", () => {
     expect(result.current.chats.map((c) => c.id)).toEqual(["chat-2", "chat-3"]);
   });
 
+  it("loads the first page sorted by createdAt ascending", async () => {
+    // Active by createdAt asc: chat-missing (1699999900000), chat-1
+    // (1700000000000), chat-3 (1700000050000), chat-2 (1700000100000).
+    const { result } = renderHook(() =>
+      usePaginatedChats("createdAt", "asc", { pageSize: 2 })
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.chats.map((c) => c.id)).toEqual([
+      "chat-missing",
+      "chat-1",
+    ]);
+    expect(result.current.hasMore).toBe(true);
+  });
+
   it("fetches the next page by cursor and appends it below the window", async () => {
     const { result } = renderHook(() =>
-      usePaginatedChats("updatedAt", { pageSize: 2 })
+      usePaginatedChats("updatedAt", "desc", { pageSize: 2 })
     );
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.chats.map((c) => c.id)).toEqual(["chat-2", "chat-1"]);
@@ -55,7 +71,7 @@ describe("usePaginatedChats", () => {
   it("does not fetch more once the last page is reached", async () => {
     // A page large enough to hold every active chat: first page is the last.
     const { result } = renderHook(() =>
-      usePaginatedChats("updatedAt", { pageSize: 50 })
+      usePaginatedChats("updatedAt", "desc", { pageSize: 50 })
     );
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.hasMore).toBe(false);
@@ -70,7 +86,7 @@ describe("usePaginatedChats", () => {
 
   it("merges field updates and brand-new chats on a background refresh without dropping loaded rows", async () => {
     const { result } = renderHook(() =>
-      usePaginatedChats("updatedAt", { pageSize: 2 })
+      usePaginatedChats("updatedAt", "desc", { pageSize: 2 })
     );
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.chats.map((c) => c.id)).toEqual(["chat-2", "chat-1"]);
@@ -108,7 +124,7 @@ describe("usePaginatedChats", () => {
 
   it("ignores a failed background refresh instead of crashing", async () => {
     const { result } = renderHook(() =>
-      usePaginatedChats("updatedAt", { pageSize: 2 })
+      usePaginatedChats("updatedAt", "desc", { pageSize: 2 })
     );
     await waitFor(() => expect(result.current.loading).toBe(false));
     const before = result.current.chats.map((c) => c.id);

@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MAX_PAGE_LIMIT } from "@contract";
 import type { Chat } from "@/types";
 import { useChatMutations, type ChatListSource } from "@/chat/useChatMutations";
 
 // The two time axes the keyset page endpoint supports (#129 / ADR-0017). Title
-// and ascending time stay on the full-load client path, so they never reach here.
+// stays on the full-load client path, so it never reaches here.
 export type ListSort = "createdAt" | "updatedAt";
+
+// Both directions of each time axis page server-side (#143): the covering keyset
+// index scans either way, so "Oldest first" no longer falls back to full-load.
+export type ListDirection = "asc" | "desc";
 
 const DEFAULT_PAGE_SIZE = 30;
 
-// The keyset endpoint rejects a `limit` over this cap (backend MAX_PAGE_LIMIT,
-// #142). The window can grow past it via loadMore, so any window-sized request
-// must clamp to it — otherwise the server returns 400 and the response carries
-// no `chats`.
-const MAX_PAGE_LIMIT = 200;
+// The keyset endpoint rejects a `limit` over MAX_PAGE_LIMIT (the shared cap in
+// `@contract`). The window can grow past it via loadMore, so any window-sized
+// request must clamp to it — otherwise the server returns 400 and the response
+// carries no `chats` (the blank-screen crash fixed in #147).
 
 // How often the loaded window re-reads from the server, so file-watcher
 // ingestion (new chats, bumped timestamps) shows up without a manual reload.
@@ -51,8 +55,13 @@ interface PageResponse {
   nextCursor: string | null;
 }
 
-function pageUrl(sort: ListSort, limit: number, cursor?: string): string {
-  const base = `/api/chats?sort=${sort}&limit=${limit}`;
+function pageUrl(
+  sort: ListSort,
+  direction: ListDirection,
+  limit: number,
+  cursor?: string
+): string {
+  const base = `/api/chats?sort=${sort}&direction=${direction}&limit=${limit}`;
   return cursor ? `${base}&cursor=${encodeURIComponent(cursor)}` : base;
 }
 
@@ -72,10 +81,12 @@ async function fetchPage(url: string): Promise<PageResponse | null> {
 }
 
 // Owns the paginated chat-list read path: first page on mount plus a keyset
-// cursor for fetching more. Used only when the main view sorts by a time axis
-// descending; every other case stays on the full-load `useChats` path.
+// cursor for fetching more. Used whenever the main view sorts by a time axis in
+// either direction; Title and the Trash view stay on the full-load `useChats`
+// path.
 export function usePaginatedChats(
   sort: ListSort,
+  direction: ListDirection,
   {
     pageSize = DEFAULT_PAGE_SIZE,
     enabled = true,
@@ -108,7 +119,7 @@ export function usePaginatedChats(
     let cancelled = false;
     cursorRef.current = null;
     fetchingRef.current = true;
-    void fetchPage(pageUrl(sort, pageSize)).then((data) => {
+    void fetchPage(pageUrl(sort, direction, pageSize)).then((data) => {
       if (cancelled) return;
       if (data) {
         setChats(data.chats);
@@ -121,13 +132,13 @@ export function usePaginatedChats(
     return () => {
       cancelled = true;
     };
-  }, [sort, pageSize, enabled]);
+  }, [sort, direction, pageSize, enabled]);
 
   const loadMore = useCallback(() => {
     if (fetchingRef.current || cursorRef.current === null) return;
     const cursor = cursorRef.current;
     fetchingRef.current = true;
-    void fetchPage(pageUrl(sort, pageSize, cursor)).then((data) => {
+    void fetchPage(pageUrl(sort, direction, pageSize, cursor)).then((data) => {
       if (data) {
         setChats((prev) => [...prev, ...data.chats]);
         setNextCursor(data.nextCursor);
@@ -135,7 +146,7 @@ export function usePaginatedChats(
       }
       fetchingRef.current = false;
     });
-  }, [sort, pageSize]);
+  }, [sort, direction, pageSize]);
 
   // Re-read the top of the loaded window. Sized to the current window so a
   // brand-new chat ranking into it is surfaced, but clamped to the page-limit
@@ -147,9 +158,9 @@ export function usePaginatedChats(
       Math.max(chatsRef.current.length, pageSize),
       MAX_PAGE_LIMIT
     );
-    const data = await fetchPage(pageUrl(sort, limit));
+    const data = await fetchPage(pageUrl(sort, direction, limit));
     if (data) setChats((prev) => mergeWindow(prev, data.chats));
-  }, [sort, pageSize]);
+  }, [sort, direction, pageSize]);
 
   useEffect(() => {
     if (!enabled) return;

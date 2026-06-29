@@ -1799,7 +1799,7 @@ describe("Chat list pagination", () => {
     expect(titles[0]).toContain("Build a login page");
   });
 
-  it("uses the full-load path when sorting by an ascending time axis", async () => {
+  it("paginates an ascending time axis with direction=asc, not a full load", async () => {
     const user = userEvent.setup();
     const searches = captureChatListRequests();
     render(<App />);
@@ -1807,15 +1807,23 @@ describe("Chat list pagination", () => {
 
     const list = screen.getByTestId("chat-list");
     // Default is Updated time · Newest first. Clicking the active axis again
-    // flips it to ascending (Oldest first), which the keyset index does not
-    // serve — so the list falls back to the full-load path.
+    // flips it to ascending (Oldest first). The covering keyset index scans
+    // either way (#143), so the list keeps paging server-side with
+    // direction=asc instead of falling back to the full list.
     await user.click(within(list).getByRole("button", { name: /sort/i }));
     const popover = await screen.findByTestId("chat-sort-popover");
     await user.click(within(popover).getByText("Updated time"));
 
     await waitFor(() =>
-      expect(searches.some((s) => !s.includes("limit="))).toBe(true)
+      expect(
+        searches.some(
+          (s) => s.includes("direction=asc") && s.includes("limit=")
+        )
+      ).toBe(true)
     );
+    // No request ever drops `limit` — the ascending axis never pulls the full
+    // list (the fallback this slice removes).
+    expect(searches.every((s) => s.includes("limit="))).toBe(true);
   });
 
   it("uses the full-load path for the Trash view", async () => {

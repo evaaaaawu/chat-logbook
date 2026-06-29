@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { MAX_PAGE_LIMIT } from "@contract";
 
 type FakeChat = {
   id: string;
@@ -220,29 +221,35 @@ export const handlers = [
       ? fakeChats
       : fakeChats.filter((c) => !c.isDeleted);
 
-    // Paginated mode mirrors the merged backend (#142): `?limit=` opts into one
-    // server-sorted keyset page (always sortKey DESC, id DESC tiebreak), with an
-    // opaque cursor and `nextCursor` (null on the last page). The cursor's wire
-    // shape is opaque to the frontend; this fake uses base64 JSON of (sortKey,id)
-    // for internal consistency, not byte-for-byte parity with the real encoder.
+    // Paginated mode mirrors the merged backend (#142, #143): `?limit=` opts into
+    // one server-sorted keyset page, with an opaque cursor and `nextCursor` (null
+    // on the last page). `?direction=` (asc/desc, default desc) flips both the
+    // sort and the keyset comparison in lock step. The cursor's wire shape is
+    // opaque to the frontend; this fake uses base64 JSON of (sortKey,id) for
+    // internal consistency, not byte-for-byte parity with the real encoder.
     const limitParam = url.searchParams.get("limit");
     if (limitParam !== null) {
       const limit = Number.parseInt(limitParam, 10);
-      // Mirror the backend's keyset cap (MAX_PAGE_LIMIT = 200): a larger limit is
-      // rejected, so the client must never request more than the cap.
-      if (!Number.isInteger(limit) || limit <= 0 || limit > 200) {
+      // Mirror the backend's keyset cap (the shared MAX_PAGE_LIMIT): a larger
+      // limit is rejected, so the client must never request more than the cap.
+      if (!Number.isInteger(limit) || limit <= 0 || limit > MAX_PAGE_LIMIT) {
         return HttpResponse.json({ error: "Invalid limit" }, { status: 400 });
       }
       const sort =
         url.searchParams.get("sort") === "createdAt"
           ? "createdAt"
           : "updatedAt";
+      const direction =
+        url.searchParams.get("direction") === "asc" ? "asc" : "desc";
+      const dir = direction === "asc" ? -1 : 1;
       const sortKeyOf = (c: FakeChat) =>
         sort === "createdAt" ? c.createdAt : c.updatedAt;
+      // dir flips the sort and the tiebreak together: desc is (sortKey DESC, id
+      // DESC), asc is (sortKey ASC, id ASC).
       const sorted = [...visible].sort(
         (a, b) =>
-          sortKeyOf(b) - sortKeyOf(a) ||
-          (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
+          dir * (sortKeyOf(b) - sortKeyOf(a)) ||
+          dir * (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
       );
       const cursorParam = url.searchParams.get("cursor");
       let start = 0;
@@ -250,10 +257,12 @@ export const handlers = [
         const cur = JSON.parse(
           Buffer.from(cursorParam, "base64url").toString("utf8")
         ) as { sortKey: number; id: string };
-        const after = sorted.findIndex(
-          (c) =>
-            sortKeyOf(c) < cur.sortKey ||
-            (sortKeyOf(c) === cur.sortKey && c.id < cur.id)
+        const after = sorted.findIndex((c) =>
+          direction === "asc"
+            ? sortKeyOf(c) > cur.sortKey ||
+              (sortKeyOf(c) === cur.sortKey && c.id > cur.id)
+            : sortKeyOf(c) < cur.sortKey ||
+              (sortKeyOf(c) === cur.sortKey && c.id < cur.id)
         );
         start = after < 0 ? sorted.length : after;
       }
