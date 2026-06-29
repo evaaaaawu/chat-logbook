@@ -70,12 +70,23 @@ export function createApp({
       if (direction !== "asc" && direction !== "desc") {
         return c.json({ error: "Invalid direction" }, 400);
       }
+      // The active filter pages server-side alongside the keyset window (#130),
+      // parsed the same way as the legacy full-list branch: repeated `?project=`
+      // unions (OR), a single comma-separated `?tags=` ANDs. An empty value
+      // selects the `(No project)` / `Untagged` group; an absent param is
+      // undefined => unfiltered.
+      const projects = c.req.queries("project");
+      const tagsParam = c.req.query("tags");
+      const tagSelection =
+        tagsParam === undefined ? undefined : tagsParam.split(",");
       const { chats, nextCursor } = reader.listChatsPage({
         sort,
         direction,
         limit,
         cursor: c.req.query("cursor"),
         includeTrashed,
+        projects,
+        tags: tagSelection,
       });
       return c.json({ chats, nextCursor });
     }

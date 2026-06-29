@@ -100,6 +100,18 @@ export interface ChatReader {
     limit: number;
     cursor?: string;
     includeTrashed?: boolean;
+    /**
+     * Project filter (OR / union), applied server-side inside the keyset query
+     * (#130). An empty-string entry selects the `(No project)` group; omitting
+     * it leaves Projects unfiltered.
+     */
+    projects?: string[];
+    /**
+     * Tag filter (AND / intersection), applied server-side inside the keyset
+     * query (#130). An empty-string entry selects the `Untagged` group; omitting
+     * it leaves Tags unfiltered.
+     */
+    tags?: string[];
   }): { chats: ChatResponse[]; nextCursor: string | null };
   /**
    * The filter-panel facet counts and the unfiltered List count for a view
@@ -277,12 +289,16 @@ export function createChatReader({
     limit,
     cursor,
     includeTrashed = false,
+    projects,
+    tags: tagSelection,
   }: {
     sort: ListSort;
     direction?: ListDirection;
     limit: number;
     cursor?: string;
     includeTrashed?: boolean;
+    projects?: string[];
+    tags?: string[];
   }): { chats: ChatResponse[]; nextCursor: string | null } {
     if (!pageQuery) {
       throw new Error("listChatsPage requires a pageQuery dependency");
@@ -296,6 +312,8 @@ export function createChatReader({
       limit,
       cursor: decoded,
       includeTrashed,
+      projects,
+      tags: tagSelection,
     });
 
     // The keyset SQL already applied visibility + ordering; hydration is pure

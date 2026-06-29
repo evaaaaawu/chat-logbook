@@ -173,6 +173,55 @@ describe("GET /api/chats — keyset pagination mode", () => {
     expect(defBody.chats.map((c) => c.sourceId)).toEqual(["c3", "c2"]);
   });
 
+  it("applies the Project and Tag filters server-side in paginated mode", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const alpha1 = seedChat(archive, {
+      sourceId: "alpha1",
+      firstSeenAt: new Date(1_000),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "beta1",
+      firstSeenAt: new Date(2_000),
+      project: "beta",
+    });
+    seedChat(archive, {
+      sourceId: "alpha2",
+      firstSeenAt: new Date(3_000),
+      project: "alpha",
+    });
+    const urgent = tags.createTag("urgent", "violet");
+    tags.assignTag(alpha1, urgent.id);
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+
+    // Repeated `?project=` unions; the page is filtered to alpha, newest-first.
+    const byProject = await app.request(
+      "/api/chats?sort=createdAt&limit=10&project=alpha"
+    );
+    expect(byProject.status).toBe(200);
+    const byProjectBody = (await byProject.json()) as { chats: ChatResponse[] };
+    expect(byProjectBody.chats.map((c) => c.sourceId)).toEqual([
+      "alpha2",
+      "alpha1",
+    ]);
+
+    // Comma-separated `?tags=` ANDs; only the chat holding the Tag passes.
+    const byTag = await app.request(
+      `/api/chats?sort=createdAt&limit=10&tags=${urgent.id}`
+    );
+    const byTagBody = (await byTag.json()) as { chats: ChatResponse[] };
+    expect(byTagBody.chats.map((c) => c.sourceId)).toEqual(["alpha1"]);
+  });
+
   it("rejects an invalid sort with 400", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
