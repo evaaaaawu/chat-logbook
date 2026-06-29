@@ -271,3 +271,216 @@ describe("ChatCountsQuery.queryCounts — no Metadata store yet", () => {
     countsQuery.close();
   });
 });
+
+describe("ChatCountsQuery.queryFilteredTotal — Project filter", () => {
+  it("counts only chats in the selected project", () => {
+    const archive = createArchiveRepository({ dataDir });
+    createMetadataRepository({ dataDir });
+    createTagRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "a1",
+      firstSeenAt: new Date(1_000),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "a2",
+      firstSeenAt: new Date(2_000),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "b1",
+      firstSeenAt: new Date(3_000),
+      project: "beta",
+    });
+
+    const countsQuery = createChatCountsQuery({ dataDir });
+    const total = countsQuery.queryFilteredTotal({ projects: ["alpha"] });
+
+    expect(total).toBe(2);
+
+    countsQuery.close();
+  });
+});
+
+describe("ChatCountsQuery.queryFilteredTotal — Project filter unions and groups", () => {
+  it("unions multiple selected projects (OR)", () => {
+    const archive = createArchiveRepository({ dataDir });
+    createMetadataRepository({ dataDir });
+    createTagRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "a1",
+      firstSeenAt: new Date(1),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "b1",
+      firstSeenAt: new Date(2),
+      project: "beta",
+    });
+    seedChat(archive, {
+      sourceId: "g1",
+      firstSeenAt: new Date(3),
+      project: "gamma",
+    });
+
+    const countsQuery = createChatCountsQuery({ dataDir });
+    const total = countsQuery.queryFilteredTotal({
+      projects: ["alpha", "beta"],
+    });
+
+    expect(total).toBe(2);
+
+    countsQuery.close();
+  });
+
+  it("selects the (No project) group via the empty-string entry", () => {
+    const archive = createArchiveRepository({ dataDir });
+    createMetadataRepository({ dataDir });
+    createTagRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "a1",
+      firstSeenAt: new Date(1),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "n1",
+      firstSeenAt: new Date(2),
+      project: null,
+    });
+    seedChat(archive, {
+      sourceId: "n2",
+      firstSeenAt: new Date(3),
+      project: "",
+    });
+
+    const countsQuery = createChatCountsQuery({ dataDir });
+    const total = countsQuery.queryFilteredTotal({ projects: [""] });
+
+    // null and '' both fold into (No project).
+    expect(total).toBe(2);
+
+    countsQuery.close();
+  });
+});
+
+describe("ChatCountsQuery.queryFilteredTotal — Tag filter", () => {
+  it("intersects multiple selected tags (AND)", () => {
+    const archive = createArchiveRepository({ dataDir });
+    createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const c1 = seedChat(archive, { sourceId: "c1", firstSeenAt: new Date(1) });
+    const c2 = seedChat(archive, { sourceId: "c2", firstSeenAt: new Date(2) });
+    seedChat(archive, { sourceId: "c3", firstSeenAt: new Date(3) });
+
+    const work = tags.createTag("work", "blue");
+    const fun = tags.createTag("fun", "violet");
+    tags.assignTag(c1, work.id);
+    tags.assignTag(c1, fun.id);
+    tags.assignTag(c2, work.id);
+
+    const countsQuery = createChatCountsQuery({ dataDir });
+    // Only c1 holds BOTH work and fun.
+    const total = countsQuery.queryFilteredTotal({ tags: [work.id, fun.id] });
+
+    expect(total).toBe(1);
+
+    countsQuery.close();
+  });
+
+  it("selects the Untagged group via the empty-string entry", () => {
+    const archive = createArchiveRepository({ dataDir });
+    createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const c1 = seedChat(archive, { sourceId: "c1", firstSeenAt: new Date(1) });
+    seedChat(archive, { sourceId: "c2", firstSeenAt: new Date(2) });
+    seedChat(archive, { sourceId: "c3", firstSeenAt: new Date(3) });
+
+    const work = tags.createTag("work", "blue");
+    tags.assignTag(c1, work.id);
+
+    const countsQuery = createChatCountsQuery({ dataDir });
+    const total = countsQuery.queryFilteredTotal({ tags: [""] });
+
+    // c2, c3 hold zero tags.
+    expect(total).toBe(2);
+
+    countsQuery.close();
+  });
+});
+
+describe("ChatCountsQuery.queryFilteredTotal — cross-type and view", () => {
+  it("ANDs a Project and a Tag filter across types", () => {
+    const archive = createArchiveRepository({ dataDir });
+    createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const a1 = seedChat(archive, {
+      sourceId: "a1",
+      firstSeenAt: new Date(1),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "a2",
+      firstSeenAt: new Date(2),
+      project: "alpha",
+    });
+    const b1 = seedChat(archive, {
+      sourceId: "b1",
+      firstSeenAt: new Date(3),
+      project: "beta",
+    });
+
+    const work = tags.createTag("work", "blue");
+    tags.assignTag(a1, work.id);
+    tags.assignTag(b1, work.id);
+
+    const countsQuery = createChatCountsQuery({ dataDir });
+    // alpha AND work → only a1.
+    const total = countsQuery.queryFilteredTotal({
+      projects: ["alpha"],
+      tags: [work.id],
+    });
+
+    expect(total).toBe(1);
+
+    countsQuery.close();
+  });
+
+  it("scopes the filtered total to the view (main excludes trashed)", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    createTagRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "a1",
+      firstSeenAt: new Date(1),
+      project: "alpha",
+    });
+    const trashed = seedChat(archive, {
+      sourceId: "a2",
+      firstSeenAt: new Date(2),
+      project: "alpha",
+    });
+    metadata.softDelete(trashed);
+
+    const countsQuery = createChatCountsQuery({ dataDir });
+    const main = countsQuery.queryFilteredTotal({
+      projects: ["alpha"],
+      includeTrashed: false,
+    });
+    const trash = countsQuery.queryFilteredTotal({
+      projects: ["alpha"],
+      includeTrashed: true,
+    });
+
+    expect(main).toBe(1);
+    expect(trash).toBe(1);
+
+    countsQuery.close();
+  });
+});

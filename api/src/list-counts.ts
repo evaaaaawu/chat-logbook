@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { buildFilterClauses } from "./list-filter.js";
 
 /**
  * The facet-count aggregation (issue #131 Phase A, ADR-0017). Owns one Archive
@@ -42,6 +43,19 @@ export interface ListCounts {
 
 export interface ChatCountsQuery {
   queryCounts(opts: { includeTrashed?: boolean }): ListCounts;
+  /**
+   * The filtered List count ("Chats N" when a filter is active; issue #131
+   * Phase B). Applies the same Project (OR) / Tag (AND) / Untagged filter
+   * semantics as the keyset page query (#130) but returns `COUNT(*)` instead of
+   * a page — so the post-filter total is accurate at scale without loading the
+   * filtered window. An empty-string entry selects the `(No project)` /
+   * `Untagged` group; an empty or omitted array leaves that type unfiltered.
+   */
+  queryFilteredTotal(opts: {
+    includeTrashed?: boolean;
+    projects?: string[];
+    tags?: string[];
+  }): number;
   close(): void;
 }
 
@@ -130,8 +144,47 @@ export function createChatCountsQuery({
     return { total, projects, tags, untagged };
   }
 
+  function queryFilteredTotal({
+    includeTrashed = false,
+    projects,
+    tags,
+  }: {
+    includeTrashed?: boolean;
+    projects?: string[];
+    tags?: string[];
+  }): number {
+    const clauses: string[] = [];
+    const params: (string | number)[] = [];
+
+    // View predicate: main excludes soft-deleted, Trash keeps only soft-deleted.
+    if (hasMetadata) {
+      clauses.push(
+        includeTrashed
+          ? "c.id IN (SELECT id FROM meta.chats_meta WHERE is_deleted = 1)"
+          : "c.id NOT IN (SELECT id FROM meta.chats_meta WHERE is_deleted = 1)"
+      );
+    } else if (includeTrashed) {
+      // No Metadata store: nothing is trashed, so the Trash view is empty.
+      return 0;
+    }
+
+    // The Project/Tag filter is the same predicate the keyset page applies
+    // (#130); it lives in `buildFilterClauses` so the two read paths share it.
+    const filter = buildFilterClauses({ projects, tags, hasMetadata });
+    clauses.push(...filter.clauses);
+    params.push(...filter.params);
+
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    return (
+      archive
+        .prepare(`SELECT count(*) AS n FROM chats c ${where}`)
+        .get(...params) as { n: number }
+    ).n;
+  }
+
   return {
     queryCounts,
+    queryFilteredTotal,
     close() {
       archive.close();
     },
