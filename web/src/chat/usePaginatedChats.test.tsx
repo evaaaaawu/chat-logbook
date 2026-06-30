@@ -2,8 +2,20 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, it, expect } from "vitest";
 import { usePaginatedChats } from "@/chat/usePaginatedChats";
+import type { ListStreamConnector } from "@/chat/useListStream";
 import { fakeChats } from "@/test/handlers";
 import { server } from "@/test/server";
+
+// A connector test double for the live-update stream: captures the handlers the
+// hook wires so the test can push a `changed` event deterministically.
+function fakeStreamConnector() {
+  let handlers: { onChanged: () => void; onError: () => void } | null = null;
+  const connect: ListStreamConnector = (h) => {
+    handlers = h;
+    return { close() {} };
+  };
+  return { connect, emitChanged: () => handlers?.onChanged() };
+}
 
 // Active fake chats by updatedAt desc: chat-2 (300), chat-1 (200), chat-3 (150),
 // chat-missing (1699999900000). Deleted chats are excluded from the active list.
@@ -120,6 +132,46 @@ describe("usePaginatedChats", () => {
     expect(byId.has("chat-2")).toBe(true);
     // The retained row carries its refreshed field value.
     expect(byId.get("chat-1")!.updatedAt).toBe(1700000400000);
+  });
+
+  it("reconciles the window when the stream pushes a changed event (#132)", async () => {
+    const stream = fakeStreamConnector();
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", {
+        pageSize: 2,
+        connect: stream.connect,
+      })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.chats.map((c) => c.id)).toEqual(["chat-2", "chat-1"]);
+
+    // Background ingestion surfaces a brand-new chat ranking at the top by
+    // updatedAt; the server then pushes a `changed` event over the stream.
+    fakeChats.push({
+      id: "chat-pushed",
+      sourceId: "CHATPS",
+      agent: "claude-code",
+      defaultTitle: "Pushed chat",
+      customTitle: null,
+      project: "my-web-app",
+      projectPath: "/Users/test/my-web-app",
+      sourceFilePath: null,
+      createdAt: 1700000600000,
+      updatedAt: 1700000600000,
+    });
+
+    await act(async () => {
+      stream.emitChanged();
+    });
+
+    // The push reconciles the window head — no manual refresh, no full refetch.
+    await waitFor(() =>
+      expect(result.current.chats.some((c) => c.id === "chat-pushed")).toBe(
+        true
+      )
+    );
+    // Existing rows are retained, not dropped.
+    expect(result.current.chats.some((c) => c.id === "chat-2")).toBe(true);
   });
 
   it("sends the active Project filter to the server (#130)", async () => {

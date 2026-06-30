@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { serveStatic } from "@hono/node-server/serve-static";
 import type { ArchiveRepository } from "./archive/repository.js";
 import type { MetadataRepository } from "./metadata/repository.js";
@@ -7,7 +8,13 @@ import { isColorToken } from "./metadata/tag-colors.js";
 import { createChatReader } from "./chat-reader.js";
 import type { ChatPageQuery } from "./list-pagination.js";
 import type { ChatCountsQuery } from "./list-counts.js";
+import type { ListEventHub } from "./list-events.js";
 import { MAX_PAGE_LIMIT } from "./list-contract.js";
+
+// Heartbeat cadence for the live-update SSE stream. A periodic comment keeps the
+// connection from idling out behind proxies and surfaces a dropped socket so the
+// client can reconnect (issue #132).
+const STREAM_HEARTBEAT_MS = 25_000;
 
 interface AppOptions {
   archive: ArchiveRepository;
@@ -25,6 +32,14 @@ interface AppOptions {
    * that route reports 501.
    */
   countsQuery?: ChatCountsQuery;
+  /**
+   * The live-update event hub (issue #132). When present, `GET
+   * /api/chats/stream` serves a Server-Sent Events channel that pushes a
+   * `changed` event after each ingest pass, so the loaded list window can
+   * reconcile without a periodic full refetch. Without it that route reports
+   * 501.
+   */
+  listEvents?: ListEventHub;
   webDistDir?: string;
 }
 
@@ -34,6 +49,7 @@ export function createApp({
   tags,
   pageQuery,
   countsQuery,
+  listEvents,
   webDistDir,
 }: AppOptions) {
   const app = new Hono();
@@ -119,6 +135,37 @@ export function createApp({
       tags,
     });
     return c.json({ chats });
+  });
+
+  // The live-update channel (issue #132): a Server-Sent Events stream that
+  // pushes a `changed` event after each ingest pass, driven by the watcher
+  // through the in-process event hub. The client reconciles its loaded window
+  // head through the keyset query on each event — the event is the signal, the
+  // sort/filter stay server-side. Registered before `/api/chats/:id` so the
+  // literal `stream` segment is not captured as an id.
+  app.get("/api/chats/stream", (c) => {
+    if (!listEvents) {
+      return c.json({ error: "Live updates are not available" }, 501);
+    }
+    const hub = listEvents;
+    return streamSSE(c, async (stream) => {
+      const unsubscribe = hub.subscribe((event) => {
+        void stream.writeSSE({ event: event.type, data: "" });
+      });
+      // Hold the connection open with periodic heartbeats until the client
+      // disconnects; `onAbort` clears the timer and resolves so the callback
+      // returns and the stream closes cleanly (no dangling timer).
+      await new Promise<void>((resolve) => {
+        const heartbeat = setInterval(() => {
+          void stream.writeSSE({ event: "ping", data: "" });
+        }, STREAM_HEARTBEAT_MS);
+        stream.onAbort(() => {
+          clearInterval(heartbeat);
+          unsubscribe();
+          resolve();
+        });
+      });
+    });
   });
 
   // The filter panel's static, per-view counts (issue #131 Phase A). Registered

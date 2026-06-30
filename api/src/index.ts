@@ -18,6 +18,7 @@ import { helpText } from "./cli/help.js";
 import { resolveDataDir } from "./config/data-dir.js";
 import { createChatPageQuery } from "./list-pagination.js";
 import { createChatCountsQuery } from "./list-counts.js";
+import { createListEventHub } from "./list-events.js";
 import { reconcileTitleSortKeys } from "./metadata/reconcile-title-sort-keys.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -62,12 +63,17 @@ const pageQuery = createChatPageQuery({ dataDir });
 // The counts query shares the same cross-store ATTACH shape and process
 // lifetime (issue #131 Phase A).
 const countsQuery = createChatCountsQuery({ dataDir });
+// The in-process hub fans each ingest pass out to connected SSE clients so the
+// loaded list window reconciles on a server push instead of a periodic refetch
+// (issue #132). It lives for the process lifetime.
+const listEvents = createListEventHub();
 const app = createApp({
   archive,
   metadata,
   tags,
   pageQuery,
   countsQuery,
+  listEvents,
   webDistDir,
 });
 
@@ -95,8 +101,12 @@ const watcher = startWatcher({
   checkpoint,
   env: { homeDir: os.homedir() },
   // Each watcher-driven ingest can add a chat or change a first user message;
-  // refresh the Title keys so the Title axis stays current.
-  onIngest: () => reconcileTitles(),
+  // refresh the Title keys so the Title axis stays current, then push a
+  // `changed` event so connected clients reconcile their loaded window (#132).
+  onIngest: () => {
+    reconcileTitles();
+    listEvents.publish({ type: "changed" });
+  },
 });
 // Don't start watching until the initial scan has populated the checkpoint store
 // (chat_scan_state); otherwise a `change` event could race the first scan and
