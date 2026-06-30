@@ -217,9 +217,14 @@ export const handlers = [
   http.get("/api/chats", ({ request }) => {
     const url = new URL(request.url);
     const includeTrashed = url.searchParams.get("includeTrashed") === "true";
-    const visible = includeTrashed
-      ? fakeChats
-      : fakeChats.filter((c) => !c.isDeleted);
+    // The Trash view scopes the page to soft-deleted chats only (#145), distinct
+    // from includeTrashed (active + trashed).
+    const trashedOnly = url.searchParams.get("trashedOnly") === "true";
+    const visible = trashedOnly
+      ? fakeChats.filter((c) => c.isDeleted)
+      : includeTrashed
+        ? fakeChats
+        : fakeChats.filter((c) => !c.isDeleted);
 
     // Paginated mode mirrors the merged backend (#142, #143): `?limit=` opts into
     // one server-sorted keyset page, with an opaque cursor and `nextCursor` (null
@@ -235,15 +240,24 @@ export const handlers = [
       if (!Number.isInteger(limit) || limit <= 0 || limit > MAX_PAGE_LIMIT) {
         return HttpResponse.json({ error: "Invalid limit" }, { status: 400 });
       }
+      const sortParam = url.searchParams.get("sort");
       const sort =
-        url.searchParams.get("sort") === "createdAt"
+        sortParam === "createdAt"
           ? "createdAt"
-          : "updatedAt";
+          : sortParam === "deletedAt"
+            ? "deletedAt"
+            : "updatedAt";
       const direction =
         url.searchParams.get("direction") === "asc" ? "asc" : "desc";
       const dir = direction === "asc" ? -1 : 1;
+      // deletedAt is the Trash deleted-time axis (#145); a null deletedAt (an
+      // active chat that slipped through) sorts as the oldest possible time.
       const sortKeyOf = (c: FakeChat) =>
-        sort === "createdAt" ? c.createdAt : c.updatedAt;
+        sort === "createdAt"
+          ? c.createdAt
+          : sort === "deletedAt"
+            ? (c.deletedAt ?? 0)
+            : c.updatedAt;
       // Project (OR) + Tag (AND) filtering inside the paginated query, mirroring
       // the server (#130). Repeated `?project=` unions; `?tags=` is one
       // comma-separated AND set. An empty value selects the (No project) /

@@ -1863,7 +1863,7 @@ describe("Chat list pagination", () => {
     expect(searches.every((s) => s.includes("limit="))).toBe(true);
   });
 
-  it("uses the full-load path for the Trash view", async () => {
+  it("uses the keyset paginated path for the Trash view (#145)", async () => {
     const user = userEvent.setup();
     const searches = captureChatListRequests();
     render(<App />);
@@ -1871,9 +1871,20 @@ describe("Chat list pagination", () => {
 
     await user.click(screen.getByTestId("trash-link"));
 
-    // Trash stays on the client-side full-load path; its deleted chats load.
+    // Trash no longer pulls the full list (ADR-0018): it pages server-side,
+    // trashed-only, defaulting to the deleted-time axis (#145). Its deleted
+    // chats load through the keyset endpoint.
     const list = screen.getByTestId("chat-list");
     expect(await within(list).findByText("Old prototype")).toBeInTheDocument();
-    expect(searches.some((s) => !s.includes("limit="))).toBe(true);
+    await waitFor(() =>
+      expect(
+        searches.some(
+          (s) =>
+            s.includes("limit=") &&
+            s.includes("trashedOnly=true") &&
+            s.includes("sort=deletedAt")
+        )
+      ).toBe(true)
+    );
   });
 });

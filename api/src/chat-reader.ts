@@ -101,6 +101,12 @@ export interface ChatReader {
     cursor?: string;
     includeTrashed?: boolean;
     /**
+     * Trash view scope: when true the page returns only soft-deleted chats
+     * (#145), distinct from `includeTrashed` (active + trashed). Pairs with the
+     * `deletedAt` sort axis but also applies to the time axes within Trash.
+     */
+    trashedOnly?: boolean;
+    /**
      * Project filter (OR / union), applied server-side inside the keyset query
      * (#130). An empty-string entry selects the `(No project)` group; omitting
      * it leaves Projects unfiltered.
@@ -301,6 +307,7 @@ export function createChatReader({
     limit,
     cursor,
     includeTrashed = false,
+    trashedOnly = false,
     projects,
     tags: tagSelection,
   }: {
@@ -309,6 +316,7 @@ export function createChatReader({
     limit: number;
     cursor?: string;
     includeTrashed?: boolean;
+    trashedOnly?: boolean;
     projects?: string[];
     tags?: string[];
   }): { chats: ChatResponse[]; nextCursor: string | null } {
@@ -324,14 +332,18 @@ export function createChatReader({
       limit,
       cursor: decoded,
       includeTrashed,
+      trashedOnly,
       projects,
       tags: tagSelection,
     });
 
     // The keyset SQL already applied visibility + ordering; hydration is pure
     // assembly over the page's ids, in page order. Visibility is still loaded so
-    // `deletedAt`/`isDeleted` render on the (includeTrashed) Trash path.
-    const visibility = loadChatVisibility(metadata, { includeTrashed });
+    // `deletedAt`/`isDeleted` render on the trashed paths (includeTrashed or the
+    // trashed-only Trash view).
+    const visibility = loadChatVisibility(metadata, {
+      includeTrashed: includeTrashed || trashedOnly,
+    });
     const rowById = new Map(archive.read.listChatRows().map((r) => [r.id, r]));
     const toResponse = loadHydration();
 
