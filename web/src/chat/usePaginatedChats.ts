@@ -5,9 +5,10 @@ import { useChatMutations, type ChatListSource } from "@/chat/useChatMutations";
 
 // The sort axes the keyset page endpoint supports. createdAt/updatedAt are the
 // main view's time axes (#129 / ADR-0017); deletedAt is the Trash view's
-// deleted-time axis (#145), valid only alongside `trashedOnly`. Title stays on
-// the full-load client path, so it never reaches here.
-export type ListSort = "createdAt" | "updatedAt" | "deletedAt";
+// deleted-time axis (#145), valid only alongside `trashedOnly`; title sorts
+// through the precomputed collation key (#146 / ADR-0019), in both views. Every
+// axis now pages server-side — there is no full-load fallback (ADR-0018).
+export type ListSort = "createdAt" | "updatedAt" | "deletedAt" | "title";
 
 // Both directions of each time axis page server-side (#143): the covering keyset
 // index scans either way, so "Oldest first" no longer falls back to full-load.
@@ -22,7 +23,6 @@ const DEFAULT_PAGE_SIZE = 30;
 
 // How often the loaded window re-reads from the server, so file-watcher
 // ingestion (new chats, bumped timestamps) shows up without a manual reload.
-// Mirrors the full-load path's cadence (see useChats).
 const BACKGROUND_REFRESH_MS = 4000;
 
 // Merge a freshly-fetched window into the loaded one: refresh fields for chats
@@ -120,9 +120,8 @@ async function fetchPage(url: string): Promise<PageResponse | null> {
 }
 
 // Owns the paginated chat-list read path: first page on mount plus a keyset
-// cursor for fetching more. Used whenever the main view sorts by a time axis in
-// either direction; Title and the Trash view stay on the full-load `useChats`
-// path.
+// cursor for fetching more. The single read path for every axis and both views
+// (ADR-0018) — main and Trash, time axes, Title, in either direction.
 export function usePaginatedChats(
   sort: ListSort,
   direction: ListDirection,

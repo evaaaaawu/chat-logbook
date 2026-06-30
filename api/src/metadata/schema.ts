@@ -34,6 +34,29 @@ export const chatsMeta = sqliteTable(
   ]
 );
 
+// The denormalized cross-store Title sort key (ADR-0019), keyed by the internal
+// chat `id` (UUID), one row per chat. `text_key` is collation(first-user-text
+// else "Untitled"), written by ingest/reconcile and persisted so clearing a
+// custom title falls back in O(1). `sort_key` is the effective, indexed key —
+// it equals `text_key` until a custom title overrides it. Both are TEXT compared
+// under SQLite's default BINARY collation; the app precomputes the locale-aware
+// ordering into the bytes (no native ICU). Derived and rebuildable: losing the
+// table costs a recompute, never data.
+export const chatSortKeys = sqliteTable(
+  "chat_sort_keys",
+  {
+    id: text("id").primaryKey(),
+    textKey: text("text_key"),
+    sortKey: text("sort_key"),
+  },
+  (table) => [
+    // Covering keyset index for the Title axis (ADR-0017/0019): `(sort_key, id)`
+    // so `ORDER BY sort_key, id` + LIMIT is an index range scan either
+    // direction, exactly like the time axes — never a full-table sort.
+    index("chat_sort_keys_sort_key_idx").on(table.sortKey, table.id),
+  ]
+);
+
 // A user-defined Tag. `color` holds a semantic palette token (e.g. "violet"),
 // never a raw hex — rendering resolves token→hex through one shared map
 // (ADR-0015). Reusing a color across Tags is allowed.

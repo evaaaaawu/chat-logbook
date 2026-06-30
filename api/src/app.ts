@@ -63,10 +63,13 @@ export function createApp({
       const sort = c.req.query("sort") ?? "updatedAt";
       // `deletedAt` is the Trash view's deleted-time axis (#145); it sorts
       // through the ATTACHed Metadata store and is trash-only by nature.
+      // `title` sorts through the ATTACHed `chat_sort_keys` collation index
+      // (#146 / ADR-0019), in both the main view and Trash.
       if (
         sort !== "createdAt" &&
         sort !== "updatedAt" &&
-        sort !== "deletedAt"
+        sort !== "deletedAt" &&
+        sort !== "title"
       ) {
         return c.json({ error: "Invalid sort" }, 400);
       }

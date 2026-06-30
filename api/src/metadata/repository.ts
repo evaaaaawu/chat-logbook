@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { eq, isNotNull } from "drizzle-orm";
+import { eq, isNotNull, sql } from "drizzle-orm";
 import { type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { openStore } from "../storage/openStore.js";
 import * as schema from "./schema.js";
-import { chatsMeta } from "./schema.js";
+import { chatsMeta, chatSortKeys } from "./schema.js";
+import { computeSortKey } from "./title-sort-key.js";
 
 export type MetadataDb = BetterSQLite3Database<typeof schema>;
 
@@ -38,6 +39,22 @@ export interface MetadataRepository {
    * resolve titles in one query instead of one per chat. */
   listCustomTitles(): Map<string, string>;
   setCustomTitle(internalId: string, title: string | null): void;
+  /**
+   * The denormalized Title sort key for a chat (ADR-0019), or null when no row
+   * exists yet. `textKey` is the first-user-text fallback key; `sortKey` is the
+   * effective, indexed key the Title axis orders by.
+   */
+  getTitleSortKey(
+    internalId: string
+  ): { textKey: string | null; sortKey: string | null } | null;
+  /**
+   * Record a chat's `text_key` (the first-user-text fallback key), written by
+   * ingest/reconcile. `sort_key` is refreshed to track it only when the chat has
+   * no custom title; a custom-title override keeps its own key, so re-ingesting
+   * never clobbers a user's rename (ADR-0019). Upserts the row so every chat
+   * ends up with one — the invariant the Title INNER JOIN depends on.
+   */
+  setTitleTextKey(internalId: string, textKey: string): void;
 }
 
 export type LookupInternalId = (
@@ -163,6 +180,59 @@ export function createMetadataRepository({
         .onConflictDoUpdate({
           target: chatsMeta.id,
           set: { customTitle: title, updatedAt: now },
+        })
+        .run();
+
+      // Keep the Title sort key in step (ADR-0019). Setting a custom title
+      // overrides `sort_key` with the title's key; clearing it copies the
+      // persisted `text_key` back, so the chat re-sorts under its first-user-text
+      // fallback in O(1) without re-scanning messages.
+      if (title !== null) {
+        const sortKey = computeSortKey(title);
+        db.insert(chatSortKeys)
+          .values({ id: internalId, sortKey })
+          .onConflictDoUpdate({ target: chatSortKeys.id, set: { sortKey } })
+          .run();
+      } else {
+        // Copy text_key → sort_key in place. When no row exists yet there is no
+        // text_key to fall back to; reconcile will create it, so do nothing.
+        db.update(chatSortKeys)
+          .set({ sortKey: sql`${chatSortKeys.textKey}` })
+          .where(eq(chatSortKeys.id, internalId))
+          .run();
+      }
+    },
+
+    getTitleSortKey(internalId) {
+      const row = db
+        .select({
+          textKey: chatSortKeys.textKey,
+          sortKey: chatSortKeys.sortKey,
+        })
+        .from(chatSortKeys)
+        .where(eq(chatSortKeys.id, internalId))
+        .get();
+      return row ?? null;
+    },
+
+    setTitleTextKey(internalId, textKey) {
+      // A custom title overrides the effective key; only the no-custom-title case
+      // tracks text_key. Reading the override here keeps both the insert and the
+      // update paths consistent without a CASE expression spanning two tables.
+      const customTitle = db
+        .select({ customTitle: chatsMeta.customTitle })
+        .from(chatsMeta)
+        .where(eq(chatsMeta.id, internalId))
+        .get()?.customTitle;
+      const sortKey =
+        customTitle && customTitle.trim()
+          ? computeSortKey(customTitle)
+          : textKey;
+      db.insert(chatSortKeys)
+        .values({ id: internalId, textKey, sortKey })
+        .onConflictDoUpdate({
+          target: chatSortKeys.id,
+          set: { textKey, sortKey },
         })
         .run();
     },

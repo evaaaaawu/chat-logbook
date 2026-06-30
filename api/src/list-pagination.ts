@@ -23,7 +23,7 @@ import { buildFilterClauses } from "./list-filter.js";
  * (`meta.chats_meta.deleted_at`), so it sorts through the `ATTACH`ed join and
  * is meaningful only for trashed chats.
  */
-export type ListSort = "createdAt" | "updatedAt" | "deletedAt";
+export type ListSort = "createdAt" | "updatedAt" | "deletedAt" | "title";
 
 /**
  * Sort direction along the time axis. The covering `(sortKey, id)` indexes scan
@@ -34,8 +34,13 @@ export type ListDirection = "asc" | "desc";
 
 /** Keyset cursor: the (sortKey, id) of the last item on the previous page. */
 export interface KeysetCursor {
-  /** The sort column value in epoch ms (`first_seen_at` or `updated_at`). */
-  sortKey: number;
+  /**
+   * The sort column value: epoch ms on the time axes, or the precomputed
+   * collation string on the Title axis (ADR-0019). The opaque base64url(JSON)
+   * token carries whichever shape the axis uses; the keyset comparison binds it
+   * straight into SQL either way.
+   */
+  sortKey: number | string;
   /** Internal `chats.id` (UUID) tiebreaker. */
   id: string;
 }
@@ -43,8 +48,8 @@ export interface KeysetCursor {
 export interface KeysetPageItem {
   /** Internal `chats.id` (UUID). */
   id: string;
-  /** The sort column value in epoch ms. */
-  sortKey: number;
+  /** The sort column value: epoch ms (time axes) or the Title collation string. */
+  sortKey: number | string;
 }
 
 export interface KeysetPage {
@@ -104,6 +109,10 @@ const SORT_EXPR: Record<ListSort, string> = {
   createdAt: "c.created_at",
   updatedAt: "c.updated_at",
   deletedAt: "m.deleted_at",
+  // The Title axis orders by the precomputed collation key on the ATTACHed
+  // `meta.chat_sort_keys` (alias `k`), reached through the INNER JOIN added
+  // below (ADR-0019). BINARY compare over `sort_key` is an index range scan.
+  title: "k.sort_key",
 };
 
 /** Opaque page token for the wire — base64 JSON of the (sortKey, id) cursor. */
@@ -117,10 +126,11 @@ export function decodeCursor(token: string): KeysetCursor | null {
     const parsed = JSON.parse(
       Buffer.from(token, "base64url").toString("utf8")
     ) as unknown;
+    const sortKey = (parsed as KeysetCursor | null)?.sortKey;
     if (
       parsed &&
       typeof parsed === "object" &&
-      typeof (parsed as KeysetCursor).sortKey === "number" &&
+      (typeof sortKey === "number" || typeof sortKey === "string") &&
       typeof (parsed as KeysetCursor).id === "string"
     ) {
       return parsed as KeysetCursor;
@@ -155,15 +165,26 @@ export function createChatPageQuery({
     // through a join onto the `ATTACH`ed `meta.chats_meta` (alias `m`); the time
     // axes stay on `chats` alone. With no Metadata store there is nothing to
     // join and no trashed chats, so the page is empty.
-    const needsMetaJoin = query.sort === "deletedAt";
-    if (needsMetaJoin && !hasMetadata) return { items: [], nextCursor: null };
-    const from = needsMetaJoin
-      ? "chats c JOIN meta.chats_meta m ON m.id = c.id"
-      : "chats c";
-    // Tie-break by the joined `m.id` on the deletedAt axis so the `(deleted_at,
-    // id)` covering index serves the whole ORDER BY; otherwise by `c.id`. The
-    // two are the same value (`m.id = c.id`).
-    const idCol = needsMetaJoin ? "m.id" : "c.id";
+    const needsDeletedJoin = query.sort === "deletedAt";
+    // The Title axis orders by the precomputed key on `meta.chat_sort_keys`
+    // (alias `k`), reached through an INNER JOIN — every chat has a row once
+    // ingest/reconcile has run (ADR-0019). With no Metadata store there are no
+    // sort keys to join, so the page is empty, matching the INNER JOIN.
+    const needsSortKeyJoin = query.sort === "title";
+    if ((needsDeletedJoin || needsSortKeyJoin) && !hasMetadata) {
+      return { items: [], nextCursor: null };
+    }
+    let from = "chats c";
+    if (needsDeletedJoin) from += " JOIN meta.chats_meta m ON m.id = c.id";
+    if (needsSortKeyJoin) from += " JOIN meta.chat_sort_keys k ON k.id = c.id";
+    // Tie-break by the joined id so the covering `(sortKey, id)` index serves the
+    // whole ORDER BY: `m.id` on the deletedAt axis, `k.id` on the Title axis,
+    // otherwise `c.id`. All three are the same value (joined on `= c.id`).
+    const idCol = needsDeletedJoin
+      ? "m.id"
+      : needsSortKeyJoin
+        ? "k.id"
+        : "c.id";
 
     const clauses: string[] = [];
     const params: (string | number)[] = [];
@@ -173,7 +194,7 @@ export function createChatPageQuery({
     // caller opts into `includeTrashed`, which keeps both). The flag lives in
     // the Metadata store, so the scope rides the `ATTACH`ed `meta.chats_meta` —
     // and with no Metadata store there are no trashed chats, so Trash is empty.
-    if (needsMetaJoin) {
+    if (needsDeletedJoin) {
       // Deleted-time ordering is trash-only by nature: a non-trashed chat has a
       // null deleted_at and no place on this axis. The scope is phrased as
       // `deleted_at IS NOT NULL` (equivalent to `is_deleted = 1` — restore nulls
