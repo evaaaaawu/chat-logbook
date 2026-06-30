@@ -10,7 +10,7 @@ import { useMessages } from "@/conversation/useMessages";
 import { useToast } from "@/shared/useToast";
 import { useChatOrder } from "@/chat/sort/useChatOrder";
 import { useSortPreference } from "@/chat/sort/useSortPreference";
-import { CHAT_SORT_CONFIG } from "@/chat/sort/sortConfig";
+import { CHAT_SORT_CONFIG, TRASH_SORT_CONFIG } from "@/chat/sort/sortConfig";
 import { facetsFromCounts } from "@/chat/projects/projectFacets";
 import { useChatCounts } from "@/chat/useChatCounts";
 import { useFilteredTotal } from "@/chat/useFilteredTotal";
@@ -33,21 +33,33 @@ function App() {
   const [mode, setMode] = useState<"main" | "trash">("main");
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
 
-  // The main view's sort preference is owned here, not inside useChatOrder, so
-  // the data path and the SortControl agree on one instance: the same field and
+  // The sort preferences are owned here, not inside useChatOrder, so the data
+  // path and each view's SortControl agree on one instance: the same field and
   // direction decide whether to paginate.
   const mainPref = useSortPreference(CHAT_SORT_CONFIG);
+  const trashPref = useSortPreference(TRASH_SORT_CONFIG);
 
-  // The main view's time sorts page server-side in both directions: the keyset
-  // index covers createdAt/updatedAt either way (ADR-0017, #143). Title sort and
-  // the Trash view stay on the full-load client path. The two read hooks always
-  // run (hooks rule); `enabled` decides which one fetches.
-  const paginate =
+  // Both views page server-side on a time axis: the keyset index covers
+  // createdAt/updatedAt either way (ADR-0017, #143), and the Trash view adds the
+  // deleted-time axis through the ATTACHed Metadata store (#145). Only the Title
+  // sort stays on the full-load client path, until it migrates (#146). The read
+  // hooks always run (hooks rule); `enabled` decides which one fetches.
+  const mainPaginate =
     mode === "main" &&
     (mainPref.field === "createdAt" || mainPref.field === "updatedAt");
+  const trashPaginate = mode === "trash" && trashPref.field !== "title";
+  const paginate = mainPaginate || trashPaginate;
   const pageSort: ListSort =
     mainPref.field === "createdAt" ? "createdAt" : "updatedAt";
   const pageDirection: ListDirection = mainPref.direction;
+  // The Trash axis maps straight to a keyset sort; Title never reaches here
+  // (trashPaginate is false for it), so the fallback is the default deletedAt.
+  const trashPageSort: ListSort =
+    trashPref.field === "createdAt"
+      ? "createdAt"
+      : trashPref.field === "updatedAt"
+        ? "updatedAt"
+        : "deletedAt";
 
   // The active filter is owned here so the paginated read path can push it into
   // the keyset query (#130): an empty selection means "all". Declared above the
@@ -62,14 +74,30 @@ function App() {
 
   const full = useChats({ enabled: !paginate });
   // The paginated path filters server-side: the selection rides the keyset query
-  // and re-anchors the window on change (#130). The full-load path (Title sort,
-  // Trash) keeps filtering its loaded window client-side below.
+  // and re-anchors the window on change (#130). The full-load path (Title sort)
+  // keeps filtering its loaded window client-side below.
   const paginated = usePaginatedChats(pageSort, pageDirection, {
-    enabled: paginate,
+    enabled: mainPaginate,
     projects: [...selectedProjects],
     tags: [...selectedTags],
   });
-  const source = paginate ? paginated : full;
+  // The Trash view reuses the same paginated read path, scoped to trashed-only
+  // (#145). It re-anchors on the active filter and the deleted-time axis the
+  // same way the main view does on its time axes.
+  const trashPaginated = usePaginatedChats(trashPageSort, trashPref.direction, {
+    enabled: trashPaginate,
+    trashedOnly: true,
+    projects: [...selectedProjects],
+    tags: [...selectedTags],
+  });
+  const source =
+    mode === "trash"
+      ? trashPaginate
+        ? trashPaginated
+        : full
+      : mainPaginate
+        ? paginated
+        : full;
   const { chats, sortEpoch, softDelete, restore, setTitle, reload } = source;
 
   // Filter-panel facet counts and the unfiltered List count come from a server
@@ -113,7 +141,7 @@ function App() {
   // frozen order; sort field/direction changes flush it inside the hook.
   const resortKey = `${sortEpoch}:${viewGen}`;
   const mainOrder = useChatOrder("main", chats, resortKey, mainPref);
-  const trashOrder = useChatOrder("trash", chats, resortKey);
+  const trashOrder = useChatOrder("trash", chats, resortKey, trashPref);
   const order = mode === "trash" ? trashOrder : mainOrder;
   const mainChats = mainOrder.orderedChats;
   const deletedChats = trashOrder.orderedChats;

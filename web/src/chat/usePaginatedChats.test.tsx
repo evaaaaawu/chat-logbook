@@ -157,6 +157,25 @@ describe("usePaginatedChats", () => {
     );
   });
 
+  it("loads a trashed-only page sorted by deleted time (#145)", async () => {
+    // The Trash view pages server-side: trashed-only, most-recently-deleted
+    // first. chat-deleted-1 (deletedAt 1700000200000) precedes chat-deleted-2
+    // (1700000100000); every active chat is excluded.
+    const { result } = renderHook(() =>
+      usePaginatedChats("deletedAt", "desc", {
+        pageSize: 10,
+        trashedOnly: true,
+      })
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.chats.map((c) => c.id)).toEqual([
+      "chat-deleted-1",
+      "chat-deleted-2",
+    ]);
+  });
+
   it("ignores a failed background refresh instead of crashing", async () => {
     const { result } = renderHook(() =>
       usePaginatedChats("updatedAt", "desc", { pageSize: 2 })

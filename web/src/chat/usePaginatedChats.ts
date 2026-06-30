@@ -3,9 +3,11 @@ import { MAX_PAGE_LIMIT } from "@contract";
 import type { Chat } from "@/types";
 import { useChatMutations, type ChatListSource } from "@/chat/useChatMutations";
 
-// The two time axes the keyset page endpoint supports (#129 / ADR-0017). Title
-// stays on the full-load client path, so it never reaches here.
-export type ListSort = "createdAt" | "updatedAt";
+// The sort axes the keyset page endpoint supports. createdAt/updatedAt are the
+// main view's time axes (#129 / ADR-0017); deletedAt is the Trash view's
+// deleted-time axis (#145), valid only alongside `trashedOnly`. Title stays on
+// the full-load client path, so it never reaches here.
+export type ListSort = "createdAt" | "updatedAt" | "deletedAt";
 
 // Both directions of each time axis page server-side (#143): the covering keyset
 // index scans either way, so "Oldest first" no longer falls back to full-load.
@@ -53,6 +55,13 @@ interface UsePaginatedChatsOptions {
    * Untagged group. An empty array leaves Tags unfiltered. Re-anchors on change.
    */
   tags?: readonly string[];
+  /**
+   * Trash view scope (#145): when true the page is trashed-only, the inverse of
+   * the default active list. Pairs with the `deletedAt` sort axis but also
+   * scopes the time axes within Trash. Sent to the keyset query as
+   * `trashedOnly=true`.
+   */
+  trashedOnly?: boolean;
 }
 
 /** The active list filter sent to the keyset query alongside sort + cursor. */
@@ -77,9 +86,12 @@ function pageUrl(
   direction: ListDirection,
   limit: number,
   filter: ActiveFilter,
+  trashedOnly: boolean,
   cursor?: string
 ): string {
   let base = `/api/chats?sort=${sort}&direction=${direction}&limit=${limit}`;
+  // The Trash view scopes the page to soft-deleted chats only (#145).
+  if (trashedOnly) base += `&trashedOnly=true`;
   // Repeated `?project=` unions (OR); a single comma-separated `?tags=` ANDs.
   // An empty-string entry rides through as `?project=` / `?tags=`, selecting the
   // (No project) / Untagged group — the same wire form the server parses (#130).
@@ -119,6 +131,7 @@ export function usePaginatedChats(
     enabled = true,
     projects = [],
     tags = [],
+    trashedOnly = false,
   }: UsePaginatedChatsOptions = {}
 ): UsePaginatedChatsResult {
   // The selection arrays change identity every render (App spreads a Set), so a
@@ -164,7 +177,9 @@ export function usePaginatedChats(
     let cancelled = false;
     cursorRef.current = null;
     fetchingRef.current = true;
-    void fetchPage(pageUrl(sort, direction, pageSize, filter)).then((data) => {
+    void fetchPage(
+      pageUrl(sort, direction, pageSize, filter, trashedOnly)
+    ).then((data) => {
       if (cancelled) return;
       if (data) {
         setChats(data.chats);
@@ -177,23 +192,23 @@ export function usePaginatedChats(
     return () => {
       cancelled = true;
     };
-  }, [sort, direction, pageSize, enabled, filter]);
+  }, [sort, direction, pageSize, enabled, filter, trashedOnly]);
 
   const loadMore = useCallback(() => {
     if (fetchingRef.current || cursorRef.current === null) return;
     const cursor = cursorRef.current;
     fetchingRef.current = true;
-    void fetchPage(pageUrl(sort, direction, pageSize, filter, cursor)).then(
-      (data) => {
-        if (data) {
-          setChats((prev) => [...prev, ...data.chats]);
-          setNextCursor(data.nextCursor);
-          cursorRef.current = data.nextCursor;
-        }
-        fetchingRef.current = false;
+    void fetchPage(
+      pageUrl(sort, direction, pageSize, filter, trashedOnly, cursor)
+    ).then((data) => {
+      if (data) {
+        setChats((prev) => [...prev, ...data.chats]);
+        setNextCursor(data.nextCursor);
+        cursorRef.current = data.nextCursor;
       }
-    );
-  }, [sort, direction, pageSize, filter]);
+      fetchingRef.current = false;
+    });
+  }, [sort, direction, pageSize, filter, trashedOnly]);
 
   // Re-read the top of the loaded window. Sized to the current window so a
   // brand-new chat ranking into it is surfaced, but clamped to the page-limit
@@ -205,9 +220,11 @@ export function usePaginatedChats(
       Math.max(chatsRef.current.length, pageSize),
       MAX_PAGE_LIMIT
     );
-    const data = await fetchPage(pageUrl(sort, direction, limit, filter));
+    const data = await fetchPage(
+      pageUrl(sort, direction, limit, filter, trashedOnly)
+    );
     if (data) setChats((prev) => mergeWindow(prev, data.chats));
-  }, [sort, direction, pageSize, filter]);
+  }, [sort, direction, pageSize, filter, trashedOnly]);
 
   useEffect(() => {
     if (!enabled) return;
