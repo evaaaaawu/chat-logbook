@@ -1485,16 +1485,20 @@ describe("Freeze sort order on background updates", () => {
   }
 
   // Serve a given active list (plus the stable deleted chats) on every
-  // subsequent /api/chats read — i.e. the background poll.
+  // subsequent /api/chats read — i.e. the next background reconcile.
   function serveBackground(active: WireChat[]): void {
     const chats = [...active, ...trashedChats()];
     server.use(http.get("/api/chats", () => HttpResponse.json({ chats })));
   }
 
-  // Advance past one background poll interval and let the refetch settle.
-  async function flushBackgroundPoll(): Promise<void> {
+  // Live updates are a server push now (#132); jsdom has no EventSource, so the
+  // push connector is inert here. Drive the window's reconcile through its
+  // low-frequency safety floor instead: advance past the floor interval and let
+  // the refetch settle. The frozen-order behavior under test is the same whether
+  // the reconcile is push- or floor-triggered.
+  async function flushBackgroundReconcile(): Promise<void> {
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5000);
+      await vi.advanceTimersByTimeAsync(31000);
     });
   }
 
@@ -1518,7 +1522,7 @@ describe("Freeze sort order on background updates", () => {
       bumped[1].updatedAt = 1700000999000;
       serveBackground(bumped);
 
-      await flushBackgroundPoll();
+      await flushBackgroundReconcile();
 
       // Frozen: the selected row has not moved.
       rows = within(list).getAllByTestId("chat-row");
@@ -1541,7 +1545,7 @@ describe("Freeze sort order on background updates", () => {
       const bumped = activeChats();
       bumped[1].updatedAt = 1700000999000;
       serveBackground(bumped);
-      await flushBackgroundPoll();
+      await flushBackgroundReconcile();
       let rows = within(list).getAllByTestId("chat-row");
       expect(rows[1].textContent).toContain("Build a login page");
 
@@ -1570,7 +1574,7 @@ describe("Freeze sort order on background updates", () => {
       const bumped = activeChats();
       bumped[1].updatedAt = 1700000999000;
       serveBackground(bumped);
-      await flushBackgroundPoll();
+      await flushBackgroundReconcile();
       const rows = within(list).getAllByTestId("chat-row");
       expect(rows[1].textContent).toContain("Build a login page");
 
@@ -1614,7 +1618,7 @@ describe("Freeze sort order on background updates", () => {
         updatedAt: 1700000250000,
       });
       serveBackground(withNew);
-      await flushBackgroundPoll();
+      await flushBackgroundReconcile();
 
       const rows = within(list).getAllByTestId("chat-row");
       // Existing chats keep their frozen relative order; the new chat slots into

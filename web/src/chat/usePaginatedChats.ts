@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MAX_PAGE_LIMIT } from "@contract";
 import type { Chat } from "@/types";
 import { useChatMutations, type ChatListSource } from "@/chat/useChatMutations";
+import { useListStream, type ListStreamConnector } from "@/chat/useListStream";
 
 // The sort axes the keyset page endpoint supports. createdAt/updatedAt are the
 // main view's time axes (#129 / ADR-0017); deletedAt is the Trash view's
@@ -21,9 +22,11 @@ const DEFAULT_PAGE_SIZE = 30;
 // request must clamp to it — otherwise the server returns 400 and the response
 // carries no `chats` (the blank-screen crash fixed in #147).
 
-// How often the loaded window re-reads from the server, so file-watcher
-// ingestion (new chats, bumped timestamps) shows up without a manual reload.
-const BACKGROUND_REFRESH_MS = 4000;
+// The loaded window now reconciles on a server push the instant ingestion
+// settles (#132 / ADR-0020). This interval is only a floor: a low-frequency
+// reconcile that catches a change missed during a stream reconnect gap, so the
+// window can never stay stale indefinitely even if a push is lost.
+const RECONCILE_FLOOR_MS = 30000;
 
 // Merge a freshly-fetched window into the loaded one: refresh fields for chats
 // the server still returns, keep loaded chats the refetch no longer covers (the
@@ -62,6 +65,12 @@ interface UsePaginatedChatsOptions {
    * `trashedOnly=true`.
    */
   trashedOnly?: boolean;
+  /**
+   * Live-update stream connector (#132), injected for testing and to let the
+   * transport be swapped. Defaults to the Server-Sent Events connector inside
+   * {@link useListStream}.
+   */
+  connect?: ListStreamConnector;
 }
 
 /** The active list filter sent to the keyset query alongside sort + cursor. */
@@ -131,6 +140,7 @@ export function usePaginatedChats(
     projects = [],
     tags = [],
     trashedOnly = false,
+    connect,
   }: UsePaginatedChatsOptions = {}
 ): UsePaginatedChatsResult {
   // The selection arrays change identity every render (App spreads a Set), so a
@@ -225,11 +235,23 @@ export function usePaginatedChats(
     if (data) setChats((prev) => mergeWindow(prev, data.chats));
   }, [sort, direction, pageSize, filter, trashedOnly]);
 
+  // Primary trigger: reconcile the window head on each server-pushed change, so
+  // ingestion shows up the instant it settles instead of on a fixed poll
+  // (#132 / ADR-0020). The connector is injectable for testing.
+  useListStream(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+    { enabled, connect }
+  );
+
+  // Safety floor: a low-frequency reconcile catches a change missed during a
+  // stream reconnect gap, so a lost push can never leave the window stale.
   useEffect(() => {
     if (!enabled) return;
     const id = setInterval(() => {
       void refresh();
-    }, BACKGROUND_REFRESH_MS);
+    }, RECONCILE_FLOOR_MS);
     return () => clearInterval(id);
   }, [enabled, refresh]);
 
