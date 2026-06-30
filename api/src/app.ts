@@ -61,7 +61,13 @@ export function createApp({
         return c.json({ error: "Invalid limit" }, 400);
       }
       const sort = c.req.query("sort") ?? "updatedAt";
-      if (sort !== "createdAt" && sort !== "updatedAt") {
+      // `deletedAt` is the Trash view's deleted-time axis (#145); it sorts
+      // through the ATTACHed Metadata store and is trash-only by nature.
+      if (
+        sort !== "createdAt" &&
+        sort !== "updatedAt" &&
+        sort !== "deletedAt"
+      ) {
         return c.json({ error: "Invalid sort" }, 400);
       }
       // Direction defaults to "desc" (newest-first) so existing callers that
@@ -70,6 +76,10 @@ export function createApp({
       if (direction !== "asc" && direction !== "desc") {
         return c.json({ error: "Invalid direction" }, 400);
       }
+      // The Trash view scopes the page to soft-deleted chats only (#145),
+      // distinct from `includeTrashed` (active + trashed). The frontend sends it
+      // for every Trash page; the `deletedAt` axis is trash-only regardless.
+      const trashedOnly = c.req.query("trashedOnly") === "true";
       // The active filter pages server-side alongside the keyset window (#130),
       // parsed the same way as the legacy full-list branch: repeated `?project=`
       // unions (OR), a single comma-separated `?tags=` ANDs. An empty value
@@ -85,6 +95,7 @@ export function createApp({
         limit,
         cursor: c.req.query("cursor"),
         includeTrashed,
+        trashedOnly,
         projects,
         tags: tagSelection,
       });

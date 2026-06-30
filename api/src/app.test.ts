@@ -275,6 +275,70 @@ describe("GET /api/chats — keyset pagination mode", () => {
   });
 });
 
+describe("GET /api/chats — Trash view keyset page (#145)", () => {
+  it("serves a trashed-only page sorted by deleted time", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    const c1 = seedChat(archive, {
+      sourceId: "c1",
+      firstSeenAt: new Date(1_000),
+    });
+    seedChat(archive, { sourceId: "c2", firstSeenAt: new Date(2_000) });
+    const c3 = seedChat(archive, {
+      sourceId: "c3",
+      firstSeenAt: new Date(3_000),
+    });
+    metadata.softDelete(c1);
+    metadata.softDelete(c3);
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+
+    // sort=deletedAt is accepted (not a 400), and the page is trashed-only: the
+    // active c2 never appears, only the soft-deleted c1 and c3.
+    const res = await app.request(
+      "/api/chats?sort=deletedAt&limit=10&trashedOnly=true"
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    expect(new Set(body.chats.map((c) => c.sourceId))).toEqual(
+      new Set(["c1", "c3"])
+    );
+  });
+
+  it("serves a trashed-only page along a time axis within Trash", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, { sourceId: "active", firstSeenAt: new Date(1_000) });
+    const trashed = seedChat(archive, {
+      sourceId: "trashed",
+      firstSeenAt: new Date(2_000),
+    });
+    metadata.softDelete(trashed);
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+
+    // trashedOnly scopes the time-axis page to Trash: the active chat drops out.
+    const res = await app.request(
+      "/api/chats?sort=createdAt&limit=10&trashedOnly=true"
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    expect(body.chats.map((c) => c.sourceId)).toEqual(["trashed"]);
+  });
+});
+
 describe("GET /api/chats/counts — server-side facet counts", () => {
   it("serves per-view counts (main excludes trashed, Trash counts only trashed)", async () => {
     const archive = createArchiveRepository({ dataDir });

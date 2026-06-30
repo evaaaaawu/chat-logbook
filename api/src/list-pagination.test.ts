@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import { createChatReader } from "./chat-reader.js";
 import { createChatPageQuery } from "./list-pagination.js";
@@ -58,6 +59,24 @@ function seedMessage(
       blocks: [{ type: "text", text: "hi" }],
     },
   });
+}
+
+// Soft-delete a chat and pin its deleted_at to a known instant. `softDelete`
+// stamps deleted_at with the wall clock, which collides at ms resolution across
+// rapid calls; the Trash sort tests need deterministic, distinct deleted times,
+// so we overwrite the column directly through a short-lived writable connection.
+function trashChat(
+  metadata: ReturnType<typeof createMetadataRepository>,
+  internalId: string,
+  deletedAt: Date
+): void {
+  metadata.softDelete(internalId);
+  const db = new Database(path.join(dataDir, "metadata.db"));
+  db.prepare("UPDATE chats_meta SET deleted_at = ? WHERE id = ?").run(
+    deletedAt.getTime(),
+    internalId
+  );
+  db.close();
 }
 
 let dataDir: string;
@@ -782,5 +801,339 @@ describe("ChatReader.listChatsPage — server-side filtering (#130)", () => {
     ).toEqual(["b1", "a1"]);
 
     pageQuery.close();
+  });
+});
+
+describe("ChatReader.listChatsPage — Trash view (#145)", () => {
+  it("returns only trashed chats when trashedOnly is set", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    seedChat(archive, { sourceId: "c1", firstSeenAt: new Date(1_000) });
+    const c2 = seedChat(archive, {
+      sourceId: "c2",
+      firstSeenAt: new Date(2_000),
+    });
+    seedChat(archive, { sourceId: "c3", firstSeenAt: new Date(3_000) });
+    trashChat(metadata, c2, new Date(9_000));
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+
+    // The Trash view is trashed-only: active c1/c3 never appear, only the
+    // soft-deleted c2 — unlike includeTrashed, which returns active + trashed.
+    expect(
+      reader
+        .listChatsPage({ sort: "createdAt", limit: 10, trashedOnly: true })
+        .chats.map((c) => c.sourceId)
+    ).toEqual(["c2"]);
+
+    pageQuery.close();
+  });
+
+  it("sorts the Trash view by deleted time, most-recently-deleted first", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    // Created in one order, trashed in another: the deletedAt axis follows the
+    // trash time, independent of createdAt.
+    const c1 = seedChat(archive, {
+      sourceId: "c1",
+      firstSeenAt: new Date(1_000),
+    });
+    const c2 = seedChat(archive, {
+      sourceId: "c2",
+      firstSeenAt: new Date(2_000),
+    });
+    const c3 = seedChat(archive, {
+      sourceId: "c3",
+      firstSeenAt: new Date(3_000),
+    });
+    trashChat(metadata, c1, new Date(30_000)); // deleted last
+    trashChat(metadata, c2, new Date(10_000)); // deleted first
+    trashChat(metadata, c3, new Date(20_000)); // deleted in the middle
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+
+    // Most-recently-deleted first: c1 (30k), c3 (20k), c2 (10k).
+    expect(
+      reader
+        .listChatsPage({ sort: "deletedAt", limit: 10, trashedOnly: true })
+        .chats.map((c) => c.sourceId)
+    ).toEqual(["c1", "c3", "c2"]);
+
+    pageQuery.close();
+  });
+
+  it("walks deletedAt cursors to reproduce the full trash order with no gap or overlap", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    // Five trashed chats with distinct deleted times; newest-deleted first the
+    // order is c5, c4, c3, c2, c1.
+    for (let i = 1; i <= 5; i++) {
+      const id = seedChat(archive, {
+        sourceId: `c${i}`,
+        firstSeenAt: new Date(i * 1000),
+      });
+      trashChat(metadata, id, new Date(i * 10_000));
+    }
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    let guard = 0;
+    do {
+      const page = reader.listChatsPage({
+        sort: "deletedAt",
+        limit: 2,
+        trashedOnly: true,
+        cursor,
+      });
+      seen.push(...page.chats.map((c) => c.sourceId));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor && ++guard < 10);
+
+    // Most-recently-deleted first across every page, each chat exactly once —
+    // the cursor stays strictly past the previous page's last deleted_at.
+    expect(seen).toEqual(["c5", "c4", "c3", "c2", "c1"]);
+
+    pageQuery.close();
+  });
+
+  it("paginates a run of equal deleted times by id tiebreak with no drop or duplicate", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    // Four trashed chats share one deleted_at; only the id tiebreak separates
+    // them, so the cursor must carry it to page the run cleanly.
+    for (let i = 1; i <= 4; i++) {
+      const id = seedChat(archive, {
+        sourceId: `c${i}`,
+        firstSeenAt: new Date(i * 1000),
+      });
+      trashChat(metadata, id, new Date(10_000));
+    }
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    let guard = 0;
+    do {
+      const page = reader.listChatsPage({
+        sort: "deletedAt",
+        limit: 2,
+        trashedOnly: true,
+        cursor,
+      });
+      seen.push(...page.chats.map((c) => c.sourceId));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor && ++guard < 10);
+
+    // Every chat exactly once across the tie boundary — no skip, no repeat.
+    expect(seen).toHaveLength(4);
+    expect(new Set(seen)).toEqual(new Set(["c1", "c2", "c3", "c4"]));
+
+    pageQuery.close();
+  });
+
+  it("walks deletedAt asc cursors oldest-deleted first across pages", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    for (let i = 1; i <= 5; i++) {
+      const id = seedChat(archive, {
+        sourceId: `c${i}`,
+        firstSeenAt: new Date(i * 1000),
+      });
+      trashChat(metadata, id, new Date(i * 10_000));
+    }
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    let guard = 0;
+    do {
+      const page = reader.listChatsPage({
+        sort: "deletedAt",
+        direction: "asc",
+        limit: 2,
+        trashedOnly: true,
+        cursor,
+      });
+      seen.push(...page.chats.map((c) => c.sourceId));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor && ++guard < 10);
+
+    // Oldest-deleted first across every page — the asc cursor mirrors the desc
+    // stability, flipping both the comparison and the order.
+    expect(seen).toEqual(["c1", "c2", "c3", "c4", "c5"]);
+
+    pageQuery.close();
+  });
+
+  it("orders the Trash view by a time axis independently of deleted time", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    // createdAt order is [b, a]; deleted_at order is the reverse [a, b]. Sorting
+    // the trash-only page by createdAt must follow createdAt, not the trash time.
+    const a = seedChat(archive, {
+      sourceId: "a",
+      firstSeenAt: new Date(1_000),
+    });
+    const b = seedChat(archive, {
+      sourceId: "b",
+      firstSeenAt: new Date(2_000),
+    });
+    seedChat(archive, { sourceId: "active", firstSeenAt: new Date(3_000) });
+    trashChat(metadata, a, new Date(20_000));
+    trashChat(metadata, b, new Date(10_000));
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+    const page = reader.listChatsPage({
+      sort: "createdAt",
+      limit: 10,
+      trashedOnly: true,
+    });
+
+    // Newest createdAt first within trash; the active chat is excluded.
+    expect(page.chats.map((c) => c.sourceId)).toEqual(["b", "a"]);
+
+    pageQuery.close();
+  });
+
+  it("composes a Project filter with the trashed-only scope", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const alphaTrashed = seedChat(archive, {
+      sourceId: "alphaTrashed",
+      firstSeenAt: new Date(1_000),
+      project: "alpha",
+    });
+    const betaTrashed = seedChat(archive, {
+      sourceId: "betaTrashed",
+      firstSeenAt: new Date(2_000),
+      project: "beta",
+    });
+    seedChat(archive, {
+      sourceId: "alphaActive",
+      firstSeenAt: new Date(3_000),
+      project: "alpha",
+    });
+    trashChat(metadata, alphaTrashed, new Date(10_000));
+    trashChat(metadata, betaTrashed, new Date(20_000));
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+    const page = reader.listChatsPage({
+      sort: "deletedAt",
+      limit: 10,
+      trashedOnly: true,
+      projects: ["alpha"],
+    });
+
+    // Trash + Project filter: the trashed alpha chat shows; the trashed beta
+    // chat (wrong Project) and the active alpha chat (not trashed) do not.
+    expect(page.chats.map((c) => c.sourceId)).toEqual(["alphaTrashed"]);
+
+    pageQuery.close();
+  });
+
+  it("returns an empty deletedAt page when there is no Metadata store", () => {
+    const archive = createArchiveRepository({ dataDir });
+    seedChat(archive, { sourceId: "c1", firstSeenAt: new Date(1_000) });
+
+    // No metadata repo is created, so metadata.db is absent: a deleted-time read
+    // has no trashed chats to return, rather than throwing on the missing join.
+    const pageQuery = createChatPageQuery({ dataDir });
+    const page = pageQuery.queryPage({
+      sort: "deletedAt",
+      limit: 10,
+      trashedOnly: true,
+    });
+
+    expect(page.items).toEqual([]);
+    expect(page.nextCursor).toBeNull();
+
+    pageQuery.close();
+  });
+
+  it("hydrates a deletedAt page row with its deleted time and trashed flag", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const id = seedChat(archive, {
+      sourceId: "c1",
+      firstSeenAt: new Date(1_000),
+    });
+    trashChat(metadata, id, new Date(42_000));
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+    const page = reader.listChatsPage({
+      sort: "deletedAt",
+      limit: 10,
+      trashedOnly: true,
+    });
+
+    expect(page.chats).toHaveLength(1);
+    const chat = page.chats[0];
+    expect(chat.sourceId).toBe("c1");
+    expect(chat.deletedAt).toBe(42_000);
+    expect(chat.isDeleted).toBe(true);
+
+    pageQuery.close();
+  });
+
+  it("orders the deletedAt page through the covering index, not a full scan + sort", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    for (let i = 1; i <= 50; i++) {
+      const id = seedChat(archive, {
+        sourceId: `c${i}`,
+        firstSeenAt: new Date(i * 1000),
+      });
+      trashChat(metadata, id, new Date(i * 10_000));
+    }
+    void tags;
+
+    // Inspect how SQLite plans the deleted-time page. AC #2 (ADR-0017): the
+    // ordering must be an index range scan over the deleted-time axis, never a
+    // materialize-the-whole-trash-then-sort pass.
+    const db = new Database(path.join(dataDir, "archive.db"), {
+      readonly: true,
+    });
+    db.prepare("ATTACH DATABASE ? AS meta").run(
+      path.join(dataDir, "metadata.db")
+    );
+    const plan = db
+      .prepare(
+        `EXPLAIN QUERY PLAN
+         SELECT c.id AS id, m.deleted_at AS sortKey
+         FROM chats c JOIN meta.chats_meta m ON m.id = c.id
+         WHERE m.deleted_at IS NOT NULL
+         ORDER BY m.deleted_at DESC, m.id DESC
+         LIMIT 10`
+      )
+      .all() as { detail: string }[];
+    db.close();
+
+    const detail = plan.map((p) => p.detail).join("\n");
+    // The deleted-time order is served by the keyset index...
+    expect(detail).toContain("chats_meta_deleted_at_idx");
+    // ...so there is no temp B-tree sorting the whole trash set.
+    expect(detail).not.toMatch(/USE TEMP B-TREE FOR ORDER BY/i);
   });
 });
