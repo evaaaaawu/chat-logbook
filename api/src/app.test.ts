@@ -10,6 +10,7 @@ import type { Tag } from "./metadata/tags.js";
 import { formatChatId } from "./archive/chat-id.js";
 import { createChatPageQuery } from "./list-pagination.js";
 import { createChatCountsQuery } from "./list-counts.js";
+import { reconcileTitleSortKeys } from "./metadata/reconcile-title-sort-keys.js";
 import { MAX_PAGE_LIMIT } from "./list-contract.js";
 
 interface ChatResponse {
@@ -107,6 +108,47 @@ beforeEach(() => {
 
 afterEach(() => {
   fs.rmSync(dataDir, { recursive: true, force: true });
+});
+
+describe("GET /api/chats — Title axis keyset pagination (#146)", () => {
+  it("serves a title-ordered page and accepts sort=title", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    // Titles derive from each chat's first user message.
+    seedMessage(archive, {
+      sourceId: "c1",
+      messageId: "m1",
+      role: "user",
+      ts: new Date(1_000),
+      text: "Banana",
+      blocks: [{ type: "text", text: "Banana" }],
+    });
+    seedMessage(archive, {
+      sourceId: "c2",
+      messageId: "m2",
+      role: "user",
+      ts: new Date(2_000),
+      text: "apple",
+      blocks: [{ type: "text", text: "apple" }],
+    });
+    // Backfill the collation keys the Title axis pages on (ADR-0019).
+    reconcileTitleSortKeys({ archive, metadata });
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+
+    const res = await app.request(
+      "/api/chats?sort=title&direction=asc&limit=10"
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    // Case-insensitive A-Z: apple before Banana.
+    expect(body.chats.map((c) => c.title)).toEqual(["apple", "Banana"]);
+  });
 });
 
 describe("GET /api/chats — keyset pagination mode", () => {

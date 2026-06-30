@@ -4,6 +4,7 @@ import type { ChatRow } from "./archive/read-seam.js";
 import type { MetadataRepository } from "./metadata/repository.js";
 import type { Tag, TagRepository } from "./metadata/tags.js";
 import { loadChatVisibility } from "./visibility.js";
+import { deriveBaseTitle } from "./title.js";
 import {
   decodeCursor,
   encodeCursor,
@@ -192,8 +193,10 @@ export function createChatReader({
     firstUserText: string | undefined
   ): string {
     if (customTitle && customTitle.trim()) return customTitle;
-    const text = firstUserText?.trim().split("\n")[0]?.trim();
-    return text && text.length > 0 ? text : "Untitled";
+    // The no-custom-title branch shares one rule with the denormalized Title
+    // sort key's `text_key` (ADR-0019), so the wire title and the key can never
+    // disagree on what "the first line, else Untitled" means.
+    return deriveBaseTitle(firstUserText);
   }
 
   // Archive rows are keyed by (agent, source_id); NUL joins the pair into a
