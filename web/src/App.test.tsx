@@ -1815,7 +1815,7 @@ describe("Chat list pagination", () => {
     expect(titles[1]).toContain("Build a login page");
   });
 
-  it("uses the full-load path when sorting by Title", async () => {
+  it("paginates the Title axis with sort=title, not a full load (#146)", async () => {
     const user = userEvent.setup();
     const searches = captureChatListRequests();
     render(<App />);
@@ -1826,10 +1826,16 @@ describe("Chat list pagination", () => {
     const popover = await screen.findByTestId("chat-sort-popover");
     await user.click(within(popover).getByText("Title"));
 
-    // Title is not a keyset axis, so it falls back to the full list (no `limit`).
+    // Title is now a keyset axis (#146 / ADR-0019): selecting it pages
+    // server-side with sort=title rather than pulling the full list.
     await waitFor(() =>
-      expect(searches.some((s) => !s.includes("limit="))).toBe(true)
+      expect(
+        searches.some((s) => s.includes("sort=title") && s.includes("limit="))
+      ).toBe(true)
     );
+    // The full-load path (no `limit`) is gone — no request ever drops `limit`.
+    expect(searches.every((s) => s.includes("limit="))).toBe(true);
+
     const titles = within(list)
       .getAllByTestId("chat-row")
       .map((r) => r.textContent);

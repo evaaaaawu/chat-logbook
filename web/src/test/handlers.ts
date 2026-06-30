@@ -246,18 +246,28 @@ export const handlers = [
           ? "createdAt"
           : sortParam === "deletedAt"
             ? "deletedAt"
-            : "updatedAt";
+            : sortParam === "title"
+              ? "title"
+              : "updatedAt";
       const direction =
         url.searchParams.get("direction") === "asc" ? "asc" : "desc";
       const dir = direction === "asc" ? -1 : 1;
       // deletedAt is the Trash deleted-time axis (#145); a null deletedAt (an
       // active chat that slipped through) sorts as the oldest possible time.
-      const sortKeyOf = (c: FakeChat) =>
+      // title is the keyset Title axis (#146): the fake keys on the effective
+      // title string (custom overrides default), a stand-in for the server's
+      // precomputed collation key — enough for the client window to page.
+      const sortKeyOf = (c: FakeChat): number | string =>
         sort === "createdAt"
           ? c.createdAt
           : sort === "deletedAt"
             ? (c.deletedAt ?? 0)
-            : c.updatedAt;
+            : sort === "title"
+              ? (c.customTitle ?? c.defaultTitle).toLowerCase()
+              : c.updatedAt;
+      // One comparison for both axes: string keys (title) and number keys (time).
+      const cmpKey = (x: number | string, y: number | string): number =>
+        x < y ? -1 : x > y ? 1 : 0;
       // Project (OR) + Tag (AND) filtering inside the paginated query, mirroring
       // the server (#130). Repeated `?project=` unions; `?tags=` is one
       // comma-separated AND set. An empty value selects the (No project) /
@@ -283,7 +293,7 @@ export const handlers = [
       // DESC), asc is (sortKey ASC, id ASC).
       const sorted = [...filtered].sort(
         (a, b) =>
-          dir * (sortKeyOf(b) - sortKeyOf(a)) ||
+          dir * cmpKey(sortKeyOf(b), sortKeyOf(a)) ||
           dir * (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
       );
       const cursorParam = url.searchParams.get("cursor");
@@ -291,14 +301,13 @@ export const handlers = [
       if (cursorParam) {
         const cur = JSON.parse(
           Buffer.from(cursorParam, "base64url").toString("utf8")
-        ) as { sortKey: number; id: string };
-        const after = sorted.findIndex((c) =>
-          direction === "asc"
-            ? sortKeyOf(c) > cur.sortKey ||
-              (sortKeyOf(c) === cur.sortKey && c.id > cur.id)
-            : sortKeyOf(c) < cur.sortKey ||
-              (sortKeyOf(c) === cur.sortKey && c.id < cur.id)
-        );
+        ) as { sortKey: number | string; id: string };
+        const after = sorted.findIndex((c) => {
+          const k = cmpKey(sortKeyOf(c), cur.sortKey);
+          return direction === "asc"
+            ? k > 0 || (k === 0 && c.id > cur.id)
+            : k < 0 || (k === 0 && c.id < cur.id);
+        });
         start = after < 0 ? sorted.length : after;
       }
       const pageItems = sorted.slice(start, start + limit);
