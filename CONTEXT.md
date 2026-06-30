@@ -36,6 +36,10 @@ _Avoid_: chat store, view model
 One conversation with an AI assistant — the core unit chat-logbook lists, shows, and searches.
 _Avoid_: session, thread, conversation
 
+**Title**:
+The name shown for a Chat. The effective Title is the custom title if set, else the first user message's first line, else `"Untitled"` — so it is never empty. The custom title lives in Metadata; the fallback is derived from the Archive.
+_Avoid_: name, subject, heading
+
 **Message**:
 A single turn within a Chat, from the user or the assistant. Composed of one or more Blocks.
 _Avoid_: entry, line
