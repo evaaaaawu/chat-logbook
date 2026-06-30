@@ -340,6 +340,36 @@ export const handlers = [
       untagged,
     });
   }),
+  // Filtered List count (#131 Phase B): the post-filter total for the active
+  // Project (OR) / Tag (AND) / Untagged filter, scoped to the view. Mirrors the
+  // paginated query's filter parsing so the header total matches the listed set.
+  http.get("/api/chats/list-total", ({ request }) => {
+    const url = new URL(request.url);
+    const includeTrashed = url.searchParams.get("includeTrashed") === "true";
+    const inView = includeTrashed
+      ? fakeChats.filter((c) => c.isDeleted)
+      : fakeChats.filter((c) => !c.isDeleted);
+
+    const projectSel = url.searchParams.getAll("project");
+    const tagsParam = url.searchParams.get("tags");
+    const tagSel = tagsParam === null ? null : tagsParam.split(",");
+    const total = inView.filter((c) => {
+      if (projectSel.length > 0 && !projectSel.includes(c.project)) {
+        return false;
+      }
+      if (tagSel) {
+        const ids = new Set(fakeChatTags[c.id] ?? []);
+        const wantUntagged = tagSel.includes("");
+        if (wantUntagged && ids.size > 0) return false;
+        if (!tagSel.filter((t) => t !== "").every((t) => ids.has(t))) {
+          return false;
+        }
+      }
+      return true;
+    }).length;
+
+    return HttpResponse.json({ total });
+  }),
   http.patch("/api/chats/:id/title", async ({ params, request }) => {
     const id = params.id as string;
     const chat = fakeChats.find((c) => c.id === id);

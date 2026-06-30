@@ -234,7 +234,10 @@ export function ChatList({
               <span className="font-semibold text-accent-foreground">
                 Chats
               </span>
-              <span className="rounded-full bg-card px-2 text-xs font-semibold tabular-nums text-muted-foreground">
+              <span
+                data-testid="chat-list-count"
+                className="rounded-full bg-card px-2 text-xs font-semibold tabular-nums text-muted-foreground"
+              >
                 {total ?? chats.length}
               </span>
             </span>

@@ -13,6 +13,7 @@ import { useSortPreference } from "@/chat/sort/useSortPreference";
 import { CHAT_SORT_CONFIG } from "@/chat/sort/sortConfig";
 import { facetsFromCounts } from "@/chat/projects/projectFacets";
 import { useChatCounts } from "@/chat/useChatCounts";
+import { useFilteredTotal } from "@/chat/useFilteredTotal";
 import { filterChatsByProjects } from "@/chat/projects/filterChatsByProjects";
 import { filterChatsByTags } from "@/tags/filterChatsByTags";
 import { toggleTagSelection } from "@/tags/toggleTagSelection";
@@ -172,11 +173,23 @@ function App() {
   const countForTag = counts.tagCount;
   const untaggedCount = counts.counts.untagged;
 
-  // The "Chats N" header total: server-derived when unfiltered (#131 Phase A);
-  // the accurate filtered total is Phase B (#130), so a filtered list falls
-  // back to the loaded window count.
+  // The "Chats N" header total: server-derived in both cases. Unfiltered, it is
+  // the view's facet total (#131 Phase A); filtered, it is the server's
+  // post-filter count (#131 Phase B) — accurate even when the paginated window
+  // holds only a page of the filtered set.
   const filterActive = selectedProjects.size + selectedTags.size > 0;
-  const listTotal = filterActive ? undefined : counts.counts.total;
+  const filteredTotal = useFilteredTotal(
+    mode,
+    [...selectedProjects],
+    [...selectedTags]
+  );
+  // While the first filtered total is still loading (filteredTotal undefined),
+  // hold the view's facet total rather than letting the header fall back to the
+  // paginated window count (the page size) — that would flash a wrong number
+  // for a frame before the real filtered total lands (#131).
+  const listTotal = filterActive
+    ? (filteredTotal ?? counts.counts.total)
+    : counts.counts.total;
   // Create a Tag and immediately assign it to the chat the popover is on.
   const createTagForChat = useCallback(
     async (

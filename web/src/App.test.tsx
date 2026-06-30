@@ -1679,6 +1679,28 @@ describe("Project filter", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the server's filtered List count in the header when a filter is active", async () => {
+    // The header total must come from the server's filtered-total endpoint, not
+    // the loaded window — at scale the paginated window is smaller than the
+    // filtered set (#131 Phase B). Override the endpoint to a sentinel the window
+    // could never produce, proving the header reads it.
+    server.use(
+      http.get("/api/chats/list-total", () => HttpResponse.json({ total: 42 }))
+    );
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+    // Unfiltered: the header shows the server facet total (4 active chats).
+    expect(screen.getByTestId("chat-list-count")).toHaveTextContent("4");
+
+    await user.click(screen.getByTestId("project-row-backend-api"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-list-count")).toHaveTextContent("42");
+    });
+  });
+
   it("unions chats across several selected Projects (OR)", async () => {
     const user = userEvent.setup();
     render(<App />);

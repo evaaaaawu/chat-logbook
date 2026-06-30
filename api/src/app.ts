@@ -118,6 +118,24 @@ export function createApp({
     return c.json(reader.listCounts({ includeTrashed }));
   });
 
+  // The filtered List count ("Chats N" when a filter is active; issue #131
+  // Phase B). Separate from the static facet counts so toggling a filter does
+  // not refetch the per-view facets. The filter is parsed the same way as the
+  // list routes: repeated `?project=` unions (OR), a single comma-separated
+  // `?tags=` ANDs; an empty value selects the `(No project)` / `Untagged` group.
+  // Registered before `/api/chats/:id` so the literal segment is not an id.
+  app.get("/api/chats/list-total", (c) => {
+    if (!countsQuery) {
+      return c.json({ error: "Counts are not available" }, 501);
+    }
+    const includeTrashed = c.req.query("includeTrashed") === "true";
+    const projects = c.req.queries("project");
+    const tagsParam = c.req.query("tags");
+    const tags = tagsParam === undefined ? undefined : tagsParam.split(",");
+    const total = reader.listFilteredTotal({ includeTrashed, projects, tags });
+    return c.json({ total });
+  });
+
   app.delete("/api/chats/:id", (c) => {
     const row = reader.findChat(c.req.param("id"));
     if (!row) {

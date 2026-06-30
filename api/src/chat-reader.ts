@@ -122,6 +122,18 @@ export interface ChatReader {
    */
   listCounts(opts: { includeTrashed?: boolean }): ListCounts;
   /**
+   * The filtered List count ("Chats N" when a filter is active; issue #131
+   * Phase B). Applies the active Project (OR) / Tag (AND) / Untagged filter and
+   * returns the post-filter result count, server-derived so the paginated
+   * frontend need not hold the filtered window to count from. Requires a
+   * `countsQuery` dependency.
+   */
+  listFilteredTotal(opts: {
+    includeTrashed?: boolean;
+    projects?: string[];
+    tags?: string[];
+  }): number;
+  /**
    * Messages for a Chat resolved by its public wire-form chat id (`clog_…`).
    * Returns null when the id is malformed, no chat matches, or it is not visible
    * — the caller maps all of these to 404 (the 404 paths collapse into one).
@@ -346,6 +358,21 @@ export function createChatReader({
     return countsQuery.queryCounts({ includeTrashed });
   }
 
+  function listFilteredTotal({
+    includeTrashed = false,
+    projects,
+    tags,
+  }: {
+    includeTrashed?: boolean;
+    projects?: string[];
+    tags?: string[];
+  }): number {
+    if (!countsQuery) {
+      throw new Error("listFilteredTotal requires a countsQuery dependency");
+    }
+    return countsQuery.queryFilteredTotal({ includeTrashed, projects, tags });
+  }
+
   function getMessages(
     id: string,
     { includeTrashed }: { includeTrashed: boolean }
@@ -365,5 +392,12 @@ export function createChatReader({
     }));
   }
 
-  return { listChats, listChatsPage, listCounts, getMessages, findChat };
+  return {
+    listChats,
+    listChatsPage,
+    listCounts,
+    listFilteredTotal,
+    getMessages,
+    findChat,
+  };
 }

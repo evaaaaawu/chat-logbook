@@ -326,6 +326,51 @@ describe("GET /api/chats/counts — server-side facet counts", () => {
   });
 });
 
+describe("GET /api/chats/list-total — filtered List count (Phase B)", () => {
+  it("returns the post-filter total for the active Project/Tag filter", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const a1 = seedChat(archive, {
+      sourceId: "a1",
+      firstSeenAt: new Date(1000),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "a2",
+      firstSeenAt: new Date(2000),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "b1",
+      firstSeenAt: new Date(3000),
+      project: "beta",
+    });
+    const work = tags.createTag("work", "blue");
+    tags.assignTag(a1, work.id);
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+      countsQuery: createChatCountsQuery({ dataDir }),
+    });
+
+    // Project filter (repeated ?project=): alpha has 2.
+    const byProject = await app.request("/api/chats/list-total?project=alpha");
+    expect(byProject.status).toBe(200);
+    expect(((await byProject.json()) as { total: number }).total).toBe(2);
+
+    // Project AND Tag across types: alpha AND work → only a1.
+    const byBoth = await app.request(
+      `/api/chats/list-total?project=alpha&tags=${work.id}`
+    );
+    expect(((await byBoth.json()) as { total: number }).total).toBe(1);
+  });
+});
+
 describe("Chat id is the public API handle", () => {
   it("GET /api/chats exposes id as the wire-form chat id plus sourceId", async () => {
     const archive = createArchiveRepository({ dataDir });
