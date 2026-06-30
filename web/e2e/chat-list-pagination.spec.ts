@@ -27,6 +27,40 @@ async function mockChatPages(page: Page): Promise<void> {
   await page.route(/\/api\/tags(\?|$)/, (route) =>
     route.fulfill({ json: { tags: [] } })
   );
+  // The live-update SSE channel (#132). Unmocked it falls through to the dev
+  // proxy and 502s, which the console-error assertion below would catch. Fulfill
+  // a benign empty event stream so the EventSource connects cleanly; these tests
+  // do not exercise live push.
+  await page.route(/\/api\/chats\/stream(\?|$)/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: ":ok\n\n",
+    })
+  );
+  // The facet counts (#131) and filtered-list total — the app requests these on
+  // mount (once for the main view, once for Trash). Unmocked they 502 through
+  // the dev proxy too. The exact numbers do not matter to these tests; return a
+  // shape-valid response so the console-error assertion stays clean.
+  await page.route(/\/api\/chats\/counts(\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        total: TOTAL,
+        projects: [
+          {
+            project: "/test/project",
+            count: TOTAL,
+            lastActiveAt: 1700000000000,
+          },
+        ],
+        tags: [],
+        untagged: TOTAL,
+      },
+    })
+  );
+  await page.route(/\/api\/chats\/list-total(\?|$)/, (route) =>
+    route.fulfill({ json: { total: TOTAL } })
+  );
   await page.route(/\/api\/chats(\?|$)/, (route, request) => {
     const url = new URL(request.url());
     const limitParam = url.searchParams.get("limit");
@@ -89,9 +123,11 @@ test.describe("Chat list pagination", () => {
     await page.goto("/");
     await expect(page.getByText("Chat 0", { exact: true })).toBeVisible();
 
-    // Walk every page so the window exceeds 200, then sit at the bottom past a
-    // 4s background-refresh tick — the refresh must not request more than the
-    // cap nor crash on a rejected response.
+    // Walk every page so the loaded window exceeds the 200 cap, confirming deep
+    // continuous scroll never blanks the list (#147). The window-sized refresh's
+    // own limit-clamping is covered by usePaginatedChats' unit tests; live
+    // updates are a server push now (#132), so no periodic window-sized refetch
+    // fires here.
     const scroller = page.getByTestId("chat-scroll");
     for (let i = 0; i < 60; i++) {
       await scroller.evaluate((el) => {

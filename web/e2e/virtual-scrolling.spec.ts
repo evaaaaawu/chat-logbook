@@ -17,6 +17,27 @@ test.describe("Virtual scrolling", () => {
   test(`renders far fewer DOM nodes than ${MESSAGE_COUNT} messages`, async ({
     page,
   }) => {
+    // The live-update SSE channel (#132): fulfill a benign empty event stream so
+    // the EventSource connects cleanly instead of 502-ing through the dev proxy.
+    await page.route(/\/api\/chats\/stream(\?|$)/, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: ":ok\n\n",
+      })
+    );
+
+    // The facet counts (#131): requested on mount; mock so they don't 502 through
+    // the dev proxy. The numbers are irrelevant to this virtualization test.
+    await page.route(/\/api\/chats\/counts(\?|$)/, (route) =>
+      route.fulfill({
+        json: { total: 1, projects: [], tags: [], untagged: 1 },
+      })
+    );
+    await page.route(/\/api\/chats\/list-total(\?|$)/, (route) =>
+      route.fulfill({ json: { total: 1 } })
+    );
+
     // Intercept API calls with fake data
     await page.route(/\/api\/chats(\?|$)/, (route) =>
       route.fulfill({
