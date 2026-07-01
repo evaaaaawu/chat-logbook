@@ -20,6 +20,12 @@ export interface ChatListSource extends ChatMutations {
   hasMore: boolean;
   // Fetch the next page (a no-op on the full path).
   loadMore: () => void;
+  // True while a page evicted above the bounded window can be re-fetched on
+  // scroll-back (#132). Always false on the full path and at the list head.
+  hasPrevious: boolean;
+  // Re-fetch the page just above the window and prepend it, evicting the
+  // far-below page to stay bounded (a no-op on the full path / at the head).
+  loadPrevious: () => void;
   // Re-read and re-sort the loaded chats (used after a tag assignment changes
   // the chips a chat shows).
   reload: () => Promise<void>;

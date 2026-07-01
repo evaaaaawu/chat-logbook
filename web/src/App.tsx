@@ -352,6 +352,8 @@ function App() {
             sortControl={<SortControl {...order.sortControlProps} />}
             hasMore={source.hasMore}
             onLoadMore={source.loadMore}
+            hasPrevious={source.hasPrevious}
+            onLoadPrevious={source.loadPrevious}
           />
         </ResizablePanel>
         <ResizableHandle />
