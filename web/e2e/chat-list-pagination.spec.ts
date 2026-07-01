@@ -1,10 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// More chats than the keyset cap (200) so the loaded window can grow past it —
-// the condition that crashed the background refresh. Descending updatedAt order,
-// so "Chat 0" is newest and sorts first. The cursor here just encodes the next
-// offset — opaque to the frontend, which only echoes nextCursor back.
-const TOTAL = 220;
+// More chats than the bounded window holds (default 8 pages × 30 = 240 rows) so
+// deep scroll evicts pages above and scroll-back re-fetches them (#132), and
+// more than the keyset cap (200) so a window-sized request would be rejected —
+// the crash condition #147 guarded. Descending updatedAt order, so "Chat 0" is
+// newest and sorts first. The cursor just encodes the next offset — opaque to
+// the frontend, which only echoes nextCursor back.
+const TOTAL = 400;
 const MAX_PAGE_LIMIT = 200;
 
 function allChats() {
@@ -123,21 +125,57 @@ test.describe("Chat list pagination", () => {
     await page.goto("/");
     await expect(page.getByText("Chat 0", { exact: true })).toBeVisible();
 
-    // Walk every page so the loaded window exceeds the 200 cap, confirming deep
-    // continuous scroll never blanks the list (#147). The window-sized refresh's
-    // own limit-clamping is covered by usePaginatedChats' unit tests; live
-    // updates are a server push now (#132), so no periodic window-sized refetch
-    // fires here.
+    // Walk every page to the very bottom, confirming deep continuous scroll —
+    // which now also evicts pages above the bounded window (#132) — never blanks
+    // the list (#147). The window-sized refresh's own limit-clamping is covered
+    // by usePaginatedChats' unit tests; live updates are a server push now
+    // (#132), so no periodic window-sized refetch fires here.
     const scroller = page.getByTestId("chat-scroll");
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 80; i++) {
       await scroller.evaluate((el) => {
         el.scrollTop = el.scrollHeight;
       });
-      await page.waitForTimeout(150);
+      await page.waitForTimeout(120);
     }
 
     await expect(page.getByTestId("chat-row").first()).toBeVisible();
-    await expect(page.getByText("Chat 219", { exact: true })).toBeVisible();
+    await expect(page.getByText("Chat 399", { exact: true })).toBeVisible();
+    expect(errors, errors.join("\n")).toEqual([]);
+  });
+
+  test("re-fetches evicted pages on scroll-back to the top", async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+    page.on("console", (m) => {
+      if (m.type() === "error") errors.push(m.text());
+    });
+
+    await mockChatPages(page);
+    await page.goto("/");
+    await expect(page.getByText("Chat 0", { exact: true })).toBeVisible();
+
+    // Scroll deep enough to evict the head pages, then back to the very top. The
+    // head rows were dropped from the window, so seeing "Chat 0" again proves the
+    // evicted page was re-fetched on scroll-back (#132), not merely retained.
+    const scroller = page.getByTestId("chat-scroll");
+    for (let i = 0; i < 80; i++) {
+      await scroller.evaluate((el) => {
+        el.scrollTop = el.scrollHeight;
+      });
+      await page.waitForTimeout(120);
+    }
+    await expect(page.getByText("Chat 399", { exact: true })).toBeVisible();
+
+    for (let i = 0; i < 80; i++) {
+      await scroller.evaluate((el) => {
+        el.scrollTop = 0;
+      });
+      await page.waitForTimeout(120);
+    }
+
+    await expect(page.getByText("Chat 0", { exact: true })).toBeVisible();
     expect(errors, errors.join("\n")).toEqual([]);
   });
 });

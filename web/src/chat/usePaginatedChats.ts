@@ -17,6 +17,24 @@ export type ListDirection = "asc" | "desc";
 
 const DEFAULT_PAGE_SIZE = 30;
 
+// Cap on how many pages the loaded window holds. Past this, scrolling further
+// evicts the far-offscreen page at the opposite end; scrolling back re-fetches
+// it via its cursor. This bounds memory and the frozen-sort layer's per-render
+// re-sort cost at scale (~50,000 Chats), where an unbounded window grew both
+// without limit (#132 / ADR-0018, ADR-0020). 8 pages comfortably exceeds a
+// viewport-plus-overscan worth of rows at the default page size.
+const DEFAULT_MAX_WINDOW_PAGES = 8;
+
+// One fetched page held in the loaded window, tagged with the cursors that
+// bound it: `fromCursor` is the keyset cursor that fetched this page (null for
+// the list head), so an evicted page can be re-fetched on scroll-back;
+// `nextCursor` fetches the page below it (null at the list tail).
+interface LoadedPage {
+  fromCursor: string | null;
+  nextCursor: string | null;
+  chats: Chat[];
+}
+
 // The keyset endpoint rejects a `limit` over MAX_PAGE_LIMIT (the shared cap in
 // `@contract`). The window can grow past it via loadMore, so any window-sized
 // request must clamp to it — otherwise the server returns 400 and the response
@@ -28,21 +46,16 @@ const DEFAULT_PAGE_SIZE = 30;
 // window can never stay stale indefinitely even if a push is lost.
 const RECONCILE_FLOOR_MS = 30000;
 
-// Merge a freshly-fetched window into the loaded one: refresh fields for chats
-// the server still returns, keep loaded chats the refetch no longer covers (the
-// window only grows under a background refresh — rows never vanish), and append
-// brand-new chats. Ordering is left to the frozen-sort layer.
-function mergeWindow(loaded: Chat[], incoming: Chat[]): Chat[] {
-  const incomingById = new Map(incoming.map((c) => [c.id, c]));
-  const loadedIds = new Set(loaded.map((c) => c.id));
-  const merged = loaded.map((c) => incomingById.get(c.id) ?? c);
-  const added = incoming.filter((c) => !loadedIds.has(c.id));
-  return [...merged, ...added];
-}
-
 interface UsePaginatedChatsOptions {
   /** Page size for the keyset `limit`. */
   pageSize?: number;
+  /**
+   * Cap on the loaded window's page count (#132). Past this, `loadMore` evicts
+   * the oldest page and `loadPrevious` evicts the newest, keeping the window
+   * bounded. Injectable so tests can drive eviction with a small window;
+   * defaults to {@link DEFAULT_MAX_WINDOW_PAGES}.
+   */
+  maxWindowPages?: number;
   // Active only when the main view sorts by a descending time axis. When off,
   // the hook holds an empty window and issues no requests (the full-load path
   // is serving instead).
@@ -136,6 +149,7 @@ export function usePaginatedChats(
   direction: ListDirection,
   {
     pageSize = DEFAULT_PAGE_SIZE,
+    maxWindowPages = DEFAULT_MAX_WINDOW_PAGES,
     enabled = true,
     projects = [],
     tags = [],
@@ -158,42 +172,47 @@ export function usePaginatedChats(
     [projectsKey, tagsKey]
   );
 
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  // The loaded window is a list of fetched pages, each carrying the cursors that
+  // bound it (#132). The outward `chats` is their concatenation; holding pages
+  // (not a flat array) lets the window evict and re-fetch by page at its edges.
+  const [pages, setPages] = useState<LoadedPage[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortEpoch, setSortEpoch] = useState(0);
   const bumpEpoch = useCallback(() => setSortEpoch((e) => e + 1), []);
 
-  // The cursor is read inside loadMore, which is called from event handlers that
-  // close over a stale render. A ref keeps the live cursor without re-creating
-  // the callback. `fetching` guards against overlapping page fetches (e.g. a
-  // near-bottom detector firing twice before the next page resolves).
-  const cursorRef = useRef<string | null>(null);
+  const chats = useMemo(() => pages.flatMap((p) => p.chats), [pages]);
+
+  // `fetching` guards against overlapping page fetches (e.g. a near-bottom
+  // detector firing twice before the next page resolves). `pagesRef` keeps the
+  // live window for callbacks (loadMore / loadPrevious / refresh) that run from
+  // event handlers or intervals closing over a stale render.
   const fetchingRef = useRef(false);
-  // The live window, read by refresh (called from an interval / event handler
-  // that closes over a stale render) to size the refetch and merge into. Synced
-  // after commit — refresh only ever runs post-render, so it sees the latest.
-  const chatsRef = useRef<Chat[]>(chats);
+  const pagesRef = useRef<LoadedPage[]>(pages);
   useEffect(() => {
-    chatsRef.current = chats;
-  }, [chats]);
+    pagesRef.current = pages;
+  }, [pages]);
+  // `fromCursor`s of pages evicted above the window, oldest-first. loadPrevious
+  // pops the last (the page just above the current top) to re-fetch it on
+  // scroll-back. Reset whenever the window re-anchors (#132).
+  const evictedAboveRef = useRef<(string | null)[]>([]);
 
   // (Re)load the first page whenever the sort axis, the active filter, or the
   // enabled flag changes — resetting the window so the new axis or filter
-  // re-anchors from its top (#130).
+  // re-anchors from its top (#130). The fresh window is a single head page
+  // (`fromCursor: null`), from which loadMore grows downward.
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
-    cursorRef.current = null;
     fetchingRef.current = true;
     void fetchPage(
       pageUrl(sort, direction, pageSize, filter, trashedOnly)
     ).then((data) => {
       if (cancelled) return;
       if (data) {
-        setChats(data.chats);
-        setNextCursor(data.nextCursor);
-        cursorRef.current = data.nextCursor;
+        evictedAboveRef.current = [];
+        setPages([
+          { fromCursor: null, nextCursor: data.nextCursor, chats: data.chats },
+        ]);
       }
       fetchingRef.current = false;
       setLoading(false);
@@ -204,35 +223,111 @@ export function usePaginatedChats(
   }, [sort, direction, pageSize, enabled, filter, trashedOnly]);
 
   const loadMore = useCallback(() => {
-    if (fetchingRef.current || cursorRef.current === null) return;
-    const cursor = cursorRef.current;
+    if (fetchingRef.current) return;
+    const prev = pagesRef.current;
+    const tail = prev[prev.length - 1];
+    if (!tail || tail.nextCursor === null) return;
+    const cursor = tail.nextCursor;
     fetchingRef.current = true;
     void fetchPage(
       pageUrl(sort, direction, pageSize, filter, trashedOnly, cursor)
     ).then((data) => {
       if (data) {
-        setChats((prev) => [...prev, ...data.chats]);
-        setNextCursor(data.nextCursor);
-        cursorRef.current = data.nextCursor;
+        const grown = [
+          ...pagesRef.current,
+          {
+            fromCursor: cursor,
+            nextCursor: data.nextCursor,
+            chats: data.chats,
+          },
+        ];
+        // Evict the oldest page(s) once the window passes the cap; they sit far
+        // above the viewport. Stash their cursors so scroll-back can re-fetch.
+        if (grown.length > maxWindowPages) {
+          const evictCount = grown.length - maxWindowPages;
+          evictedAboveRef.current = [
+            ...evictedAboveRef.current,
+            ...grown.slice(0, evictCount).map((p) => p.fromCursor),
+          ];
+          setPages(grown.slice(evictCount));
+        } else {
+          setPages(grown);
+        }
       }
       fetchingRef.current = false;
     });
-  }, [sort, direction, pageSize, filter, trashedOnly]);
+  }, [sort, direction, pageSize, filter, trashedOnly, maxWindowPages]);
 
-  // Re-read the top of the loaded window. Sized to the current window so a
-  // brand-new chat ranking into it is surfaced, but clamped to the page-limit
-  // cap so a large window never asks for more than the endpoint allows. Merged
-  // so existing rows keep their place; the downward cursor is left untouched —
-  // refresh reconciles the window's head, loadMore continues from its tail.
+  // Re-fetch the page just above the window and prepend it (scroll-back, #132),
+  // evicting the far-below page to stay bounded. The cursor comes off the
+  // evicted-above stack; loadMore can re-fetch the evicted-below page from the
+  // new tail's cursor, so only the top end needs a stash.
+  const loadPrevious = useCallback(() => {
+    if (fetchingRef.current) return;
+    const stack = evictedAboveRef.current;
+    if (stack.length === 0) return;
+    const cursor = stack[stack.length - 1];
+    fetchingRef.current = true;
+    void fetchPage(
+      pageUrl(
+        sort,
+        direction,
+        pageSize,
+        filter,
+        trashedOnly,
+        cursor ?? undefined
+      )
+    ).then((data) => {
+      if (data) {
+        evictedAboveRef.current = evictedAboveRef.current.slice(0, -1);
+        const grown = [
+          {
+            fromCursor: cursor,
+            nextCursor: data.nextCursor,
+            chats: data.chats,
+          },
+          ...pagesRef.current,
+        ];
+        setPages(
+          grown.length > maxWindowPages ? grown.slice(0, maxWindowPages) : grown
+        );
+      }
+      fetchingRef.current = false;
+    });
+  }, [sort, direction, pageSize, filter, trashedOnly, maxWindowPages]);
+
+  // Re-read the head of the loaded window and reconcile it in place (live-update
+  // path, #132). Only acts when the head page is still loaded: new Chats appear
+  // at the list head (newest-first), so a window scrolled far past the head has
+  // nothing at the top to reconcile, and re-reading the head there would fight
+  // eviction. Sized to the loaded window but clamped to the page-limit cap so a
+  // large window never asks for more than the endpoint allows (#147).
   const refresh = useCallback(async () => {
-    const limit = Math.min(
-      Math.max(chatsRef.current.length, pageSize),
-      MAX_PAGE_LIMIT
-    );
+    const current = pagesRef.current;
+    if (current.length === 0 || current[0].fromCursor !== null) return;
+    const windowLen = current.reduce((n, p) => n + p.chats.length, 0);
+    const limit = Math.min(Math.max(windowLen, pageSize), MAX_PAGE_LIMIT);
     const data = await fetchPage(
       pageUrl(sort, direction, limit, filter, trashedOnly)
     );
-    if (data) setChats((prev) => mergeWindow(prev, data.chats));
+    if (!data) return;
+    setPages((prev) => {
+      if (prev.length === 0) return prev;
+      const incomingById = new Map(data.chats.map((c) => [c.id, c]));
+      const loadedIds = new Set(prev.flatMap((p) => p.chats).map((c) => c.id));
+      // Refresh fields in place for chats the server still returns; keep loaded
+      // rows the refetch no longer covers (the window only grows here).
+      const updated = prev.map((p) => ({
+        ...p,
+        chats: p.chats.map((c) => incomingById.get(c.id) ?? c),
+      }));
+      // Brand-new chats now ranking into the window slot onto the head page, in
+      // server order; the frozen-sort layer places them among the held rows.
+      const added = data.chats.filter((c) => !loadedIds.has(c.id));
+      if (added.length === 0) return updated;
+      const [head, ...rest] = updated;
+      return [{ ...head, chats: [...added, ...head.chats] }, ...rest];
+    });
   }, [sort, direction, pageSize, filter, trashedOnly]);
 
   // Primary trigger: reconcile the window head on each server-pushed change, so
@@ -261,18 +356,42 @@ export function usePaginatedChats(
     bumpEpoch();
   }, [refresh, bumpEpoch]);
 
+  // Bridge the mutations' flat-list optimistic updates onto the page model.
+  // Mutations only update fields or drop a row by id, so re-distributing the
+  // transformed rows back into their pages by id keeps page boundaries — and
+  // their cursors — intact.
+  const setChats = useCallback((updater: (prev: Chat[]) => Chat[]) => {
+    setPages((prev) => {
+      const next = updater(prev.flatMap((p) => p.chats));
+      const byId = new Map(next.map((c) => [c.id, c]));
+      return prev.map((p) => ({
+        ...p,
+        chats: p.chats
+          .filter((c) => byId.has(c.id))
+          .map((c) => byId.get(c.id) as Chat),
+      }));
+    });
+  }, []);
+
   const { softDelete, restore, setTitle } = useChatMutations(
     setChats,
     bumpEpoch,
     reload
   );
 
+  const tail = pages[pages.length - 1];
+  const head = pages[0];
+
   return {
     chats,
     loading: enabled ? loading : false,
     sortEpoch,
-    hasMore: nextCursor !== null,
+    hasMore: tail ? tail.nextCursor !== null : false,
     loadMore,
+    // Content sits above the window only once its head page was evicted, which
+    // leaves the top page tagged with the cursor that fetched it (#132).
+    hasPrevious: head ? head.fromCursor !== null : false,
+    loadPrevious,
     reload,
     refresh,
     softDelete,

@@ -17,6 +17,27 @@ function fakeStreamConnector() {
   return { connect, emitChanged: () => handlers?.onChanged() };
 }
 
+// Replace the fake active list with `n` synthetic chats whose ids sort by
+// updatedAt desc as b0, b1, …, so keyset pages are deterministic: page size 2
+// yields [b0,b1], [b2,b3], …. resetFakeChats (afterEach) restores the originals.
+function seedManyActiveChats(n: number): void {
+  fakeChats.length = 0;
+  for (let i = 0; i < n; i++) {
+    fakeChats.push({
+      id: `b${i}`,
+      sourceId: `B${i}`,
+      agent: "claude-code",
+      defaultTitle: `Chat ${i}`,
+      customTitle: null,
+      project: "my-web-app",
+      projectPath: "/Users/test/my-web-app",
+      sourceFilePath: null,
+      createdAt: 2_000_000_000_000 - i,
+      updatedAt: 2_000_000_000_000 - i * 1000,
+    });
+  }
+}
+
 // Active fake chats by updatedAt desc: chat-2 (300), chat-1 (200), chat-3 (150),
 // chat-missing (1699999900000). Deleted chats are excluded from the active list.
 describe("usePaginatedChats", () => {
@@ -249,5 +270,144 @@ describe("usePaginatedChats", () => {
 
     // Refresh is a no-op on failure; the window stays intact, nothing throws.
     expect(result.current.chats.map((c) => c.id)).toEqual(before);
+  });
+});
+
+// Bounded loaded window / page eviction (#132). The loaded window is capped at
+// `maxWindowPages`; scrolling further evicts far-offscreen pages and re-fetches
+// them on scroll-back, so memory and per-render re-sort stay bounded at scale.
+describe("usePaginatedChats — bounded window (#132)", () => {
+  it("evicts the oldest page when loadMore grows the window past the cap", async () => {
+    seedManyActiveChats(10); // b0 (newest) … b9 (oldest)
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", { pageSize: 2, maxWindowPages: 2 })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    // Page 1.
+    expect(result.current.chats.map((c) => c.id)).toEqual(["b0", "b1"]);
+
+    // Page 2 fills the window to the 2-page cap.
+    act(() => result.current.loadMore());
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual([
+        "b0",
+        "b1",
+        "b2",
+        "b3",
+      ])
+    );
+
+    // Page 3 exceeds the cap: the oldest page (b0,b1) is evicted, so the window
+    // holds the last two pages and stays bounded at four rows.
+    act(() => result.current.loadMore());
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual([
+        "b2",
+        "b3",
+        "b4",
+        "b5",
+      ])
+    );
+  });
+
+  it("re-fetches an evicted page on loadPrevious (scroll-back)", async () => {
+    seedManyActiveChats(10);
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", { pageSize: 2, maxWindowPages: 2 })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Scroll down two pages so the head page (b0,b1) is evicted above.
+    act(() => result.current.loadMore());
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual([
+        "b0",
+        "b1",
+        "b2",
+        "b3",
+      ])
+    );
+    act(() => result.current.loadMore());
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual([
+        "b2",
+        "b3",
+        "b4",
+        "b5",
+      ])
+    );
+    // There is now content above the window.
+    expect(result.current.hasPrevious).toBe(true);
+
+    // Scroll back: the evicted page above is re-fetched and prepended, and the
+    // far-below page is evicted to keep the window bounded.
+    act(() => result.current.loadPrevious());
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual([
+        "b0",
+        "b1",
+        "b2",
+        "b3",
+      ])
+    );
+    // Back at the head: nothing above to re-fetch.
+    expect(result.current.hasPrevious).toBe(false);
+  });
+
+  it("skips the head reconcile when scrolled deep enough to evict the head", async () => {
+    seedManyActiveChats(10);
+    const stream = fakeStreamConnector();
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", {
+        pageSize: 2,
+        maxWindowPages: 2,
+        connect: stream.connect,
+      })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.loadMore());
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual([
+        "b0",
+        "b1",
+        "b2",
+        "b3",
+      ])
+    );
+    act(() => result.current.loadMore());
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual([
+        "b2",
+        "b3",
+        "b4",
+        "b5",
+      ])
+    );
+
+    // A brand-new chat ranks at the very top, then the server pushes. Because the
+    // head page is evicted, the head reconcile is skipped: the deep-scrolled
+    // window is left exactly where it is, undisturbed by a change at the head.
+    fakeChats.unshift({
+      id: "b-new",
+      sourceId: "BNEW",
+      agent: "claude-code",
+      defaultTitle: "Brand new",
+      customTitle: null,
+      project: "my-web-app",
+      projectPath: "/Users/test/my-web-app",
+      sourceFilePath: null,
+      createdAt: 3_000_000_000_000,
+      updatedAt: 3_000_000_000_000,
+    });
+    await act(async () => {
+      stream.emitChanged();
+    });
+
+    expect(result.current.chats.map((c) => c.id)).toEqual([
+      "b2",
+      "b3",
+      "b4",
+      "b5",
+    ]);
   });
 });
