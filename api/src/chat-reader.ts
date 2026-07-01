@@ -257,21 +257,28 @@ export function createChatReader({
   // field, never ~3 per row — issue #106) and returns an assembler that turns a
   // single Archive chat row + visibility into the public Chat shape. Shared by
   // the full-list (`listChats`) and paginated (`listChatsPage`) read paths.
-  function loadHydration(): (
+  // `scope.sourceIds` bounds the message/raw aggregations to a page's chats so
+  // the paginated path stays O(page); the full-list path calls this with no
+  // scope and aggregates every chat as before (issue #158).
+  function loadHydration(scope?: {
+    sourceIds?: string[];
+  }): (
     row: ChatRow,
     visibility: ReturnType<typeof loadChatVisibility>
   ) => ChatResponse {
     const tsRangeByKey = new Map(
-      archive.read.listChatTsRanges().map((r) => [key(r.agent, r.sourceId), r])
+      archive.read
+        .listChatTsRanges(scope)
+        .map((r) => [key(r.agent, r.sourceId), r])
     );
     const sourcePathByKey = new Map(
       archive.read
-        .listLatestRawSourcePaths()
+        .listLatestRawSourcePaths(scope)
         .map((r) => [key(r.agent, r.sourceId), r.sourcePath])
     );
     const firstUserTextByKey = new Map(
       archive.read
-        .listFirstUserTexts()
+        .listFirstUserTexts(scope)
         .map((r) => [key(r.agent, r.sourceId), r.text])
     );
     const customTitleById = metadata.listCustomTitles();
@@ -347,8 +354,15 @@ export function createChatReader({
     const visibility = loadChatVisibility(metadata, {
       includeTrashed: includeTrashed || trashedOnly,
     });
-    const rowById = new Map(archive.read.listChatRows().map((r) => [r.id, r]));
-    const toResponse = loadHydration();
+    // Hydrate only this page's chats: fetch their rows by id and scope the
+    // message/raw aggregations to their source ids, so a page read stays
+    // O(page) instead of loading and aggregating the whole archive (issue #158).
+    const pageIds = page.items.map((item) => item.id);
+    const rows = archive.read.listChatRowsByIds(pageIds);
+    const rowById = new Map(rows.map((r) => [r.id, r]));
+    const toResponse = loadHydration({
+      sourceIds: rows.map((r) => r.sourceId),
+    });
 
     const chats: ChatResponse[] = [];
     for (const item of page.items) {
