@@ -199,6 +199,58 @@ describe("ArchiveRepository write seam", () => {
     repo.close();
   });
 
+  it("bounded reads scope listChatRowsByIds and the aggregations to a page (issue #158)", () => {
+    const repo = createArchiveRepository({ dataDir });
+    const mkChat = (sourceId: string, text: string, ts: string) => {
+      const id = repo.ensureChat("claude-code", sourceId, new Date());
+      const raw = repo.insertRawMessage({
+        agent: "claude-code",
+        sourceId,
+        sourcePath: `/src/${sourceId}.jsonl`,
+        sourceLocator: "line:1",
+        payload: { role: "user", content: text },
+        ingestedAt: new Date(),
+      });
+      repo.upsertNormalizedMessage({
+        agent: "claude-code",
+        sourceId,
+        rawId: raw.id,
+        message: {
+          messageId: "m1",
+          role: "user",
+          ts,
+          text,
+          blocks: [{ type: "text", text }],
+        },
+      });
+      return id;
+    };
+    const id1 = mkChat("session-1", "first", "2024-01-01T00:00:00Z");
+    mkChat("session-2", "second", "2024-02-02T00:00:00Z");
+
+    // listChatRowsByIds returns only the requested rows, never the whole table.
+    const only1 = repo.read.listChatRowsByIds([id1]);
+    expect(only1).toHaveLength(1);
+    expect(only1[0].id).toBe(id1);
+    expect(repo.read.listChatRowsByIds([])).toHaveLength(0);
+    expect(repo.read.listChatRows()).toHaveLength(2);
+
+    // The message/raw aggregations scope to the given source ids; unscoped they
+    // still cover every chat (the full-list path).
+    const scopedTs = repo.read.listChatTsRanges({ sourceIds: ["session-1"] });
+    expect(scopedTs.map((r) => r.sourceId)).toEqual(["session-1"]);
+    expect(repo.read.listChatTsRanges()).toHaveLength(2);
+
+    const scopedText = repo.read.listFirstUserTexts({
+      sourceIds: ["session-2"],
+    });
+    expect(scopedText).toHaveLength(1);
+    expect(scopedText[0].text).toBe("second");
+    expect(repo.read.listFirstUserTexts()).toHaveLength(2);
+
+    repo.close();
+  });
+
   it("recordIngestionEvent writes an audit row and never deletes archive rows", () => {
     const repo = createArchiveRepository({ dataDir });
 

@@ -44,6 +44,12 @@ export interface ArchiveReadSeam {
    * nothing; omitting `projects` returns every row.
    */
   listChatRows(opts?: { projects?: string[] }): ChatRow[];
+  /**
+   * Chat rows for a specific set of internal ids, in no guaranteed order (the
+   * caller re-orders). Bounded by the id set, so hydrating one keyset page stays
+   * O(page) instead of loading the whole table (issue #158).
+   */
+  listChatRowsByIds(ids: string[]): ChatRow[];
   /** Resolve a chat by its source id; null when absent. */
   findChatBySourceId(sourceId: string): ChatRow | null;
   /** Resolve a chat by its bare chat_id code (the public handle); null when absent. */
@@ -53,18 +59,24 @@ export interface ArchiveReadSeam {
   /**
    * One grouped row per `(agent, source_id)` with the min/max message ts.
    * A single grouped query — constant query count regardless of chat count.
+   * With `sourceIds`, scopes the scan to those chats so page hydration does not
+   * aggregate the whole messages table (issue #158).
    */
-  listChatTsRanges(): ChatTsRange[];
+  listChatTsRanges(opts?: { sourceIds?: string[] }): ChatTsRange[];
   /**
    * The latest-ingested raw source path per `(agent, source_id)`, resolved
    * with a windowed query so listing N chats stays a constant query count.
+   * `sourceIds` scopes the scan to a page's chats (issue #158).
    */
-  listLatestRawSourcePaths(): LatestRawSourcePath[];
+  listLatestRawSourcePaths(opts?: {
+    sourceIds?: string[];
+  }): LatestRawSourcePath[];
   /**
    * The earliest user message text per `(agent, source_id)`, resolved with a
-   * windowed query so listing N chats stays a constant query count.
+   * windowed query so listing N chats stays a constant query count. `sourceIds`
+   * scopes the scan to a page's chats (issue #158).
    */
-  listFirstUserTexts(): FirstUserText[];
+  listFirstUserTexts(opts?: { sourceIds?: string[] }): FirstUserText[];
   /** Every ingestion-event audit row, in insertion order. */
   listIngestionEvents(): IngestionEventRow[];
 }
@@ -83,6 +95,10 @@ export function createArchiveReadSeam(db: ArchiveDb): ArchiveReadSeam {
           .all();
       }
       return db.select().from(chats).all();
+    },
+    listChatRowsByIds(ids) {
+      if (ids.length === 0) return [];
+      return db.select().from(chats).where(inArray(chats.id, ids)).all();
     },
     findChatBySourceId(sourceId) {
       return (
@@ -103,7 +119,11 @@ export function createArchiveReadSeam(db: ArchiveDb): ArchiveReadSeam {
         .orderBy(asc(messages.ts))
         .all();
     },
-    listChatTsRanges() {
+    listChatTsRanges(opts) {
+      const scope =
+        opts?.sourceIds !== undefined
+          ? inArray(messages.sourceId, opts.sourceIds)
+          : sql`1 = 1`;
       return db
         .select({
           agent: messages.agent,
@@ -112,10 +132,15 @@ export function createArchiveReadSeam(db: ArchiveDb): ArchiveReadSeam {
           maxTs: sql<number | null>`max(${messages.ts})`,
         })
         .from(messages)
+        .where(scope)
         .groupBy(messages.agent, messages.sourceId)
         .all();
     },
-    listLatestRawSourcePaths() {
+    listLatestRawSourcePaths(opts) {
+      const scope =
+        opts?.sourceIds !== undefined
+          ? inArray(rawMessages.sourceId, opts.sourceIds)
+          : sql`1 = 1`;
       const ranked = db
         .select({
           agent: rawMessages.agent,
@@ -126,6 +151,7 @@ export function createArchiveReadSeam(db: ArchiveDb): ArchiveReadSeam {
           ),
         })
         .from(rawMessages)
+        .where(scope)
         .as("ranked_raw");
       return db
         .select({
@@ -137,7 +163,14 @@ export function createArchiveReadSeam(db: ArchiveDb): ArchiveReadSeam {
         .where(eq(ranked.rn, 1))
         .all();
     },
-    listFirstUserTexts() {
+    listFirstUserTexts(opts) {
+      const scope =
+        opts?.sourceIds !== undefined
+          ? and(
+              eq(messages.role, "user"),
+              inArray(messages.sourceId, opts.sourceIds)
+            )
+          : eq(messages.role, "user");
       const ranked = db
         .select({
           agent: messages.agent,
@@ -148,7 +181,7 @@ export function createArchiveReadSeam(db: ArchiveDb): ArchiveReadSeam {
           ),
         })
         .from(messages)
-        .where(eq(messages.role, "user"))
+        .where(scope)
         .as("ranked_user");
       return db
         .select({
