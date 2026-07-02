@@ -1,0 +1,413 @@
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { describe, it, expect } from "vitest";
+import { usePaginatedChats } from "@/chat/usePaginatedChats";
+import type { ListStreamConnector } from "@/chat/useListStream";
+import { fakeChats } from "@/test/handlers";
+import { server } from "@/test/server";
+
+// A connector test double for the live-update stream: captures the handlers the
+// hook wires so the test can push a `changed` event deterministically.
+function fakeStreamConnector() {
+  let handlers: { onChanged: () => void; onError: () => void } | null = null;
+  const connect: ListStreamConnector = (h) => {
+    handlers = h;
+    return { close() {} };
+  };
+  return { connect, emitChanged: () => handlers?.onChanged() };
+}
+
+// Replace the fake active list with `n` synthetic chats whose ids sort by
+// updatedAt desc as b0, b1, …, so keyset pages are deterministic: page size 2
+// yields [b0,b1], [b2,b3], …. resetFakeChats (afterEach) restores the originals.
+function seedManyActiveChats(n: number): void {
+  fakeChats.length = 0;
+  for (let i = 0; i < n; i++) {
+    fakeChats.push({
+      id: `b${i}`,
+      sourceId: `B${i}`,
+      agent: "claude-code",
+      defaultTitle: `Chat ${i}`,
+      customTitle: null,
+      project: "my-web-app",
+      projectPath: "/Users/test/my-web-app",
+      sourceFilePath: null,
+      createdAt: 2_000_000_000_000 - i,
+      updatedAt: 2_000_000_000_000 - i * 1000,
+    });
+  }
+}
+
+// Active fake chats by updatedAt desc: chat-2 (300), chat-1 (200), chat-3 (150),
+// chat-missing (1699999900000). Deleted chats are excluded from the active list.
+describe("usePaginatedChats", () => {
+  it("loads the first page sorted by updatedAt descending", async () => {
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", { pageSize: 2 })
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.chats.map((c) => c.id)).toEqual(["chat-2", "chat-1"]);
+    expect(result.current.hasMore).toBe(true);
+  });
+
+  it("loads the first page sorted by createdAt descending", async () => {
+    // Active by createdAt desc: chat-2 (1700000100000), chat-3 (1700000050000),
+    // chat-1 (1700000000000), chat-missing (1699999900000).
+    const { result } = renderHook(() =>
+      usePaginatedChats("createdAt", "desc", { pageSize: 2 })
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.chats.map((c) => c.id)).toEqual(["chat-2", "chat-3"]);
+  });
+
+  it("loads the first page sorted by createdAt ascending", async () => {
+    // Active by createdAt asc: chat-missing (1699999900000), chat-1
+    // (1700000000000), chat-3 (1700000050000), chat-2 (1700000100000).
+    const { result } = renderHook(() =>
+      usePaginatedChats("createdAt", "asc", { pageSize: 2 })
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.chats.map((c) => c.id)).toEqual([
+      "chat-missing",
+      "chat-1",
+    ]);
+    expect(result.current.hasMore).toBe(true);
+  });
+
+  it("fetches the next page by cursor and appends it below the window", async () => {
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", { pageSize: 2 })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.chats.map((c) => c.id)).toEqual(["chat-2", "chat-1"]);
+
+    act(() => result.current.loadMore());
+
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual([
+        "chat-2",
+        "chat-1",
+        "chat-3",
+        "chat-missing",
+      ])
+    );
+    // All four active chats are loaded; no further page remains.
+    expect(result.current.hasMore).toBe(false);
+  });
+
+  it("does not fetch more once the last page is reached", async () => {
+    // A page large enough to hold every active chat: first page is the last.
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", { pageSize: 50 })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.hasMore).toBe(false);
+    const before = result.current.chats.map((c) => c.id);
+
+    act(() => result.current.loadMore());
+
+    // No cursor means no request; the window is unchanged.
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.chats.map((c) => c.id)).toEqual(before);
+  });
+
+  it("merges field updates and brand-new chats on a background refresh without dropping loaded rows", async () => {
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", { pageSize: 2 })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.chats.map((c) => c.id)).toEqual(["chat-2", "chat-1"]);
+
+    // Background ingestion: bump a loaded row and surface a brand-new chat that
+    // now ranks at the very top by updatedAt.
+    const loaded = fakeChats.find((c) => c.id === "chat-1")!;
+    loaded.updatedAt = 1700000400000;
+    fakeChats.push({
+      id: "chat-new",
+      sourceId: "CHATNW",
+      agent: "claude-code",
+      defaultTitle: "Fresh chat",
+      customTitle: null,
+      project: "my-web-app",
+      projectPath: "/Users/test/my-web-app",
+      sourceFilePath: null,
+      createdAt: 1700000500000,
+      updatedAt: 1700000500000,
+    });
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    const byId = new Map(result.current.chats.map((c) => [c.id, c]));
+    // The brand-new chat is surfaced; the previously-loaded rows are retained
+    // (chat-1 is absent from the refetched top-2 but must not vanish).
+    expect(byId.has("chat-new")).toBe(true);
+    expect(byId.has("chat-1")).toBe(true);
+    expect(byId.has("chat-2")).toBe(true);
+    // The retained row carries its refreshed field value.
+    expect(byId.get("chat-1")!.updatedAt).toBe(1700000400000);
+  });
+
+  it("reconciles the window when the stream pushes a changed event (#132)", async () => {
+    const stream = fakeStreamConnector();
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", {
+        pageSize: 2,
+        connect: stream.connect,
+      })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.chats.map((c) => c.id)).toEqual(["chat-2", "chat-1"]);
+
+    // Background ingestion surfaces a brand-new chat ranking at the top by
+    // updatedAt; the server then pushes a `changed` event over the stream.
+    fakeChats.push({
+      id: "chat-pushed",
+      sourceId: "CHATPS",
+      agent: "claude-code",
+      defaultTitle: "Pushed chat",
+      customTitle: null,
+      project: "my-web-app",
+      projectPath: "/Users/test/my-web-app",
+      sourceFilePath: null,
+      createdAt: 1700000600000,
+      updatedAt: 1700000600000,
+    });
+
+    await act(async () => {
+      stream.emitChanged();
+    });
+
+    // The push reconciles the window head — no manual refresh, no full refetch.
+    await waitFor(() =>
+      expect(result.current.chats.some((c) => c.id === "chat-pushed")).toBe(
+        true
+      )
+    );
+    // Existing rows are retained, not dropped.
+    expect(result.current.chats.some((c) => c.id === "chat-2")).toBe(true);
+  });
+
+  it("sends the active Project filter to the server (#130)", async () => {
+    // Active by updatedAt desc: chat-2 (backend-api), chat-1 (my-web-app),
+    // chat-3 (my-web-app), chat-missing (some-project). Filtering to my-web-app
+    // server-side leaves only chat-1 and chat-3.
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", {
+        pageSize: 10,
+        projects: ["my-web-app"],
+      })
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.chats.map((c) => c.id)).toEqual(["chat-1", "chat-3"]);
+  });
+
+  it("re-anchors the window when the active filter changes (#130)", async () => {
+    const { result, rerender } = renderHook(
+      ({ projects }: { projects: string[] }) =>
+        usePaginatedChats("updatedAt", "desc", { pageSize: 10, projects }),
+      { initialProps: { projects: ["my-web-app"] } }
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.chats.map((c) => c.id)).toEqual(["chat-1", "chat-3"]);
+
+    // Changing the selection re-anchors: the window refetches the first page for
+    // the new filter rather than appending to or keeping the old one.
+    rerender({ projects: ["backend-api"] });
+
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual(["chat-2"])
+    );
+  });
+
+  it("loads a trashed-only page sorted by deleted time (#145)", async () => {
+    // The Trash view pages server-side: trashed-only, most-recently-deleted
+    // first. chat-deleted-1 (deletedAt 1700000200000) precedes chat-deleted-2
+    // (1700000100000); every active chat is excluded.
+    const { result } = renderHook(() =>
+      usePaginatedChats("deletedAt", "desc", {
+        pageSize: 10,
+        trashedOnly: true,
+      })
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.chats.map((c) => c.id)).toEqual([
+      "chat-deleted-1",
+      "chat-deleted-2",
+    ]);
+  });
+
+  it("ignores a failed background refresh instead of crashing", async () => {
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", { pageSize: 2 })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const before = result.current.chats.map((c) => c.id);
+
+    // The next list read fails (e.g. once the loaded window grows past the cap,
+    // a window-sized limit is rejected with 400 — the bug that blanked the app).
+    server.use(
+      http.get("/api/chats", () =>
+        HttpResponse.json({ error: "Invalid limit" }, { status: 400 })
+      )
+    );
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    // Refresh is a no-op on failure; the window stays intact, nothing throws.
+    expect(result.current.chats.map((c) => c.id)).toEqual(before);
+  });
+});
+
+// Bounded loaded window / page eviction (#132). The loaded window is capped at
+// `maxWindowPages`; scrolling further evicts far-offscreen pages and re-fetches
+// them on scroll-back, so memory and per-render re-sort stay bounded at scale.
+describe("usePaginatedChats — bounded window (#132)", () => {
+  it("evicts the oldest page when loadMore grows the window past the cap", async () => {
+    seedManyActiveChats(10); // b0 (newest) … b9 (oldest)
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", { pageSize: 2, maxWindowPages: 2 })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    // Page 1.
+    expect(result.current.chats.map((c) => c.id)).toEqual(["b0", "b1"]);
+
+    // Page 2 fills the window to the 2-page cap.
+    act(() => result.current.loadMore());
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual([
+        "b0",
+        "b1",
+        "b2",
+        "b3",
+      ])
+    );
+
+    // Page 3 exceeds the cap: the oldest page (b0,b1) is evicted, so the window
+    // holds the last two pages and stays bounded at four rows.
+    act(() => result.current.loadMore());
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual([
+        "b2",
+        "b3",
+        "b4",
+        "b5",
+      ])
+    );
+  });
+
+  it("re-fetches an evicted page on loadPrevious (scroll-back)", async () => {
+    seedManyActiveChats(10);
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", { pageSize: 2, maxWindowPages: 2 })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Scroll down two pages so the head page (b0,b1) is evicted above.
+    act(() => result.current.loadMore());
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual([
+        "b0",
+        "b1",
+        "b2",
+        "b3",
+      ])
+    );
+    act(() => result.current.loadMore());
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual([
+        "b2",
+        "b3",
+        "b4",
+        "b5",
+      ])
+    );
+    // There is now content above the window.
+    expect(result.current.hasPrevious).toBe(true);
+
+    // Scroll back: the evicted page above is re-fetched and prepended, and the
+    // far-below page is evicted to keep the window bounded.
+    act(() => result.current.loadPrevious());
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual([
+        "b0",
+        "b1",
+        "b2",
+        "b3",
+      ])
+    );
+    // Back at the head: nothing above to re-fetch.
+    expect(result.current.hasPrevious).toBe(false);
+  });
+
+  it("skips the head reconcile when scrolled deep enough to evict the head", async () => {
+    seedManyActiveChats(10);
+    const stream = fakeStreamConnector();
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", {
+        pageSize: 2,
+        maxWindowPages: 2,
+        connect: stream.connect,
+      })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.loadMore());
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual([
+        "b0",
+        "b1",
+        "b2",
+        "b3",
+      ])
+    );
+    act(() => result.current.loadMore());
+    await waitFor(() =>
+      expect(result.current.chats.map((c) => c.id)).toEqual([
+        "b2",
+        "b3",
+        "b4",
+        "b5",
+      ])
+    );
+
+    // A brand-new chat ranks at the very top, then the server pushes. Because the
+    // head page is evicted, the head reconcile is skipped: the deep-scrolled
+    // window is left exactly where it is, undisturbed by a change at the head.
+    fakeChats.unshift({
+      id: "b-new",
+      sourceId: "BNEW",
+      agent: "claude-code",
+      defaultTitle: "Brand new",
+      customTitle: null,
+      project: "my-web-app",
+      projectPath: "/Users/test/my-web-app",
+      sourceFilePath: null,
+      createdAt: 3_000_000_000_000,
+      updatedAt: 3_000_000_000_000,
+    });
+    await act(async () => {
+      stream.emitChanged();
+    });
+
+    expect(result.current.chats.map((c) => c.id)).toEqual([
+      "b2",
+      "b3",
+      "b4",
+      "b5",
+    ]);
+  });
+});

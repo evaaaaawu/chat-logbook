@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { MAX_PAGE_LIMIT } from "@contract";
 
 type FakeChat = {
   id: string;
@@ -216,10 +217,181 @@ export const handlers = [
   http.get("/api/chats", ({ request }) => {
     const url = new URL(request.url);
     const includeTrashed = url.searchParams.get("includeTrashed") === "true";
-    const filtered = includeTrashed
-      ? fakeChats
+    // The Trash view scopes the page to soft-deleted chats only (#145), distinct
+    // from includeTrashed (active + trashed).
+    const trashedOnly = url.searchParams.get("trashedOnly") === "true";
+    const visible = trashedOnly
+      ? fakeChats.filter((c) => c.isDeleted)
+      : includeTrashed
+        ? fakeChats
+        : fakeChats.filter((c) => !c.isDeleted);
+
+    // Paginated mode mirrors the merged backend (#142, #143): `?limit=` opts into
+    // one server-sorted keyset page, with an opaque cursor and `nextCursor` (null
+    // on the last page). `?direction=` (asc/desc, default desc) flips both the
+    // sort and the keyset comparison in lock step. The cursor's wire shape is
+    // opaque to the frontend; this fake uses base64 JSON of (sortKey,id) for
+    // internal consistency, not byte-for-byte parity with the real encoder.
+    const limitParam = url.searchParams.get("limit");
+    if (limitParam !== null) {
+      const limit = Number.parseInt(limitParam, 10);
+      // Mirror the backend's keyset cap (the shared MAX_PAGE_LIMIT): a larger
+      // limit is rejected, so the client must never request more than the cap.
+      if (!Number.isInteger(limit) || limit <= 0 || limit > MAX_PAGE_LIMIT) {
+        return HttpResponse.json({ error: "Invalid limit" }, { status: 400 });
+      }
+      const sortParam = url.searchParams.get("sort");
+      const sort =
+        sortParam === "createdAt"
+          ? "createdAt"
+          : sortParam === "deletedAt"
+            ? "deletedAt"
+            : sortParam === "title"
+              ? "title"
+              : "updatedAt";
+      const direction =
+        url.searchParams.get("direction") === "asc" ? "asc" : "desc";
+      const dir = direction === "asc" ? -1 : 1;
+      // deletedAt is the Trash deleted-time axis (#145); a null deletedAt (an
+      // active chat that slipped through) sorts as the oldest possible time.
+      // title is the keyset Title axis (#146): the fake keys on the effective
+      // title string (custom overrides default), a stand-in for the server's
+      // precomputed collation key — enough for the client window to page.
+      const sortKeyOf = (c: FakeChat): number | string =>
+        sort === "createdAt"
+          ? c.createdAt
+          : sort === "deletedAt"
+            ? (c.deletedAt ?? 0)
+            : sort === "title"
+              ? (c.customTitle ?? c.defaultTitle).toLowerCase()
+              : c.updatedAt;
+      // One comparison for both axes: string keys (title) and number keys (time).
+      const cmpKey = (x: number | string, y: number | string): number =>
+        x < y ? -1 : x > y ? 1 : 0;
+      // Project (OR) + Tag (AND) filtering inside the paginated query, mirroring
+      // the server (#130). Repeated `?project=` unions; `?tags=` is one
+      // comma-separated AND set. An empty value selects the (No project) /
+      // Untagged group. Absent params leave that axis unfiltered.
+      const projectSel = url.searchParams.getAll("project");
+      const tagsParam = url.searchParams.get("tags");
+      const tagSel = tagsParam === null ? null : tagsParam.split(",");
+      const filtered = visible.filter((c) => {
+        if (projectSel.length > 0 && !projectSel.includes(c.project)) {
+          return false;
+        }
+        if (tagSel) {
+          const ids = new Set(fakeChatTags[c.id] ?? []);
+          const wantUntagged = tagSel.includes("");
+          if (wantUntagged && ids.size > 0) return false;
+          if (!tagSel.filter((t) => t !== "").every((t) => ids.has(t))) {
+            return false;
+          }
+        }
+        return true;
+      });
+      // dir flips the sort and the tiebreak together: desc is (sortKey DESC, id
+      // DESC), asc is (sortKey ASC, id ASC).
+      const sorted = [...filtered].sort(
+        (a, b) =>
+          dir * cmpKey(sortKeyOf(b), sortKeyOf(a)) ||
+          dir * (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
+      );
+      const cursorParam = url.searchParams.get("cursor");
+      let start = 0;
+      if (cursorParam) {
+        const cur = JSON.parse(
+          Buffer.from(cursorParam, "base64url").toString("utf8")
+        ) as { sortKey: number | string; id: string };
+        const after = sorted.findIndex((c) => {
+          const k = cmpKey(sortKeyOf(c), cur.sortKey);
+          return direction === "asc"
+            ? k > 0 || (k === 0 && c.id > cur.id)
+            : k < 0 || (k === 0 && c.id < cur.id);
+        });
+        start = after < 0 ? sorted.length : after;
+      }
+      const pageItems = sorted.slice(start, start + limit);
+      const hasMore = start + limit < sorted.length;
+      const last = pageItems[pageItems.length - 1];
+      const nextCursor =
+        hasMore && last
+          ? Buffer.from(
+              JSON.stringify({ sortKey: sortKeyOf(last), id: last.id }),
+              "utf8"
+            ).toString("base64url")
+          : null;
+      return HttpResponse.json({
+        chats: pageItems.map(projectChat),
+        nextCursor,
+      });
+    }
+
+    return HttpResponse.json({ chats: visible.map(projectChat) });
+  }),
+  // Server-side facet + list counts (#131 Phase A). Static per view: counts the
+  // view's whole universe (main vs Trash) and does not change with a selected
+  // filter. Registered before `/api/chats/:id` so `counts` is not read as an id.
+  http.get("/api/chats/counts", ({ request }) => {
+    const url = new URL(request.url);
+    const includeTrashed = url.searchParams.get("includeTrashed") === "true";
+    const inView = includeTrashed
+      ? fakeChats.filter((c) => c.isDeleted)
       : fakeChats.filter((c) => !c.isDeleted);
-    return HttpResponse.json({ chats: filtered.map(projectChat) });
+
+    const projMap = new Map<string, { count: number; lastActiveAt: number }>();
+    const tagMap = new Map<string, number>();
+    let untagged = 0;
+    for (const c of inView) {
+      const prev = projMap.get(c.project) ?? { count: 0, lastActiveAt: 0 };
+      projMap.set(c.project, {
+        count: prev.count + 1,
+        lastActiveAt: Math.max(prev.lastActiveAt, c.updatedAt),
+      });
+      const ids = fakeChatTags[c.id] ?? [];
+      if (ids.length === 0) untagged += 1;
+      for (const id of ids) tagMap.set(id, (tagMap.get(id) ?? 0) + 1);
+    }
+
+    return HttpResponse.json({
+      total: inView.length,
+      projects: [...projMap.entries()].map(([project, v]) => ({
+        project,
+        count: v.count,
+        lastActiveAt: v.lastActiveAt,
+      })),
+      tags: [...tagMap.entries()].map(([tagId, count]) => ({ tagId, count })),
+      untagged,
+    });
+  }),
+  // Filtered List count (#131 Phase B): the post-filter total for the active
+  // Project (OR) / Tag (AND) / Untagged filter, scoped to the view. Mirrors the
+  // paginated query's filter parsing so the header total matches the listed set.
+  http.get("/api/chats/list-total", ({ request }) => {
+    const url = new URL(request.url);
+    const includeTrashed = url.searchParams.get("includeTrashed") === "true";
+    const inView = includeTrashed
+      ? fakeChats.filter((c) => c.isDeleted)
+      : fakeChats.filter((c) => !c.isDeleted);
+
+    const projectSel = url.searchParams.getAll("project");
+    const tagsParam = url.searchParams.get("tags");
+    const tagSel = tagsParam === null ? null : tagsParam.split(",");
+    const total = inView.filter((c) => {
+      if (projectSel.length > 0 && !projectSel.includes(c.project)) {
+        return false;
+      }
+      if (tagSel) {
+        const ids = new Set(fakeChatTags[c.id] ?? []);
+        const wantUntagged = tagSel.includes("");
+        if (wantUntagged && ids.size > 0) return false;
+        if (!tagSel.filter((t) => t !== "").every((t) => ids.has(t))) {
+          return false;
+        }
+      }
+      return true;
+    }).length;
+
+    return HttpResponse.json({ total });
   }),
   http.patch("/api/chats/:id/title", async ({ params, request }) => {
     const id = params.id as string;

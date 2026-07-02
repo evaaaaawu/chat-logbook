@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Check, ChevronDown, Folder } from "lucide-react";
-import type { ProjectFacet } from "./deriveProjects";
+import type { ProjectFacet } from "./projectFacets";
 
 // Projects are ordered by recency; the caption captions that order, with the
 // detail in a tooltip.

@@ -1,0 +1,1 @@
+CREATE INDEX `chats_meta_deleted_at_idx` ON `chats_meta` (`deleted_at`,`id`) WHERE `deleted_at` IS NOT NULL;

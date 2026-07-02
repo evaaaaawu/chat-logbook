@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useChats } from "@/chat/useChats";
+import {
+  usePaginatedChats,
+  type ListDirection,
+  type ListSort,
+} from "@/chat/usePaginatedChats";
 import { useTags } from "@/tags/useTags";
 import { useMessages } from "@/conversation/useMessages";
 import { useToast } from "@/shared/useToast";
 import { useChatOrder } from "@/chat/sort/useChatOrder";
-import { deriveProjects } from "@/chat/projects/deriveProjects";
-import { filterChatsByProjects } from "@/chat/projects/filterChatsByProjects";
-import { filterChatsByTags } from "@/tags/filterChatsByTags";
+import { useSortPreference } from "@/chat/sort/useSortPreference";
+import { CHAT_SORT_CONFIG, TRASH_SORT_CONFIG } from "@/chat/sort/sortConfig";
+import { facetsFromCounts } from "@/chat/projects/projectFacets";
+import { useChatCounts } from "@/chat/useChatCounts";
+import { useFilteredTotal } from "@/chat/useFilteredTotal";
 import { toggleTagSelection } from "@/tags/toggleTagSelection";
 import { FilterPanel } from "@/chat/FilterPanel";
 import { ChatList } from "@/chat/ChatList";
@@ -20,11 +26,83 @@ import {
 } from "@/shared/ui/resizable";
 
 function App() {
-  const { chats, sortEpoch, softDelete, restore, setTitle, reload } =
-    useChats();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mode, setMode] = useState<"main" | "trash">("main");
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+
+  // The sort preferences are owned here, not inside useChatOrder, so the data
+  // path and each view's SortControl agree on one instance: the same field and
+  // direction drive the keyset query.
+  const mainPref = useSortPreference(CHAT_SORT_CONFIG);
+  const trashPref = useSortPreference(TRASH_SORT_CONFIG);
+
+  // Every axis pages server-side now (ADR-0018): the time axes scan the keyset
+  // index either way (#143), the Trash view adds the deleted-time axis (#145),
+  // and Title sorts through the precomputed collation key (#146 / ADR-0019).
+  // There is no full-load fallback left — the read hook always paginates, scoped
+  // per view. The two hooks both run (hooks rule); `enabled` picks the active one.
+  const mainPaginate = mode === "main";
+  const trashPaginate = mode === "trash";
+  // The active axis maps straight to a keyset sort in both views.
+  const pageSort: ListSort =
+    mainPref.field === "createdAt"
+      ? "createdAt"
+      : mainPref.field === "title"
+        ? "title"
+        : "updatedAt";
+  const pageDirection: ListDirection = mainPref.direction;
+  const trashPageSort: ListSort =
+    trashPref.field === "createdAt"
+      ? "createdAt"
+      : trashPref.field === "updatedAt"
+        ? "updatedAt"
+        : trashPref.field === "title"
+          ? "title"
+          : "deletedAt";
+
+  // The active filter is owned here so the paginated read path can push it into
+  // the keyset query (#130): an empty selection means "all". Declared above the
+  // read hooks because `usePaginatedChats` re-anchors on the selection. The
+  // empty-string entry selects the (No project) / Untagged group on each axis.
+  const [selectedProjects, setSelectedProjects] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+  const [selectedTags, setSelectedTags] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+
+  // The paginated path filters server-side: the selection rides the keyset query
+  // and re-anchors the window on change (#130). Both views read through it now;
+  // `enabled` keeps the inactive view's hook idle.
+  const paginated = usePaginatedChats(pageSort, pageDirection, {
+    enabled: mainPaginate,
+    projects: [...selectedProjects],
+    tags: [...selectedTags],
+  });
+  // The Trash view reuses the same paginated read path, scoped to trashed-only
+  // (#145). It re-anchors on the active filter and its axis the same way the main
+  // view does.
+  const trashPaginated = usePaginatedChats(trashPageSort, trashPref.direction, {
+    enabled: trashPaginate,
+    trashedOnly: true,
+    projects: [...selectedProjects],
+    tags: [...selectedTags],
+  });
+  const source = mode === "trash" ? trashPaginated : paginated;
+  const { chats, sortEpoch, softDelete, restore, setTitle, reload } = source;
+
+  // Filter-panel facet counts and the unfiltered List count come from a server
+  // aggregation (#131 Phase A), not from folding the loaded window — so they
+  // reflect the whole view (main vs Trash) even when the list is paginated.
+  const counts = useChatCounts(mode);
+  // The Trash link badge needs the trashed total in any view, so it reads the
+  // Trash counts independently of the active view's counts.
+  const trashCounts = useChatCounts("trash");
+
   const onAssignmentChange = useCallback(() => {
     void reload();
-  }, [reload]);
+    void counts.reload();
+  }, [reload, counts.reload]);
   const {
     tags: tagCatalog,
     createTag,
@@ -37,9 +115,6 @@ function App() {
   const handleRenameTitle = (id: string, title: string) => {
     void setTitle(id, title);
   };
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [mode, setMode] = useState<"main" | "trash">("main");
-  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const { messages, error } = useMessages(selectedId);
   const { toast, showToast, dismissToast } = useToast();
 
@@ -56,19 +131,17 @@ function App() {
   // sortEpoch (user data actions) and viewGen (view switches) both flush the
   // frozen order; sort field/direction changes flush it inside the hook.
   const resortKey = `${sortEpoch}:${viewGen}`;
-  const mainOrder = useChatOrder("main", chats, resortKey);
-  const trashOrder = useChatOrder("trash", chats, resortKey);
+  const mainOrder = useChatOrder("main", chats, resortKey, mainPref);
+  const trashOrder = useChatOrder("trash", chats, resortKey, trashPref);
   const order = mode === "trash" ? trashOrder : mainOrder;
   const mainChats = mainOrder.orderedChats;
   const deletedChats = trashOrder.orderedChats;
 
-  // Project filter: an empty selection means "all Projects". Facets are derived
-  // from the active view's chats (so counts are per-view), and the selected
-  // Projects are ensured into the list so a selected Project stays visible even
-  // after its last chat leaves the view (count 0).
-  const [selectedProjects, setSelectedProjects] = useState<ReadonlySet<string>>(
-    () => new Set()
-  );
+  // Project filter toggles: an empty selection means "all Projects". Facets are
+  // derived from the active view's chats (so counts are per-view), and the
+  // selected Projects are ensured into the list so a selected Project stays
+  // visible even after its last chat leaves the view (count 0). The state itself
+  // is declared above the read hooks so the paginated path can re-anchor on it.
   const toggleProject = useCallback((project: string) => {
     setSelectedProjects((prev) => {
       const next = new Set(prev);
@@ -78,13 +151,10 @@ function App() {
     });
   }, []);
 
-  // Tag filter: AND within (a chat must hold every selected Tag), combined with
-  // the Project filter (OR within) by intersecting the two filtered sets — AND
-  // across types. An empty selection means "all Tags". The `UNTAGGED` sentinel
-  // selects chats with zero Tags.
-  const [selectedTags, setSelectedTags] = useState<ReadonlySet<string>>(
-    () => new Set()
-  );
+  // Tag filter toggles: AND within (a chat must hold every selected Tag),
+  // combined with the Project filter (OR within) — AND across types. An empty
+  // selection means "all Tags". The `UNTAGGED` sentinel selects chats with zero
+  // Tags. The state is declared above the read hooks (see selectedProjects).
   const toggleTag = useCallback((tagId: string) => {
     setSelectedTags((prev) => toggleTagSelection(prev, tagId));
   }, []);
@@ -93,31 +163,46 @@ function App() {
     setSelectedTags(new Set());
   }, []);
 
+  // Project facets come from the server count aggregation; a selected Project is
+  // ensured into the list so it stays visible at count 0 once its last chat
+  // leaves the view.
   const projectFacets = useMemo(
-    () => deriveProjects(order.orderedChats, { ensure: [...selectedProjects] }),
-    [order.orderedChats, selectedProjects]
+    () =>
+      facetsFromCounts(counts.counts.projects, {
+        ensure: [...selectedProjects],
+      }),
+    [counts.counts.projects, selectedProjects]
   );
 
-  const visibleChats = filterChatsByTags(
-    filterChatsByProjects(order.orderedChats, selectedProjects),
-    selectedTags
-  );
+  // Every axis filters server-side inside the keyset query now (#130), so the
+  // loaded window is already the filtered set — re-filtering it client-side would
+  // be redundant and would fight pagination. The ordered window renders as-is.
+  const visibleChats = order.orderedChats;
   const selectedChat = chats.find((c) => c.id === selectedId) ?? null;
 
-  // Tag and Untagged counts reflect the active view (main vs Trash), deriving
-  // from the same per-view list the Project facet counts use — so the two
-  // sections agree. They state each group's size in this view, not the
-  // post-filter result, so selecting a Tag never moves the numbers.
-  const viewChats = order.orderedChats;
-  const countForTag = useCallback(
-    (tagId: string) =>
-      viewChats.filter((c) => c.tags?.some((t) => t.id === tagId)).length,
-    [viewChats]
+  // Tag and Untagged counts are server-derived per view (main vs Trash). They
+  // state each group's size in this view, not the post-filter result, so
+  // selecting a Tag never moves the numbers.
+  const countForTag = counts.tagCount;
+  const untaggedCount = counts.counts.untagged;
+
+  // The "Chats N" header total: server-derived in both cases. Unfiltered, it is
+  // the view's facet total (#131 Phase A); filtered, it is the server's
+  // post-filter count (#131 Phase B) — accurate even when the paginated window
+  // holds only a page of the filtered set.
+  const filterActive = selectedProjects.size + selectedTags.size > 0;
+  const filteredTotal = useFilteredTotal(
+    mode,
+    [...selectedProjects],
+    [...selectedTags]
   );
-  const untaggedCount = useMemo(
-    () => viewChats.filter((c) => (c.tags?.length ?? 0) === 0).length,
-    [viewChats]
-  );
+  // While the first filtered total is still loading (filteredTotal undefined),
+  // hold the view's facet total rather than letting the header fall back to the
+  // paginated window count (the page size) — that would flash a wrong number
+  // for a frame before the real filtered total lands (#131).
+  const listTotal = filterActive
+    ? (filteredTotal ?? counts.counts.total)
+    : counts.counts.total;
   // Create a Tag and immediately assign it to the chat the popover is on.
   const createTagForChat = useCallback(
     async (
@@ -140,6 +225,8 @@ function App() {
       setSelectedId(next?.id ?? null);
     }
     void restore(id);
+    void counts.reload();
+    void trashCounts.reload();
     showToast({
       message: "Chat restored.",
       actionLabel: "View",
@@ -158,10 +245,16 @@ function App() {
       setSelectedId(next?.id ?? null);
     }
     void softDelete(id);
+    void counts.reload();
+    void trashCounts.reload();
     showToast({
       message: "Chat deleted.",
       actionLabel: "Undo",
-      onAction: () => void restore(id),
+      onAction: () => {
+        void restore(id);
+        void counts.reload();
+        void trashCounts.reload();
+      },
     });
   };
 
@@ -224,7 +317,7 @@ function App() {
       <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel defaultSize={15} minSize={10}>
           <FilterPanel
-            deletedCount={deletedChats.length}
+            deletedCount={trashCounts.counts.total}
             onOpenTrash={() => switchMode("trash")}
             projectFacets={projectFacets}
             selectedProjects={selectedProjects}
@@ -253,10 +346,14 @@ function App() {
             onRestore={handleRestore}
             onRenameTitle={handleRenameTitle}
             onBack={() => switchMode("main")}
-            deletedCount={deletedChats.length}
             onOpenTrash={() => switchMode("trash")}
+            total={listTotal}
             sortSignature={`${mode}:${order.sortControlProps.field}:${order.sortControlProps.direction}`}
             sortControl={<SortControl {...order.sortControlProps} />}
+            hasMore={source.hasMore}
+            onLoadMore={source.loadMore}
+            hasPrevious={source.hasPrevious}
+            onLoadPrevious={source.loadPrevious}
           />
         </ResizablePanel>
         <ResizableHandle />

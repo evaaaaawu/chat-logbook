@@ -1,12 +1,13 @@
 import { Trash2 } from "lucide-react";
 import { ProjectsSection } from "@/chat/projects/ProjectsSection";
 import { FilterSummary } from "@/chat/FilterSummary";
-import type { ProjectFacet } from "@/chat/projects/deriveProjects";
+import type { ProjectFacet } from "@/chat/projects/projectFacets";
 import { TagsSection } from "@/tags/TagsSection";
 import type { Tag } from "@/types";
 import type { ColorToken } from "@/tags/palette";
 
 interface FilterPanelProps {
+  /** How many chats are in Trash — the server-derived trashed total (#131). */
   deletedCount: number;
   onOpenTrash: () => void;
   projectFacets: ProjectFacet[];
@@ -78,7 +79,8 @@ export function FilterPanel({
             Trash
           </span>
           {/* A muted, pill-less count that only appears when Trash is non-empty:
-              a quiet "there's something in here" signal, not a headline metric. */}
+              a quiet "there's something in here" signal, not a headline metric.
+              Server-derived (#131) so it stays correct under the paginated list. */}
           {deletedCount > 0 && (
             <span className="text-xs tabular-nums text-muted-foreground">
               {deletedCount}

@@ -102,6 +102,33 @@ describe("useChatOrder", () => {
     expect(ids(result.current.orderedChats)).toEqual(["b", "d", "c", "a"]);
   });
 
+  it("keeps a chat that appeared in one background refresh frozen across the next", () => {
+    const { result, rerender } = renderHook(
+      ({ chats, signal }) => useChatOrder("main", chats, signal),
+      { initialProps: { chats: activeChats(), signal: "0:0" } }
+    );
+    expect(ids(result.current.orderedChats)).toEqual(["b", "c", "a"]);
+
+    // First background refresh surfaces "d" (250), slotting it between b and c.
+    rerender({
+      chats: [...activeChats(), chat("d", { updatedAt: 250 })],
+      signal: "0:0",
+    });
+    expect(ids(result.current.orderedChats)).toEqual(["b", "d", "c", "a"]);
+
+    // A later refresh bumps "d" to the newest updatedAt. A live re-slot would
+    // float it to the top; the frozen window holds it where it first landed —
+    // the loaded window stays frozen, not just the first anchor.
+    const bumped = [
+      chat("a", { updatedAt: 100 }),
+      chat("b", { updatedAt: 300 }),
+      chat("c", { updatedAt: 200 }),
+      chat("d", { updatedAt: 999 }),
+    ];
+    rerender({ chats: bumped, signal: "0:0" });
+    expect(ids(result.current.orderedChats)).toEqual(["b", "d", "c", "a"]);
+  });
+
   it("re-sorts when the user changes the sort field via sortControlProps", () => {
     const { result } = renderHook(() =>
       useChatOrder("main", activeChats(), "0:0")

@@ -1,6 +1,7 @@
 import os from "node:os";
 import { resolveDataDir } from "../src/config/data-dir.js";
 import { assertSeedDataDirSafe } from "../src/seed/guard.js";
+import { resetDataDir } from "../src/seed/reset.js";
 import { createArchiveRepository } from "../src/archive/repository.js";
 import { createTagRepository } from "../src/metadata/tags.js";
 import { seedArchive } from "../src/seed/seed.js";
@@ -13,17 +14,34 @@ import { DEFAULT_SEED_CONFIG, type SeedConfig } from "../src/seed/generator.js";
 //
 //   CHAT_LOGBOOK_DATA_DIR=~/.chat-logbook-dev pnpm --filter @chat-logbook/api seed
 //   ... seed --count 50000 --seed 1 --projects 50 --tag-ratio 0.3 --tag-pool 10
+//
+// Seeding appends, so re-running doubles the row count. Pass --reset to wipe the
+// target's store files first, making the seed idempotent (exactly --count rows).
 
-function parseArgs(argv: string[]): Partial<SeedConfig> {
+// Flags that take no value; every other flag consumes the following token.
+const BOOLEAN_FLAGS = new Set(["reset"]);
+
+interface ParsedArgs {
+  config: Partial<SeedConfig>;
+  reset: boolean;
+}
+
+function parseArgs(argv: string[]): ParsedArgs {
   const flags: Record<string, string> = {};
+  let reset = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (!arg.startsWith("--")) continue;
     const eq = arg.indexOf("=");
+    const key = eq !== -1 ? arg.slice(2, eq) : arg.slice(2);
+    if (BOOLEAN_FLAGS.has(key)) {
+      reset = eq === -1 || arg.slice(eq + 1) !== "false";
+      continue;
+    }
     if (eq !== -1) {
-      flags[arg.slice(2, eq)] = arg.slice(eq + 1);
+      flags[key] = arg.slice(eq + 1);
     } else {
-      flags[arg.slice(2)] = argv[++i] ?? "";
+      flags[key] = argv[++i] ?? "";
     }
   }
   const num = (key: string): number | undefined =>
@@ -40,12 +58,21 @@ function parseArgs(argv: string[]): Partial<SeedConfig> {
   if (projects !== undefined) config.projects = projects;
   if (tagRatio !== undefined) config.tagRatio = tagRatio;
   if (tagPool !== undefined) config.tagPool = tagPool;
-  return config;
+  return { config, reset };
 }
 
-const config = parseArgs(process.argv.slice(2));
+const { config, reset } = parseArgs(process.argv.slice(2));
 const dataDir = resolveDataDir(process.env, os.homedir());
 assertSeedDataDirSafe(dataDir, os.homedir());
+
+if (reset) {
+  const { removed } = resetDataDir(dataDir);
+  console.log(
+    removed.length === 0
+      ? `Reset: no store files to remove in ${dataDir}.`
+      : `Reset: removed ${removed.join(", ")} from ${dataDir}.`
+  );
+}
 
 const resolved = { ...DEFAULT_SEED_CONFIG, ...config };
 console.log(

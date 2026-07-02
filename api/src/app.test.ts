@@ -8,6 +8,10 @@ import { createMetadataRepository } from "./metadata/repository.js";
 import { createTagRepository } from "./metadata/tags.js";
 import type { Tag } from "./metadata/tags.js";
 import { formatChatId } from "./archive/chat-id.js";
+import { createChatPageQuery } from "./list-pagination.js";
+import { createChatCountsQuery } from "./list-counts.js";
+import { reconcileTitleSortKeys } from "./metadata/reconcile-title-sort-keys.js";
+import { MAX_PAGE_LIMIT } from "./list-contract.js";
 
 interface ChatResponse {
   id: string;
@@ -104,6 +108,373 @@ beforeEach(() => {
 
 afterEach(() => {
   fs.rmSync(dataDir, { recursive: true, force: true });
+});
+
+describe("GET /api/chats — Title axis keyset pagination (#146)", () => {
+  it("serves a title-ordered page and accepts sort=title", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    // Titles derive from each chat's first user message.
+    seedMessage(archive, {
+      sourceId: "c1",
+      messageId: "m1",
+      role: "user",
+      ts: new Date(1_000),
+      text: "Banana",
+      blocks: [{ type: "text", text: "Banana" }],
+    });
+    seedMessage(archive, {
+      sourceId: "c2",
+      messageId: "m2",
+      role: "user",
+      ts: new Date(2_000),
+      text: "apple",
+      blocks: [{ type: "text", text: "apple" }],
+    });
+    // Backfill the collation keys the Title axis pages on (ADR-0019).
+    reconcileTitleSortKeys({ archive, metadata });
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+
+    const res = await app.request(
+      "/api/chats?sort=title&direction=asc&limit=10"
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    // Case-insensitive A-Z: apple before Banana.
+    expect(body.chats.map((c) => c.title)).toEqual(["apple", "Banana"]);
+  });
+});
+
+describe("GET /api/chats — keyset pagination mode", () => {
+  it("serves one sorted page and round-trips the cursor to the next", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    for (let i = 1; i <= 3; i++) {
+      seedChat(archive, { sourceId: `c${i}`, firstSeenAt: new Date(i * 1000) });
+    }
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+
+    const first = await app.request("/api/chats?sort=createdAt&limit=2");
+    expect(first.status).toBe(200);
+    const firstBody = (await first.json()) as {
+      chats: ChatResponse[];
+      nextCursor: string | null;
+    };
+    expect(firstBody.chats.map((c) => c.sourceId)).toEqual(["c3", "c2"]);
+    expect(typeof firstBody.nextCursor).toBe("string");
+
+    const next = await app.request(
+      `/api/chats?sort=createdAt&limit=2&cursor=${encodeURIComponent(
+        firstBody.nextCursor as string
+      )}`
+    );
+    const nextBody = (await next.json()) as {
+      chats: ChatResponse[];
+      nextCursor: string | null;
+    };
+    expect(nextBody.chats.map((c) => c.sourceId)).toEqual(["c1"]);
+    expect(nextBody.nextCursor).toBeNull();
+  });
+
+  it("serves an ascending page when direction=asc, defaulting to desc", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    for (let i = 1; i <= 3; i++) {
+      seedChat(archive, { sourceId: `c${i}`, firstSeenAt: new Date(i * 1000) });
+    }
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+
+    const asc = await app.request(
+      "/api/chats?sort=createdAt&direction=asc&limit=2"
+    );
+    expect(asc.status).toBe(200);
+    const ascBody = (await asc.json()) as { chats: ChatResponse[] };
+    expect(ascBody.chats.map((c) => c.sourceId)).toEqual(["c1", "c2"]);
+
+    // Omitting direction keeps the newest-first default.
+    const def = await app.request("/api/chats?sort=createdAt&limit=2");
+    const defBody = (await def.json()) as { chats: ChatResponse[] };
+    expect(defBody.chats.map((c) => c.sourceId)).toEqual(["c3", "c2"]);
+  });
+
+  it("applies the Project and Tag filters server-side in paginated mode", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const alpha1 = seedChat(archive, {
+      sourceId: "alpha1",
+      firstSeenAt: new Date(1_000),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "beta1",
+      firstSeenAt: new Date(2_000),
+      project: "beta",
+    });
+    seedChat(archive, {
+      sourceId: "alpha2",
+      firstSeenAt: new Date(3_000),
+      project: "alpha",
+    });
+    const urgent = tags.createTag("urgent", "violet");
+    tags.assignTag(alpha1, urgent.id);
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+
+    // Repeated `?project=` unions; the page is filtered to alpha, newest-first.
+    const byProject = await app.request(
+      "/api/chats?sort=createdAt&limit=10&project=alpha"
+    );
+    expect(byProject.status).toBe(200);
+    const byProjectBody = (await byProject.json()) as { chats: ChatResponse[] };
+    expect(byProjectBody.chats.map((c) => c.sourceId)).toEqual([
+      "alpha2",
+      "alpha1",
+    ]);
+
+    // Comma-separated `?tags=` ANDs; only the chat holding the Tag passes.
+    const byTag = await app.request(
+      `/api/chats?sort=createdAt&limit=10&tags=${urgent.id}`
+    );
+    const byTagBody = (await byTag.json()) as { chats: ChatResponse[] };
+    expect(byTagBody.chats.map((c) => c.sourceId)).toEqual(["alpha1"]);
+  });
+
+  it("rejects an invalid sort with 400", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const res = await app.request("/api/chats?sort=bogus&limit=2");
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts a limit at the shared cap and rejects one past it", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+
+    // The endpoint's accept/reject boundary is the single shared MAX_PAGE_LIMIT,
+    // so a window-sized refresh clamped to it on the client is never rejected
+    // (the drift that blanked the app in #147).
+    const atCap = await app.request(
+      `/api/chats?sort=createdAt&limit=${MAX_PAGE_LIMIT}`
+    );
+    expect(atCap.status).toBe(200);
+
+    const overCap = await app.request(
+      `/api/chats?sort=createdAt&limit=${MAX_PAGE_LIMIT + 1}`
+    );
+    expect(overCap.status).toBe(400);
+  });
+
+  it("rejects an invalid direction with 400", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const res = await app.request(
+      "/api/chats?sort=createdAt&direction=sideways&limit=2"
+    );
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("GET /api/chats — Trash view keyset page (#145)", () => {
+  it("serves a trashed-only page sorted by deleted time", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    const c1 = seedChat(archive, {
+      sourceId: "c1",
+      firstSeenAt: new Date(1_000),
+    });
+    seedChat(archive, { sourceId: "c2", firstSeenAt: new Date(2_000) });
+    const c3 = seedChat(archive, {
+      sourceId: "c3",
+      firstSeenAt: new Date(3_000),
+    });
+    metadata.softDelete(c1);
+    metadata.softDelete(c3);
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+
+    // sort=deletedAt is accepted (not a 400), and the page is trashed-only: the
+    // active c2 never appears, only the soft-deleted c1 and c3.
+    const res = await app.request(
+      "/api/chats?sort=deletedAt&limit=10&trashedOnly=true"
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    expect(new Set(body.chats.map((c) => c.sourceId))).toEqual(
+      new Set(["c1", "c3"])
+    );
+  });
+
+  it("serves a trashed-only page along a time axis within Trash", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, { sourceId: "active", firstSeenAt: new Date(1_000) });
+    const trashed = seedChat(archive, {
+      sourceId: "trashed",
+      firstSeenAt: new Date(2_000),
+    });
+    metadata.softDelete(trashed);
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+
+    // trashedOnly scopes the time-axis page to Trash: the active chat drops out.
+    const res = await app.request(
+      "/api/chats?sort=createdAt&limit=10&trashedOnly=true"
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { chats: ChatResponse[] };
+    expect(body.chats.map((c) => c.sourceId)).toEqual(["trashed"]);
+  });
+});
+
+describe("GET /api/chats/counts — server-side facet counts", () => {
+  it("serves per-view counts (main excludes trashed, Trash counts only trashed)", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "a1",
+      firstSeenAt: new Date(1000),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "a2",
+      firstSeenAt: new Date(2000),
+      project: "alpha",
+    });
+    const trashedId = seedChat(archive, {
+      sourceId: "b1",
+      firstSeenAt: new Date(3000),
+      project: "beta",
+    });
+    metadata.softDelete(trashedId);
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+      countsQuery: createChatCountsQuery({ dataDir }),
+    });
+
+    const main = await app.request("/api/chats/counts");
+    expect(main.status).toBe(200);
+    const mainBody = (await main.json()) as {
+      total: number;
+      projects: { project: string; count: number }[];
+      untagged: number;
+    };
+    expect(mainBody.total).toBe(2);
+    const mainByProject = new Map(
+      mainBody.projects.map((p) => [p.project, p.count])
+    );
+    expect(mainByProject.get("alpha")).toBe(2);
+    expect(mainByProject.has("beta")).toBe(false);
+
+    const trash = await app.request("/api/chats/counts?includeTrashed=true");
+    const trashBody = (await trash.json()) as { total: number };
+    expect(trashBody.total).toBe(1);
+  });
+});
+
+describe("GET /api/chats/list-total — filtered List count (Phase B)", () => {
+  it("returns the post-filter total for the active Project/Tag filter", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const a1 = seedChat(archive, {
+      sourceId: "a1",
+      firstSeenAt: new Date(1000),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "a2",
+      firstSeenAt: new Date(2000),
+      project: "alpha",
+    });
+    seedChat(archive, {
+      sourceId: "b1",
+      firstSeenAt: new Date(3000),
+      project: "beta",
+    });
+    const work = tags.createTag("work", "blue");
+    tags.assignTag(a1, work.id);
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+      countsQuery: createChatCountsQuery({ dataDir }),
+    });
+
+    // Project filter (repeated ?project=): alpha has 2.
+    const byProject = await app.request("/api/chats/list-total?project=alpha");
+    expect(byProject.status).toBe(200);
+    expect(((await byProject.json()) as { total: number }).total).toBe(2);
+
+    // Project AND Tag across types: alpha AND work → only a1.
+    const byBoth = await app.request(
+      `/api/chats/list-total?project=alpha&tags=${work.id}`
+    );
+    expect(((await byBoth.json()) as { total: number }).total).toBe(1);
+  });
 });
 
 describe("Chat id is the public API handle", () => {

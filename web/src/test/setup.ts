@@ -69,6 +69,7 @@ beforeAll(() => server.listen());
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  server.events.removeAllListeners();
   resetFakeChats();
   localStorage.clear();
 });

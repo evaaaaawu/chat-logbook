@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { openStore } from "../storage/openStore.js";
 import * as schema from "./schema.js";
 import {
@@ -218,6 +218,12 @@ export function createArchiveRepository({
           agent,
           sourceId,
           firstSeenAt,
+          // Seed both denormalized sort keys to first_seen_at; message upserts
+          // pull createdAt down (min) and push updatedAt up (max) as ts arrive.
+          // first_seen_at is the ingest time and so >= every message ts, making
+          // it a safe upper bound for the running min.
+          createdAt: firstSeenAt,
+          updatedAt: firstSeenAt,
           project: project ?? null,
           projectPath: projectPath ?? null,
         })
@@ -273,6 +279,19 @@ export function createArchiveRepository({
         .get();
 
       const ts = parseTs(message.ts);
+
+      // Keep the denormalized sort keys current: createdAt is the min of the
+      // stored value and this message's ts, updatedAt the max. Applied on every
+      // upsert (min/max make a re-seen ts a no-op) so chats.created_at always
+      // equals min(messages.ts) and chats.updated_at always equals
+      // max(messages.ts), matching the reader's derived values (ADR-0017, #143).
+      db.update(chats)
+        .set({
+          createdAt: sql`min(coalesce(${chats.createdAt}, ${ts.getTime()}), ${ts.getTime()})`,
+          updatedAt: sql`max(coalesce(${chats.updatedAt}, 0), ${ts.getTime()})`,
+        })
+        .where(and(eq(chats.agent, agent), eq(chats.sourceId, sourceId)))
+        .run();
 
       if (!existing) {
         db.insert(messages)

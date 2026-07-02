@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowLeft, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import type { Chat } from "@/types";
@@ -16,12 +22,35 @@ interface ChatListProps {
   onRestore?: (id: string) => void;
   onRenameTitle?: (id: string, title: string) => void;
   onBack?: () => void;
-  deletedCount?: number;
   onOpenTrash?: () => void;
   sortControl?: React.ReactNode;
+  /**
+   * The List count shown in the "Chats N" header (#131 Phase A). Server-derived
+   * so it reflects the view's whole universe, not just the loaded page window.
+   * Falls back to the loaded count when omitted (e.g. a filtered list, whose
+   * accurate total is Phase B).
+   */
+  total?: number;
   /** Changes whenever the active sort changes; drives keep-selection-visible scrolling. */
   sortSignature?: string;
+  /** True while a further page can be fetched; gates near-bottom loading. */
+  hasMore?: boolean;
+  /** Called when the user scrolls within a few rows of the loaded window's end. */
+  onLoadMore?: () => void;
+  /**
+   * True while a page evicted above the bounded window can be re-fetched; gates
+   * near-top loading (#132). False at the list head and on the full path.
+   */
+  hasPrevious?: boolean;
+  /** Called when the user scrolls within a few rows of the loaded window's start. */
+  onLoadPrevious?: () => void;
 }
+
+// Trigger the next page once the rendered window reaches within this many rows
+// of the end (or, for the previous page, the start), so the fetch overlaps the
+// remaining scroll rather than stalling at the edge.
+const LOAD_MORE_THRESHOLD = 5;
+const LOAD_PREVIOUS_THRESHOLD = 5;
 
 function getProjectName(projectPath: string): string {
   const segments = projectPath.split("/").filter(Boolean);
@@ -107,10 +136,14 @@ export function ChatList({
   onRestore,
   onRenameTitle,
   onBack,
-  deletedCount = 0,
   onOpenTrash,
   sortControl,
+  total,
   sortSignature,
+  hasMore = false,
+  onLoadMore,
+  hasPrevious = false,
+  onLoadPrevious,
 }: ChatListProps) {
   const [internalEditingId, setInternalEditingId] = useState<string | null>(
     null
@@ -138,6 +171,11 @@ export function ChatList({
     estimateSize: () => 84,
     overscan: 8,
     initialRect: { width: 320, height: 600 },
+    // Key rows by their stable chat id so the virtualizer's measurement cache
+    // survives a window mutation. When the bounded window evicts a page above or
+    // re-fetches one on scroll-back (#132), the surviving rows keep their
+    // measured offsets, anchoring scroll to the content under the viewport.
+    getItemKey: (index) => chats[index]?.id ?? index,
   });
 
   // Keep the selected chat visible after a sort change; otherwise scroll to top.
@@ -145,16 +183,89 @@ export function ChatList({
   // through the virtualizer rather than relying on a DOM ref.
   useEffect(() => {
     if (prevSortSignature.current === sortSignature) return;
-    prevSortSignature.current = sortSignature;
     const selectedIndex = selectedId
       ? chats.findIndex((chat) => chat.id === selectedId)
       : -1;
+    // A sort change can swap the data source (paginated <-> full-load), whose
+    // chats arrive a tick later. If a selection exists but is not in the list
+    // yet, wait for it rather than consuming the signal and scrolling to top —
+    // the effect re-runs when chats update.
+    if (selectedId && selectedIndex < 0) return;
+    prevSortSignature.current = sortSignature;
     if (selectedIndex >= 0) {
       virtualizer.scrollToIndex(selectedIndex, { align: "auto" });
     } else if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0;
     }
   }, [sortSignature, selectedId, chats, virtualizer]);
+
+  // Fetch the next page as the rendered window nears the end of the loaded
+  // chats. The virtualizer only renders rows around the viewport, so the last
+  // virtual item's index tracks how far the user has scrolled without a manual
+  // scroll listener. onLoadMore guards against overlapping fetches itself.
+  const virtualItems = virtualizer.getVirtualItems();
+  const lastVisibleIndex = virtualItems[virtualItems.length - 1]?.index ?? -1;
+  useEffect(() => {
+    if (!hasMore || !onLoadMore) return;
+    if (lastVisibleIndex >= chats.length - 1 - LOAD_MORE_THRESHOLD) {
+      onLoadMore();
+    }
+  }, [hasMore, onLoadMore, lastVisibleIndex, chats.length]);
+
+  // Symmetric near-top detector: re-fetch the page evicted above the bounded
+  // window as the user scrolls back within a few rows of the start (#132). The
+  // first virtual item's index tracks the scroll-back distance; onLoadPrevious
+  // guards against overlapping fetches itself.
+  const firstVisibleIndex = virtualItems[0]?.index ?? -1;
+  useEffect(() => {
+    if (!hasPrevious || !onLoadPrevious) return;
+    if (
+      firstVisibleIndex >= 0 &&
+      firstVisibleIndex <= LOAD_PREVIOUS_THRESHOLD
+    ) {
+      onLoadPrevious();
+    }
+  }, [hasPrevious, onLoadPrevious, firstVisibleIndex]);
+
+  // Anchor the viewport to a stable row across bounded-window mutations (#132).
+  // On scroll, remember the row at the viewport top plus the pixel offset into
+  // it; after the window evicts a page above or re-fetches one on scroll-back,
+  // restore the scroll so that same row stays put. Without this, removing or
+  // prepending rows above the viewport jumps the content and the near-edge
+  // detectors mis-fire (or stall), since the loaded window's length is constant.
+  const anchorRef = useRef<{ id: string; index: number; delta: number } | null>(
+    null
+  );
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const offset = el.scrollTop;
+    const item = virtualizer.getVirtualItemForOffset(offset);
+    const id = item ? chats[item.index]?.id : undefined;
+    if (item && id) {
+      anchorRef.current = { id, index: item.index, delta: offset - item.start };
+    }
+  }, [virtualizer, chats]);
+
+  useLayoutEffect(() => {
+    // A sort/filter re-anchor owns the scroll (it resets to top or the
+    // selection); drop the stale anchor and leave the scroll to that effect.
+    if (prevSortSignature.current !== sortSignature) {
+      anchorRef.current = null;
+      return;
+    }
+    const el = scrollContainerRef.current;
+    const anchor = anchorRef.current;
+    if (!el || !anchor) return;
+    const newIndex = chats.findIndex((c) => c.id === anchor.id);
+    // Only adjust when rows actually shifted above the anchor; a pure field
+    // update leaves its index unchanged.
+    if (newIndex < 0 || newIndex === anchor.index) return;
+    const start = virtualizer.getOffsetForIndex(newIndex, "start")?.[0];
+    if (start === undefined) return;
+    el.scrollTop = start + anchor.delta;
+    anchorRef.current = { ...anchor, index: newIndex };
+  }, [chats, virtualizer, sortSignature]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -199,8 +310,11 @@ export function ChatList({
               <span className="font-semibold text-accent-foreground">
                 Chats
               </span>
-              <span className="rounded-full bg-card px-2 text-xs font-semibold tabular-nums text-muted-foreground">
-                {chats.length}
+              <span
+                data-testid="chat-list-count"
+                className="rounded-full bg-card px-2 text-xs font-semibold tabular-nums text-muted-foreground"
+              >
+                {total ?? chats.length}
               </span>
             </span>
             {sortControl}
@@ -211,6 +325,7 @@ export function ChatList({
         ref={scrollContainerRef}
         data-testid="chat-scroll"
         className="flex-1 overflow-y-auto"
+        onScroll={handleScroll}
       >
         {chats.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center px-6 text-center text-sm text-muted-foreground">
@@ -226,7 +341,7 @@ export function ChatList({
             ) : (
               <>
                 <div className="font-medium text-foreground">No chats</div>
-                {deletedCount > 0 && onOpenTrash && (
+                {onOpenTrash && (
                   <div className="mt-1 text-xs">
                     Check{" "}
                     <button
@@ -234,7 +349,7 @@ export function ChatList({
                       onClick={onOpenTrash}
                       className="text-primary hover:underline"
                     >
-                      Trash ({deletedCount})
+                      Trash
                     </button>{" "}
                     to restore deleted ones.
                   </div>

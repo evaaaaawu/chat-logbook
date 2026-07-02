@@ -1,23 +1,126 @@
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { serveStatic } from "@hono/node-server/serve-static";
 import type { ArchiveRepository } from "./archive/repository.js";
 import type { MetadataRepository } from "./metadata/repository.js";
 import type { TagRepository } from "./metadata/tags.js";
 import { isColorToken } from "./metadata/tag-colors.js";
 import { createChatReader } from "./chat-reader.js";
+import type { ChatPageQuery } from "./list-pagination.js";
+import type { ChatCountsQuery } from "./list-counts.js";
+import type { ListEventHub } from "./list-events.js";
+import { MAX_PAGE_LIMIT } from "./list-contract.js";
+
+// Heartbeat cadence for the live-update SSE stream. A periodic comment keeps the
+// connection from idling out behind proxies and surfaces a dropped socket so the
+// client can reconnect (issue #132).
+const STREAM_HEARTBEAT_MS = 25_000;
 
 interface AppOptions {
   archive: ArchiveRepository;
   metadata: MetadataRepository;
   tags: TagRepository;
+  /**
+   * The keyset page query (ADR-0017). When present, `GET /api/chats?limit=…`
+   * serves one sorted, keyset-paginated page; without it (or without `limit`)
+   * the endpoint keeps the legacy full-list behavior.
+   */
+  pageQuery?: ChatPageQuery;
+  /**
+   * The facet-count aggregation (issue #131 Phase A). When present,
+   * `GET /api/chats/counts` serves the per-view facet + list counts; without it
+   * that route reports 501.
+   */
+  countsQuery?: ChatCountsQuery;
+  /**
+   * The live-update event hub (issue #132). When present, `GET
+   * /api/chats/stream` serves a Server-Sent Events channel that pushes a
+   * `changed` event after each ingest pass, so the loaded list window can
+   * reconcile without a periodic full refetch. Without it that route reports
+   * 501.
+   */
+  listEvents?: ListEventHub;
   webDistDir?: string;
 }
 
-export function createApp({ archive, metadata, tags, webDistDir }: AppOptions) {
+export function createApp({
+  archive,
+  metadata,
+  tags,
+  pageQuery,
+  countsQuery,
+  listEvents,
+  webDistDir,
+}: AppOptions) {
   const app = new Hono();
-  const reader = createChatReader({ archive, metadata, tags });
+  const reader = createChatReader({
+    archive,
+    metadata,
+    tags,
+    pageQuery,
+    countsQuery,
+  });
 
   app.get("/api/chats", (c) => {
+    const includeTrashed = c.req.query("includeTrashed") === "true";
+
+    // Paginated mode: `?limit=` opts into one server-sorted keyset page. The
+    // legacy full-list path below stays for callers that omit `limit` (Trash and
+    // the title sort, until they migrate).
+    const limitParam = c.req.query("limit");
+    if (limitParam !== undefined) {
+      if (!pageQuery) {
+        return c.json({ error: "Pagination is not available" }, 501);
+      }
+      const limit = Number.parseInt(limitParam, 10);
+      if (!Number.isInteger(limit) || limit <= 0 || limit > MAX_PAGE_LIMIT) {
+        return c.json({ error: "Invalid limit" }, 400);
+      }
+      const sort = c.req.query("sort") ?? "updatedAt";
+      // `deletedAt` is the Trash view's deleted-time axis (#145); it sorts
+      // through the ATTACHed Metadata store and is trash-only by nature.
+      // `title` sorts through the ATTACHed `chat_sort_keys` collation index
+      // (#146 / ADR-0019), in both the main view and Trash.
+      if (
+        sort !== "createdAt" &&
+        sort !== "updatedAt" &&
+        sort !== "deletedAt" &&
+        sort !== "title"
+      ) {
+        return c.json({ error: "Invalid sort" }, 400);
+      }
+      // Direction defaults to "desc" (newest-first) so existing callers that
+      // omit it are unchanged; the covering index scans either way (#143).
+      const direction = c.req.query("direction") ?? "desc";
+      if (direction !== "asc" && direction !== "desc") {
+        return c.json({ error: "Invalid direction" }, 400);
+      }
+      // The Trash view scopes the page to soft-deleted chats only (#145),
+      // distinct from `includeTrashed` (active + trashed). The frontend sends it
+      // for every Trash page; the `deletedAt` axis is trash-only regardless.
+      const trashedOnly = c.req.query("trashedOnly") === "true";
+      // The active filter pages server-side alongside the keyset window (#130),
+      // parsed the same way as the legacy full-list branch: repeated `?project=`
+      // unions (OR), a single comma-separated `?tags=` ANDs. An empty value
+      // selects the `(No project)` / `Untagged` group; an absent param is
+      // undefined => unfiltered.
+      const projects = c.req.queries("project");
+      const tagsParam = c.req.query("tags");
+      const tagSelection =
+        tagsParam === undefined ? undefined : tagsParam.split(",");
+      const { chats, nextCursor } = reader.listChatsPage({
+        sort,
+        direction,
+        limit,
+        cursor: c.req.query("cursor"),
+        includeTrashed,
+        trashedOnly,
+        projects,
+        tags: tagSelection,
+      });
+      return c.json({ chats, nextCursor });
+    }
+
     // Repeated `?project=` params union (OR); an empty value selects the
     // `(No project)` group. Absent param => undefined => unfiltered.
     const projects = c.req.queries("project");
@@ -27,11 +130,71 @@ export function createApp({ archive, metadata, tags, webDistDir }: AppOptions) {
     const tagsParam = c.req.query("tags");
     const tags = tagsParam === undefined ? undefined : tagsParam.split(",");
     const chats = reader.listChats({
-      includeTrashed: c.req.query("includeTrashed") === "true",
+      includeTrashed,
       projects,
       tags,
     });
     return c.json({ chats });
+  });
+
+  // The live-update channel (issue #132): a Server-Sent Events stream that
+  // pushes a `changed` event after each ingest pass, driven by the watcher
+  // through the in-process event hub. The client reconciles its loaded window
+  // head through the keyset query on each event — the event is the signal, the
+  // sort/filter stay server-side. Registered before `/api/chats/:id` so the
+  // literal `stream` segment is not captured as an id.
+  app.get("/api/chats/stream", (c) => {
+    if (!listEvents) {
+      return c.json({ error: "Live updates are not available" }, 501);
+    }
+    const hub = listEvents;
+    return streamSSE(c, async (stream) => {
+      const unsubscribe = hub.subscribe((event) => {
+        void stream.writeSSE({ event: event.type, data: "" });
+      });
+      // Hold the connection open with periodic heartbeats until the client
+      // disconnects; `onAbort` clears the timer and resolves so the callback
+      // returns and the stream closes cleanly (no dangling timer).
+      await new Promise<void>((resolve) => {
+        const heartbeat = setInterval(() => {
+          void stream.writeSSE({ event: "ping", data: "" });
+        }, STREAM_HEARTBEAT_MS);
+        stream.onAbort(() => {
+          clearInterval(heartbeat);
+          unsubscribe();
+          resolve();
+        });
+      });
+    });
+  });
+
+  // The filter panel's static, per-view counts (issue #131 Phase A). Registered
+  // before `/api/chats/:id` so the literal `counts` segment is not captured as
+  // an id. `includeTrashed=true` scopes the counts to the Trash view.
+  app.get("/api/chats/counts", (c) => {
+    if (!countsQuery) {
+      return c.json({ error: "Counts are not available" }, 501);
+    }
+    const includeTrashed = c.req.query("includeTrashed") === "true";
+    return c.json(reader.listCounts({ includeTrashed }));
+  });
+
+  // The filtered List count ("Chats N" when a filter is active; issue #131
+  // Phase B). Separate from the static facet counts so toggling a filter does
+  // not refetch the per-view facets. The filter is parsed the same way as the
+  // list routes: repeated `?project=` unions (OR), a single comma-separated
+  // `?tags=` ANDs; an empty value selects the `(No project)` / `Untagged` group.
+  // Registered before `/api/chats/:id` so the literal segment is not an id.
+  app.get("/api/chats/list-total", (c) => {
+    if (!countsQuery) {
+      return c.json({ error: "Counts are not available" }, 501);
+    }
+    const includeTrashed = c.req.query("includeTrashed") === "true";
+    const projects = c.req.queries("project");
+    const tagsParam = c.req.query("tags");
+    const tags = tagsParam === undefined ? undefined : tagsParam.split(",");
+    const total = reader.listFilteredTotal({ includeTrashed, projects, tags });
+    return c.json({ total });
   });
 
   app.delete("/api/chats/:id", (c) => {

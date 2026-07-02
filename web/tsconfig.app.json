@@ -25,8 +25,9 @@
     "noUncheckedSideEffectImports": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@contract": ["../api/src/list-contract.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "../api/src/list-contract.ts"]
 }

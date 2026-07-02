@@ -8,6 +8,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // The keyset list endpoint's wire contract, shared with the API so the
+      // page-limit cap has one source of truth (#143).
+      "@contract": path.resolve(__dirname, "../api/src/list-contract.ts"),
     },
   },
   server: {

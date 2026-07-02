@@ -16,6 +16,10 @@ import { plugins } from "./plugins/registry.js";
 import { parseCliArgs } from "./cli/argv.js";
 import { helpText } from "./cli/help.js";
 import { resolveDataDir } from "./config/data-dir.js";
+import { createChatPageQuery } from "./list-pagination.js";
+import { createChatCountsQuery } from "./list-counts.js";
+import { createListEventHub } from "./list-events.js";
+import { reconcileTitleSortKeys } from "./metadata/reconcile-title-sort-keys.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgPath = path.join(__dirname, "../../package.json");
@@ -53,7 +57,25 @@ const archive = createArchiveRepository({ dataDir });
 const checkpoint = createCheckpointRepository({ dataDir });
 const metadata = createMetadataRepository({ dataDir });
 const tags = createTagRepository({ dataDir });
-const app = createApp({ archive, metadata, tags, webDistDir });
+// The page query owns its own Archive connection with metadata.db ATTACHed
+// read-only; it lives for the process lifetime (ADR-0017).
+const pageQuery = createChatPageQuery({ dataDir });
+// The counts query shares the same cross-store ATTACH shape and process
+// lifetime (issue #131 Phase A).
+const countsQuery = createChatCountsQuery({ dataDir });
+// The in-process hub fans each ingest pass out to connected SSE clients so the
+// loaded list window reconciles on a server push instead of a periodic refetch
+// (issue #132). It lives for the process lifetime.
+const listEvents = createListEventHub();
+const app = createApp({
+  archive,
+  metadata,
+  tags,
+  pageQuery,
+  countsQuery,
+  listEvents,
+  webDistDir,
+});
 
 const initialIngest = startIngestionInBackground({
   plugins,
@@ -62,16 +84,40 @@ const initialIngest = startIngestionInBackground({
   env: { homeDir: os.homedir() },
 });
 
+// Keep the denormalized Title sort keys in step with the Archive (ADR-0019).
+// archive.db and metadata.db share no transaction, so reconcile after each
+// ingest pass backfills any missing/changed key row; the writes are idempotent.
+function reconcileTitles(): void {
+  try {
+    reconcileTitleSortKeys({ archive, metadata });
+  } catch (err) {
+    console.error("[title-sort-key] reconcile failed:", err);
+  }
+}
+
 const watcher = startWatcher({
   plugins,
   archive,
   checkpoint,
   env: { homeDir: os.homedir() },
+  // Each watcher-driven ingest can add a chat or change a first user message;
+  // refresh the Title keys so the Title axis stays current, then push a
+  // `changed` event so connected clients reconcile their loaded window (#132).
+  onIngest: () => {
+    reconcileTitles();
+    listEvents.publish({ type: "changed" });
+  },
 });
 // Don't start watching until the initial scan has populated the checkpoint store
 // (chat_scan_state); otherwise a `change` event could race the first scan and
-// re-ingest from scratch.
-void initialIngest.done.then(() => watcher.ready).catch(() => {});
+// re-ingest from scratch. The initial scan's own keys are backfilled once it
+// settles (this also serves the one-time startup backfill for seeded data).
+void initialIngest.done
+  .then(() => {
+    reconcileTitles();
+    return watcher.ready;
+  })
+  .catch(() => {});
 
 function shutdown(): void {
   void watcher.close().finally(() => process.exit(0));

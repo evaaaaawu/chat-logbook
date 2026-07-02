@@ -11,6 +11,7 @@ import { http, HttpResponse } from "msw";
 import { describe, it, expect, vi } from "vitest";
 import App from "./App";
 import { server } from "./test/server";
+import { fakeChats } from "./test/handlers";
 
 describe("Chat list", () => {
   it("displays session titles fetched from the API", async () => {
@@ -503,14 +504,31 @@ describe("Chat metadata popover", () => {
 });
 
 describe("Trash link in filter panel", () => {
-  it("shows the count of deleted sessions in a Trash link", async () => {
+  it("shows the server-derived trashed count on the Trash link", async () => {
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+
+    // The trashed total comes from the server counts aggregation (#131 Phase A),
+    // so it is correct even though the paginated main list never loads trashed
+    // chats. Two fake chats are trashed.
+    const trashLink = await screen.findByTestId("trash-link");
+    expect(within(trashLink).getByText(/trash/i)).toBeInTheDocument();
+    expect(await within(trashLink).findByText("2")).toBeInTheDocument();
+  });
+
+  it("hides the count when Trash is empty", async () => {
+    fakeChats.forEach((c) => {
+      c.isDeleted = false;
+      c.deletedAt = null;
+    });
     render(<App />);
 
     await screen.findByText("Build a login page");
 
     const trashLink = await screen.findByTestId("trash-link");
     expect(within(trashLink).getByText(/trash/i)).toBeInTheDocument();
-    expect(within(trashLink).getByText("2")).toBeInTheDocument();
+    expect(within(trashLink).queryByText(/^\d+$/)).not.toBeInTheDocument();
   });
 });
 
@@ -621,7 +639,7 @@ describe("Trash sort", () => {
 });
 
 describe("Soft delete from chat list", () => {
-  it("removes the session from the list and increments trash count", async () => {
+  it("removes the session from the list and moves it to Trash", async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -643,9 +661,13 @@ describe("Soft delete from chat list", () => {
       ).not.toBeInTheDocument();
     });
 
-    // Trash count: 2 → 3
-    const trashLink = screen.getByTestId("trash-link");
-    expect(within(trashLink).getByText("3")).toBeInTheDocument();
+    // It now lives in Trash (the count badge was dropped; the move is what the
+    // user cares about).
+    await user.click(screen.getByTestId("trash-link"));
+    const list = screen.getByTestId("chat-list");
+    expect(
+      await within(list).findByText("Fix database migration")
+    ).toBeInTheDocument();
   });
 });
 
@@ -697,9 +719,6 @@ describe("Undo toast on delete", () => {
         within(list).getByText("Fix database migration")
       ).toBeInTheDocument();
     });
-
-    const trashLink = screen.getByTestId("trash-link");
-    expect(within(trashLink).getByText("2")).toBeInTheDocument();
   });
 });
 
@@ -1002,8 +1021,11 @@ describe("Empty states", () => {
     render(<App />);
 
     expect(await screen.findByText(/no chats/i)).toBeInTheDocument();
+    // The hint points to Trash without a count (counts were dropped, #129).
+    // Scope to the list — the sidebar also has a "Trash" link.
+    const list = screen.getByTestId("chat-list");
     expect(
-      screen.getByRole("button", { name: /^trash \(1\)$/i })
+      within(list).getByRole("button", { name: /^trash$/i })
     ).toBeInTheDocument();
   });
 });
@@ -1463,16 +1485,20 @@ describe("Freeze sort order on background updates", () => {
   }
 
   // Serve a given active list (plus the stable deleted chats) on every
-  // subsequent /api/chats read — i.e. the background poll.
+  // subsequent /api/chats read — i.e. the next background reconcile.
   function serveBackground(active: WireChat[]): void {
     const chats = [...active, ...trashedChats()];
     server.use(http.get("/api/chats", () => HttpResponse.json({ chats })));
   }
 
-  // Advance past one background poll interval and let the refetch settle.
-  async function flushBackgroundPoll(): Promise<void> {
+  // Live updates are a server push now (#132); jsdom has no EventSource, so the
+  // push connector is inert here. Drive the window's reconcile through its
+  // low-frequency safety floor instead: advance past the floor interval and let
+  // the refetch settle. The frozen-order behavior under test is the same whether
+  // the reconcile is push- or floor-triggered.
+  async function flushBackgroundReconcile(): Promise<void> {
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5000);
+      await vi.advanceTimersByTimeAsync(31000);
     });
   }
 
@@ -1496,7 +1522,7 @@ describe("Freeze sort order on background updates", () => {
       bumped[1].updatedAt = 1700000999000;
       serveBackground(bumped);
 
-      await flushBackgroundPoll();
+      await flushBackgroundReconcile();
 
       // Frozen: the selected row has not moved.
       rows = within(list).getAllByTestId("chat-row");
@@ -1519,7 +1545,7 @@ describe("Freeze sort order on background updates", () => {
       const bumped = activeChats();
       bumped[1].updatedAt = 1700000999000;
       serveBackground(bumped);
-      await flushBackgroundPoll();
+      await flushBackgroundReconcile();
       let rows = within(list).getAllByTestId("chat-row");
       expect(rows[1].textContent).toContain("Build a login page");
 
@@ -1548,7 +1574,7 @@ describe("Freeze sort order on background updates", () => {
       const bumped = activeChats();
       bumped[1].updatedAt = 1700000999000;
       serveBackground(bumped);
-      await flushBackgroundPoll();
+      await flushBackgroundReconcile();
       const rows = within(list).getAllByTestId("chat-row");
       expect(rows[1].textContent).toContain("Build a login page");
 
@@ -1592,7 +1618,7 @@ describe("Freeze sort order on background updates", () => {
         updatedAt: 1700000250000,
       });
       serveBackground(withNew);
-      await flushBackgroundPoll();
+      await flushBackgroundReconcile();
 
       const rows = within(list).getAllByTestId("chat-row");
       // Existing chats keep their frozen relative order; the new chat slots into
@@ -1655,6 +1681,28 @@ describe("Project filter", () => {
     expect(
       within(list).getByText("Fix database migration")
     ).toBeInTheDocument();
+  });
+
+  it("shows the server's filtered List count in the header when a filter is active", async () => {
+    // The header total must come from the server's filtered-total endpoint, not
+    // the loaded window — at scale the paginated window is smaller than the
+    // filtered set (#131 Phase B). Override the endpoint to a sentinel the window
+    // could never produce, proving the header reads it.
+    server.use(
+      http.get("/api/chats/list-total", () => HttpResponse.json({ total: 42 }))
+    );
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Build a login page");
+    // Unfiltered: the header shows the server facet total (4 active chats).
+    expect(screen.getByTestId("chat-list-count")).toHaveTextContent("4");
+
+    await user.click(screen.getByTestId("project-row-backend-api"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-list-count")).toHaveTextContent("42");
+    });
   });
 
   it("unions chats across several selected Projects (OR)", async () => {
@@ -1731,5 +1779,122 @@ describe("Project filter", () => {
     ).not.toBeInTheDocument();
     const webRow = within(section).getByTestId("project-row-my-web-app");
     expect(within(webRow).getByText("2")).toBeInTheDocument();
+  });
+});
+
+describe("Chat list pagination", () => {
+  // Capture the search string of every /api/chats GET, so a test can tell the
+  // paginated path (`?...limit=`) apart from the full-load path (no `limit`).
+  function captureChatListRequests(): string[] {
+    const searches: string[] = [];
+    server.events.on("request:start", ({ request }) => {
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.pathname === "/api/chats") {
+        searches.push(url.search);
+      }
+    });
+    return searches;
+  }
+
+  it("loads the main chat list via the paginated keyset endpoint", async () => {
+    const searches = captureChatListRequests();
+    render(<App />);
+
+    await screen.findByText("Fix database migration");
+
+    // Default sort is Updated time · Newest first — a paginated time axis, so
+    // the main list is fetched as keyset pages (`limit` present) rather than the
+    // full list.
+    expect(searches.some((s) => s.includes("limit="))).toBe(true);
+    expect(searches.some((s) => s.includes("sort=updatedAt"))).toBe(true);
+    // The full-load path (no `limit`) is not used for the main view.
+    expect(searches.every((s) => s.includes("limit="))).toBe(true);
+
+    // Rows still render in Updated-time descending order.
+    const list = screen.getByTestId("chat-list");
+    const titles = within(list)
+      .getAllByTestId("chat-row")
+      .map((r) => r.textContent);
+    expect(titles[0]).toContain("Fix database migration");
+    expect(titles[1]).toContain("Build a login page");
+  });
+
+  it("paginates the Title axis with sort=title, not a full load (#146)", async () => {
+    const user = userEvent.setup();
+    const searches = captureChatListRequests();
+    render(<App />);
+    await screen.findByText("Build a login page");
+
+    const list = screen.getByTestId("chat-list");
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+    const popover = await screen.findByTestId("chat-sort-popover");
+    await user.click(within(popover).getByText("Title"));
+
+    // Title is now a keyset axis (#146 / ADR-0019): selecting it pages
+    // server-side with sort=title rather than pulling the full list.
+    await waitFor(() =>
+      expect(
+        searches.some((s) => s.includes("sort=title") && s.includes("limit="))
+      ).toBe(true)
+    );
+    // The full-load path (no `limit`) is gone — no request ever drops `limit`.
+    expect(searches.every((s) => s.includes("limit="))).toBe(true);
+
+    const titles = within(list)
+      .getAllByTestId("chat-row")
+      .map((r) => r.textContent);
+    expect(titles[0]).toContain("Build a login page");
+  });
+
+  it("paginates an ascending time axis with direction=asc, not a full load", async () => {
+    const user = userEvent.setup();
+    const searches = captureChatListRequests();
+    render(<App />);
+    await screen.findByText("Build a login page");
+
+    const list = screen.getByTestId("chat-list");
+    // Default is Updated time · Newest first. Clicking the active axis again
+    // flips it to ascending (Oldest first). The covering keyset index scans
+    // either way (#143), so the list keeps paging server-side with
+    // direction=asc instead of falling back to the full list.
+    await user.click(within(list).getByRole("button", { name: /sort/i }));
+    const popover = await screen.findByTestId("chat-sort-popover");
+    await user.click(within(popover).getByText("Updated time"));
+
+    await waitFor(() =>
+      expect(
+        searches.some(
+          (s) => s.includes("direction=asc") && s.includes("limit=")
+        )
+      ).toBe(true)
+    );
+    // No request ever drops `limit` — the ascending axis never pulls the full
+    // list (the fallback this slice removes).
+    expect(searches.every((s) => s.includes("limit="))).toBe(true);
+  });
+
+  it("uses the keyset paginated path for the Trash view (#145)", async () => {
+    const user = userEvent.setup();
+    const searches = captureChatListRequests();
+    render(<App />);
+    await screen.findByText("Build a login page");
+
+    await user.click(screen.getByTestId("trash-link"));
+
+    // Trash no longer pulls the full list (ADR-0018): it pages server-side,
+    // trashed-only, defaulting to the deleted-time axis (#145). Its deleted
+    // chats load through the keyset endpoint.
+    const list = screen.getByTestId("chat-list");
+    expect(await within(list).findByText("Old prototype")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        searches.some(
+          (s) =>
+            s.includes("limit=") &&
+            s.includes("trashedOnly=true") &&
+            s.includes("sort=deletedAt")
+        )
+      ).toBe(true)
+    );
   });
 });
