@@ -127,19 +127,22 @@ test.describe("Chat list pagination", () => {
 
     // Walk every page to the very bottom, confirming deep continuous scroll —
     // which now also evicts pages above the bounded window (#132) — never blanks
-    // the list (#147). The window-sized refresh's own limit-clamping is covered
-    // by usePaginatedChats' unit tests; live updates are a server push now
-    // (#132), so no periodic window-sized refetch fires here.
+    // the list (#147). Poll to the bottom instead of a fixed iteration count: on
+    // a slow runner each page fetch + render + eviction takes longer, so a fixed
+    // loop can run out before the last page arrives. The window-sized refresh's
+    // own limit-clamping is covered by usePaginatedChats' unit tests; live
+    // updates are a server push now (#132), so no periodic refetch fires here.
     const scroller = page.getByTestId("chat-scroll");
-    for (let i = 0; i < 80; i++) {
+    await expect(async () => {
       await scroller.evaluate((el) => {
         el.scrollTop = el.scrollHeight;
       });
-      await page.waitForTimeout(120);
-    }
+      await expect(page.getByText("Chat 399", { exact: true })).toBeVisible({
+        timeout: 500,
+      });
+    }).toPass({ timeout: 30_000 });
 
     await expect(page.getByTestId("chat-row").first()).toBeVisible();
-    await expect(page.getByText("Chat 399", { exact: true })).toBeVisible();
     expect(errors, errors.join("\n")).toEqual([]);
   });
 
