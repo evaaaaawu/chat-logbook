@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.14.0] - 2026-07-02
+
+Your chat list now stays fast no matter how large your history grows, and it updates on its own as new chats come in.
+
+### Changed
+
+- The chat list loads in pages as you scroll instead of pulling your whole history up front. Opening the app stays fast even with tens of thousands of chats, and scrolling stays smooth because only the rows on screen are rendered.
+- The list updates live as chats are recorded. New and changed chats show up on their own, without a manual refresh, while your scroll position and sort order stay put.
+- Sorting, project and tag filters, and the Trash view now run against your full history on the server. The counts in the navigation panel, the list total in the header, and the Trash badge reflect everything that matches your filters — not just the chats currently loaded.
+
 ## [0.13.0] - 2026-06-23
 
 Group and find chats your own way. You can now tag chats and filter the list by tag or by project, so the chats you care about are one click away.

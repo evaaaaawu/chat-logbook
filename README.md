@@ -4,7 +4,7 @@
 
 A local-first library for the conversations you've had with your AI tools. Read by chat-logbook, kept on your machine, browsable and searchable in one place — even after your AI tool has deleted the original.
 
-> **Status.** A personal side project, moving at side-project pace — development and responses happen as time allows. Early release: browsing, rendering, soft-delete, and a local archive that survives vendor cleanup all work today. Search and tags are next. See [Roadmap](#roadmap).
+> **Status.** A personal side project, moving at side-project pace — development and responses happen as time allows. Early release: browsing, rendering, tags, soft-delete, and a local archive that survives vendor cleanup all work today. Search is next. See [Roadmap](#roadmap).
 
 ## What chat-logbook is
 
@@ -33,6 +33,7 @@ The full problem statement, user stories, and direction live in the [PRD](docs/P
   and conversation content.
 - **Rich conversation rendering.** Markdown, syntax-highlighted code blocks, collapsible tool calls with one-line summaries, and collapsible thinking blocks.
 - **Virtual scrolling.** Long conversations scroll smoothly.
+- **A chat list that scales.** The list loads on demand as you scroll and stays fast even with tens of thousands of chats.
 - **Solarized Dark theme.** Easy on the eyes, consistent with Claude
   Code's terminal look.
 - **Soft delete with Trash.** Hide chats you don't want to see; restore
@@ -40,7 +41,7 @@ The full problem statement, user stories, and direction live in the [PRD](docs/P
 - **Sortable lists.** Sort your chats by title, created time, or updated time, and the choice sticks between visits. Trash sorts independently — by deleted time by default.
 - **Custom chat titles.** Rename any chat — click its title in the list or conversation header, or select it and press `F2` / `↵`. Clear the title to fall back to the first message.
 - **Local archive.** Every conversation chat-logbook reads is copied into `~/.chat-logbook/archive.db`. The UI reads from the archive, so a chat stays visible even after the source JSONL is gone.
-- **Live updates.** While Claude Code is actively writing to a chat, new messages appear in chat-logbook within seconds — no restart needed.
+- **Live updates.** While Claude Code is actively writing to a chat, new messages appear in chat-logbook within seconds — no restart needed. New and changed chats surface in the list on their own, without a manual refresh.
 - **Chat metadata at a glance.** A ⓘ button on the conversation header opens a popover showing when the chat started, when it was last updated, the agent, the project working directory, and the chat's IDs — with one-click copy.
 - **Tags.** Create tags, give them colors, and assign them to chats. They show as colored chips on the chat and in the list. Rename or delete them anytime.
 - **Filter by tag or project.** Narrow the chat list to a project, or to chats that carry all of several selected tags.
