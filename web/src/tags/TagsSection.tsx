@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { TAG_COLOR_HEX, type ColorToken } from "@/tags/palette";
 import { ColorSwatches } from "@/tags/ColorSwatches";
 import { sortTagsByName } from "@/tags/sortTags";
-import { UNTAGGED } from "@/tags/filterChatsByTags";
+import { UNTAGGED } from "@/tags/untagged";
 
 interface TagsSectionProps {
   tags: Tag[];
