@@ -2,12 +2,30 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it, expect } from "vitest";
-import { createChatReader } from "./chat-reader.js";
+import { createChatReader, type ChatReader } from "./chat-reader.js";
+import { createChatPageQuery } from "./list-pagination.js";
 import { createArchiveRepository } from "./archive/repository.js";
 import { createMetadataRepository } from "./metadata/repository.js";
 import { createTagRepository } from "./metadata/tags.js";
 import { CROCKFORD_ALPHABET, formatChatId } from "./archive/chat-id.js";
 import type { ArchiveReadSeam } from "./archive/read-seam.js";
+
+// The public List read is the keyset page path (ADR-0017). These tests seed a
+// handful of chats and assert hydration/filter/visibility, not pagination, so
+// they read the whole seeded set through one large page. Sorting by updatedAt
+// keeps assertions that check membership (not order) stable.
+function listAll(
+  reader: ChatReader,
+  opts: { includeTrashed: boolean; projects?: string[]; tags?: string[] }
+): ReturnType<ChatReader["listChatsPage"]>["chats"] {
+  return reader.listChatsPage({
+    sort: "updatedAt",
+    limit: 1000,
+    includeTrashed: opts.includeTrashed,
+    projects: opts.projects,
+    tags: opts.tags,
+  }).chats;
+}
 
 const DEFAULT_AGENT = "claude-code";
 
@@ -116,7 +134,7 @@ afterEach(() => {
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
-describe("ChatReader.listChats", () => {
+describe("ChatReader.listChatsPage hydration", () => {
   it("returns chats from the archive even when source JSONL is absent", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
@@ -130,8 +148,9 @@ describe("ChatReader.listChats", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chats = reader.listChats({ includeTrashed: false });
+    const chats = listAll(reader, { includeTrashed: false });
     expect(chats.map((c) => c.sourceId)).toContain("session-1");
   });
 
@@ -149,10 +168,11 @@ describe("ChatReader.listChats", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: false })
-      .find((c) => c.sourceId === "session-1");
+    const chat = listAll(reader, { includeTrashed: false }).find(
+      (c) => c.sourceId === "session-1"
+    );
     expect(chat?.project).toBe("project-a");
   });
 
@@ -185,10 +205,11 @@ describe("ChatReader.listChats", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: false })
-      .find((c) => c.sourceId === "session-1");
+    const chat = listAll(reader, { includeTrashed: false }).find(
+      (c) => c.sourceId === "session-1"
+    );
     expect(chat?.title).toBe("Build a login page");
   });
 
@@ -214,10 +235,11 @@ describe("ChatReader.listChats", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: false })
-      .find((c) => c.sourceId === "session-1");
+    const chat = listAll(reader, { includeTrashed: false }).find(
+      (c) => c.sourceId === "session-1"
+    );
     expect(chat?.title).toBe("My favourite chat");
   });
 
@@ -234,10 +256,11 @@ describe("ChatReader.listChats", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: false })
-      .find((c) => c.sourceId === "session-1");
+    const chat = listAll(reader, { includeTrashed: false }).find(
+      (c) => c.sourceId === "session-1"
+    );
     expect(chat?.title).toBe("Untitled");
   });
 
@@ -270,10 +293,11 @@ describe("ChatReader.listChats", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: false })
-      .find((c) => c.sourceId === "session-1");
+    const chat = listAll(reader, { includeTrashed: false }).find(
+      (c) => c.sourceId === "session-1"
+    );
     expect(chat?.createdAt).toBe(1700000100000);
     expect(chat?.updatedAt).toBe(1700000500000);
   });
@@ -291,10 +315,11 @@ describe("ChatReader.listChats", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: false })
-      .find((c) => c.sourceId === "session-1");
+    const chat = listAll(reader, { includeTrashed: false }).find(
+      (c) => c.sourceId === "session-1"
+    );
     expect(chat?.createdAt).toBe(1700000000000);
     expect(chat?.updatedAt).toBe(1700000000000);
   });
@@ -313,10 +338,11 @@ describe("ChatReader.listChats", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: false })
-      .find((c) => c.sourceId === "session-1");
+    const chat = listAll(reader, { includeTrashed: false }).find(
+      (c) => c.sourceId === "session-1"
+    );
     // id is the public wire-form chat id (clog_ + 6 Crockford chars).
     expect(chat?.id).toBe(`clog_${code}`);
     expect(code).toHaveLength(6);
@@ -339,10 +365,11 @@ describe("ChatReader.listChats", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: false })
-      .find((c) => c.sourceId === "session-1");
+    const chat = listAll(reader, { includeTrashed: false }).find(
+      (c) => c.sourceId === "session-1"
+    );
     expect(chat).toBeDefined();
     expect("chatId" in chat!).toBe(false);
   });
@@ -372,10 +399,11 @@ describe("ChatReader.listChats", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: false })
-      .find((c) => c.sourceId === "session-1");
+    const chat = listAll(reader, { includeTrashed: false }).find(
+      (c) => c.sourceId === "session-1"
+    );
     expect(chat?.sourceFilePath).toBe("/new/path.jsonl");
   });
 
@@ -392,10 +420,11 @@ describe("ChatReader.listChats", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: false })
-      .find((c) => c.sourceId === "session-1");
+    const chat = listAll(reader, { includeTrashed: false }).find(
+      (c) => c.sourceId === "session-1"
+    );
     expect(chat?.sourceFilePath).toBeNull();
   });
 
@@ -412,10 +441,11 @@ describe("ChatReader.listChats", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: false })
-      .find((c) => c.sourceId === "session-1");
+    const chat = listAll(reader, { includeTrashed: false }).find(
+      (c) => c.sourceId === "session-1"
+    );
     expect(chat?.agent).toBe("claude-code");
   });
 
@@ -434,10 +464,11 @@ describe("ChatReader.listChats", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: false })
-      .find((c) => c.sourceId === "session-1");
+    const chat = listAll(reader, { includeTrashed: false }).find(
+      (c) => c.sourceId === "session-1"
+    );
     expect(chat?.projectPath).toBe("/Users/evaaaaawu/Documents/chat-logbook");
   });
 
@@ -454,10 +485,11 @@ describe("ChatReader.listChats", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: false })
-      .find((c) => c.sourceId === "session-1");
+    const chat = listAll(reader, { includeTrashed: false }).find(
+      (c) => c.sourceId === "session-1"
+    );
     expect(chat?.projectPath).toBeNull();
   });
 
@@ -475,15 +507,16 @@ describe("ChatReader.listChats", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: false })
-      .find((c) => c.sourceId === "session-1");
+    const chat = listAll(reader, { includeTrashed: false }).find(
+      (c) => c.sourceId === "session-1"
+    );
     expect(chat?.project).toBe("");
   });
 });
 
-describe("ChatReader.listChats project filter", () => {
+describe("ChatReader.listChatsPage project filter", () => {
   it("returns only chats in the given project", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
@@ -503,8 +536,9 @@ describe("ChatReader.listChats project filter", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chats = reader.listChats({
+    const chats = listAll(reader, {
       includeTrashed: false,
       projects: ["project-a"],
     });
@@ -535,8 +569,9 @@ describe("ChatReader.listChats project filter", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chats = reader.listChats({
+    const chats = listAll(reader, {
       includeTrashed: false,
       projects: ["project-a", "project-c"],
     });
@@ -565,8 +600,9 @@ describe("ChatReader.listChats project filter", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chats = reader.listChats({
+    const chats = listAll(reader, {
       includeTrashed: false,
       projects: [""],
     });
@@ -593,14 +629,15 @@ describe("ChatReader.listChats project filter", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const active = reader.listChats({
+    const active = listAll(reader, {
       includeTrashed: false,
       projects: ["project-a"],
     });
     expect(active.map((c) => c.sourceId)).toEqual(["session-active"]);
 
-    const trash = reader.listChats({
+    const trash = listAll(reader, {
       includeTrashed: true,
       projects: ["project-a"],
     });
@@ -611,7 +648,7 @@ describe("ChatReader.listChats project filter", () => {
   });
 });
 
-describe("ChatReader.listChats tag filter", () => {
+describe("ChatReader.listChatsPage tag filter", () => {
   it("returns only chats holding ALL selected tags (AND)", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
@@ -631,8 +668,13 @@ describe("ChatReader.listChats tag filter", () => {
     tags.assignTag(both, idea.id);
     tags.assignTag(bugOnly, bug.id);
 
-    const reader = createChatReader({ archive, metadata, tags });
-    const chats = reader.listChats({
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const chats = listAll(reader, {
       includeTrashed: false,
       tags: [bug.id, idea.id],
     });
@@ -655,8 +697,13 @@ describe("ChatReader.listChats tag filter", () => {
     const bug = tags.createTag("bug", "red");
     tags.assignTag(tagged, bug.id);
 
-    const reader = createChatReader({ archive, metadata, tags });
-    const chats = reader.listChats({ includeTrashed: false, tags: [""] });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const chats = listAll(reader, { includeTrashed: false, tags: [""] });
     expect(chats.map((c) => c.sourceId)).toEqual(["session-bare"]);
   });
 
@@ -676,8 +723,13 @@ describe("ChatReader.listChats tag filter", () => {
     const bug = tags.createTag("bug", "red");
     tags.assignTag(tagged, bug.id);
 
-    const reader = createChatReader({ archive, metadata, tags });
-    const chats = reader.listChats({
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const chats = listAll(reader, {
       includeTrashed: false,
       tags: ["", bug.id],
     });
@@ -703,8 +755,13 @@ describe("ChatReader.listChats tag filter", () => {
     tags.assignTag(inA, bug.id);
     tags.assignTag(inB, bug.id);
 
-    const reader = createChatReader({ archive, metadata, tags });
-    const chats = reader.listChats({
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const chats = listAll(reader, {
       includeTrashed: false,
       projects: ["project-a"],
       tags: [bug.id],
@@ -730,15 +787,19 @@ describe("ChatReader.listChats tag filter", () => {
     tags.assignTag(trashed, bug.id);
     metadata.softDelete(trashed);
 
-    const reader = createChatReader({ archive, metadata, tags });
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
     expect(
-      reader
-        .listChats({ includeTrashed: false, tags: [bug.id] })
-        .map((c) => c.sourceId)
+      listAll(reader, { includeTrashed: false, tags: [bug.id] }).map(
+        (c) => c.sourceId
+      )
     ).toEqual(["session-active"]);
     expect(
-      reader
-        .listChats({ includeTrashed: true, tags: [bug.id] })
+      listAll(reader, { includeTrashed: true, tags: [bug.id] })
         .map((c) => c.sourceId)
         .sort()
     ).toEqual(["session-active", "session-trashed"]);
@@ -759,8 +820,9 @@ describe("ChatReader visibility", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chats = reader.listChats({ includeTrashed: false });
+    const chats = listAll(reader, { includeTrashed: false });
     expect(chats.map((c) => c.sourceId)).not.toContain("session-1");
   });
 
@@ -777,10 +839,11 @@ describe("ChatReader visibility", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: true })
-      .find((c) => c.sourceId === "session-1");
+    const chat = listAll(reader, { includeTrashed: true }).find(
+      (c) => c.sourceId === "session-1"
+    );
     expect(chat?.isDeleted).toBe(true);
   });
 
@@ -802,8 +865,9 @@ describe("ChatReader visibility", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chats = reader.listChats({ includeTrashed: true });
+    const chats = listAll(reader, { includeTrashed: true });
     const active = chats.find((c) => c.sourceId === "session-active");
     const trashed = chats.find((c) => c.sourceId === "session-trashed");
     expect(active?.deletedAt).toBeNull();
@@ -842,6 +906,7 @@ describe("ChatReader.getMessages", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     const messages = reader.getMessages(wireIdFor(archive, "session-1"), {
       includeTrashed: false,
@@ -877,6 +942,7 @@ describe("ChatReader.getMessages", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     expect(reader.getMessages(wireId, { includeTrashed: false })).toBeNull();
   });
@@ -889,6 +955,7 @@ describe("ChatReader.getMessages", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     expect(
       reader.getMessages("does-not-exist", { includeTrashed: false })
@@ -915,6 +982,7 @@ describe("ChatReader.getMessages", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     // Source id is no longer a public lookup key — only the wire-form chat id is.
     expect(
@@ -943,6 +1011,7 @@ describe("ChatReader.getMessages", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     // Strict: only the clog_ wire form resolves; the bare code does not.
     expect(reader.getMessages(bareCode, { includeTrashed: false })).toBeNull();
@@ -969,6 +1038,7 @@ describe("ChatReader.getMessages", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     const messages = reader.getMessages(wireIdFor(archive, "session-1"), {
       includeTrashed: false,
@@ -1003,10 +1073,11 @@ describe("ChatReader is agent-agnostic", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chat = reader
-      .listChats({ includeTrashed: false })
-      .find((c) => c.sourceId === "session-codex");
+    const chat = listAll(reader, { includeTrashed: false }).find(
+      (c) => c.sourceId === "session-codex"
+    );
     expect(chat?.agent).toBe("codex");
     expect(chat?.title).toBe("Hello from Codex");
 
@@ -1022,7 +1093,7 @@ describe("ChatReader is agent-agnostic", () => {
 
 /**
  * Count how many archive read-seam methods are invoked while `fn` runs.
- * The #106 invariant is "listChats issues a constant number of archive reads
+ * The #106 invariant is "the hydration pass issues a constant number of archive reads
  * regardless of chat count" — each seam method maps to one underlying SQL
  * statement, so a constant call count is the public-surface proxy for the
  * constant SQL-statement count the original raw-handle counter measured.
@@ -1102,7 +1173,7 @@ function seedFullChat(
   }
 }
 
-describe("ChatReader.listChats query batching", () => {
+describe("ChatReader.listChatsPage query batching", () => {
   it("runs a constant number of archive queries regardless of chat count", () => {
     const archiveSmall = createArchiveRepository({ dataDir });
     const metadataSmall = createMetadataRepository({ dataDir });
@@ -1111,9 +1182,10 @@ describe("ChatReader.listChats query batching", () => {
       archive: archiveSmall,
       metadata: metadataSmall,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     const smallCount = countArchiveQueries(archiveSmall, () => {
-      readerSmall.listChats({ includeTrashed: false });
+      listAll(readerSmall, { includeTrashed: false });
     });
 
     const bigDir = fs.mkdtempSync(
@@ -1129,9 +1201,10 @@ describe("ChatReader.listChats query batching", () => {
         archive: archiveBig,
         metadata: metadataBig,
         tags: createTagRepository({ dataDir: bigDir }),
+        pageQuery: createChatPageQuery({ dataDir: bigDir }),
       });
       const bigCount = countArchiveQueries(archiveBig, () => {
-        readerBig.listChats({ includeTrashed: false });
+        listAll(readerBig, { includeTrashed: false });
       });
 
       expect(bigCount).toBe(smallCount);
@@ -1211,8 +1284,9 @@ describe("ChatReader.listChats query batching", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const chats = reader.listChats({ includeTrashed: false });
+    const chats = listAll(reader, { includeTrashed: false });
 
     // Ordering mirrors the chat-row insertion order.
     expect(chats.map((c) => c.sourceId)).toEqual([

@@ -5,8 +5,25 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createArchiveRepository } from "../archive/repository.js";
 import { createMetadataRepository } from "../metadata/repository.js";
 import { createTagRepository } from "../metadata/tags.js";
-import { createChatReader } from "../chat-reader.js";
+import { createChatReader, type ChatReader } from "../chat-reader.js";
+import { createChatPageQuery } from "../list-pagination.js";
 import { seedArchive } from "./seed.js";
+
+// The List read is the keyset page path (ADR-0017); these seeder assertions
+// check membership/filtering, not order, so they read the whole seeded set
+// through one large page.
+function listAll(
+  reader: ChatReader,
+  opts: { includeTrashed: boolean; projects?: string[]; tags?: string[] }
+): ReturnType<ChatReader["listChatsPage"]>["chats"] {
+  return reader.listChatsPage({
+    sort: "updatedAt",
+    limit: 100000,
+    includeTrashed: opts.includeTrashed,
+    projects: opts.projects,
+    tags: opts.tags,
+  }).chats;
+}
 
 let dataDir: string;
 
@@ -26,7 +43,12 @@ function openReader() {
     archive,
     metadata,
     tags,
-    reader: createChatReader({ archive, metadata, tags }),
+    reader: createChatReader({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+    }),
   };
 }
 
@@ -40,7 +62,7 @@ describe("seedArchive", () => {
     expect(summary.chats).toBe(25);
 
     const { reader } = openReader();
-    const listed = reader.listChats({ includeTrashed: false });
+    const listed = listAll(reader, { includeTrashed: false });
     expect(listed).toHaveLength(25);
   });
 
@@ -55,14 +77,14 @@ describe("seedArchive", () => {
     expect(summary.namedProjects).toBeGreaterThan(1);
 
     const { reader } = openReader();
-    const noProject = reader.listChats({
+    const noProject = listAll(reader, {
       includeTrashed: false,
       projects: [""],
     });
     expect(noProject.length).toBeGreaterThan(0);
     expect(noProject.every((c) => c.project === "")).toBe(true);
 
-    const all = reader.listChats({ includeTrashed: false });
+    const all = listAll(reader, { includeTrashed: false });
     expect(all.some((c) => c.project !== "")).toBe(true);
     // Generous margin: these seed through the repos one autocommit at a time,
     // which is slower on shared CI runners than locally.
@@ -85,6 +107,7 @@ describe("seedArchive", () => {
         archive: archive2,
         metadata: metadata2,
         tags: tags2,
+        pageQuery: createChatPageQuery({ dataDir: dir }),
       });
       return { reader, tags: tags2 };
     }
@@ -93,7 +116,7 @@ describe("seedArchive", () => {
 
     // A tag filter returns a non-empty subset, every member holding that tag.
     const someTag = first.tags.listTags()[0];
-    const filtered = first.reader.listChats({
+    const filtered = listAll(first.reader, {
       includeTrashed: false,
       tags: [someTag.id],
     });
@@ -105,7 +128,7 @@ describe("seedArchive", () => {
     // Same seed in a fresh directory yields the same sourceId -> tag-names map.
     const tagFingerprint = (r: ReturnType<typeof seedInto>["reader"]) =>
       new Map(
-        r.listChats({ includeTrashed: false }).map((c) => [
+        listAll(r, { includeTrashed: false }).map((c) => [
           c.sourceId,
           c.tags
             .map((t) => t.name)
