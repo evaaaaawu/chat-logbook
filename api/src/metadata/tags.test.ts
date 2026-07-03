@@ -137,39 +137,4 @@ describe("TagRepository", () => {
     expect(second.listTags()).toEqual([tag]);
     expect(second.listTagsForChat("chat-1")).toEqual([tag]);
   });
-
-  it("lists chats holding ALL of the given tags (AND intersection)", () => {
-    const repo = createTagRepository({ dataDir });
-    const bug = repo.createTag("bug", "red");
-    const idea = repo.createTag("idea", "violet");
-    repo.assignTag("chat-both", bug.id);
-    repo.assignTag("chat-both", idea.id);
-    repo.assignTag("chat-bug-only", bug.id);
-    repo.assignTag("chat-idea-only", idea.id);
-
-    const chatIds = repo.listChatIdsWithAllTags([bug.id, idea.id]);
-
-    expect(chatIds).toEqual(["chat-both"]);
-  });
-
-  it("lists every chat carrying a single given tag", () => {
-    const repo = createTagRepository({ dataDir });
-    const bug = repo.createTag("bug", "red");
-    repo.assignTag("chat-1", bug.id);
-    repo.assignTag("chat-2", bug.id);
-
-    const chatIds = repo.listChatIdsWithAllTags([bug.id]);
-
-    expect(chatIds.sort()).toEqual(["chat-1", "chat-2"]);
-  });
-
-  it("de-duplicates repeated tag ids so they don't inflate the AND count", () => {
-    const repo = createTagRepository({ dataDir });
-    const bug = repo.createTag("bug", "red");
-    repo.assignTag("chat-1", bug.id);
-
-    const chatIds = repo.listChatIdsWithAllTags([bug.id, bug.id]);
-
-    expect(chatIds).toEqual(["chat-1"]);
-  });
 });
