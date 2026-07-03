@@ -491,8 +491,9 @@ describe("Chat id is the public API handle", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const list = await app.request("/api/chats");
+    const list = await app.request("/api/chats?limit=200");
     const body = (await list.json()) as { chats: ChatResponse[] };
     const chat = body.chats.find((s) => s.sourceId === "session-1");
     expect(chat?.id).toBe(wireId);
@@ -519,6 +520,7 @@ describe("Chat id is the public API handle", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     const res = await app.request("/api/chats/session-1");
     expect(res.status).toBe(404);
@@ -545,6 +547,7 @@ describe("Chat id is the public API handle", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     const res = await app.request(`/api/chats/${wireId}`);
     expect(res.status).toBe(200);
@@ -567,10 +570,11 @@ describe("Soft delete and restore (archive-backed)", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
 
-    const res = await app.request("/api/chats?includeDeleted=true");
+    const res = await app.request("/api/chats?includeDeleted=true&limit=200");
     const body = (await res.json()) as { chats: ChatResponse[] };
     expect(body.chats.map((s) => s.sourceId)).not.toContain("session-1");
   });
@@ -588,13 +592,14 @@ describe("Soft delete and restore (archive-backed)", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     const del = await app.request(`/api/chats/${wireId}`, {
       method: "DELETE",
     });
     expect(del.status).toBe(204);
 
-    const list = await app.request("/api/chats");
+    const list = await app.request("/api/chats?limit=200");
     const body = (await list.json()) as { chats: ChatResponse[] };
     expect(body.chats.map((s) => s.sourceId)).not.toContain("session-1");
   });
@@ -612,6 +617,7 @@ describe("Soft delete and restore (archive-backed)", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
     const restore = await app.request(`/api/chats/${wireId}/restore`, {
@@ -619,7 +625,7 @@ describe("Soft delete and restore (archive-backed)", () => {
     });
     expect(restore.status).toBe(204);
 
-    const list = await app.request("/api/chats");
+    const list = await app.request("/api/chats?limit=200");
     const body = (await list.json()) as { chats: ChatResponse[] };
     expect(body.chats.map((s) => s.sourceId)).toContain("session-1");
   });
@@ -637,6 +643,7 @@ describe("Soft delete and restore (archive-backed)", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
 
@@ -667,6 +674,7 @@ describe("GET /api/chats/:id visibility", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
 
@@ -695,6 +703,7 @@ describe("GET /api/chats/:id visibility", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
 
@@ -717,6 +726,7 @@ describe("GET /api/chats/:id visibility", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     await app.request(`/api/chats/${wireId}`, { method: "DELETE" });
     const restore = await app.request(`/api/chats/${wireId}/restore`, {
@@ -734,6 +744,7 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
 
     const res = await app.request("/api/chats/nonexistent", {
@@ -749,6 +760,7 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
 
     const res = await app.request("/api/chats/nonexistent/restore", {
@@ -769,6 +781,7 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
 
     const first = await app.request(`/api/chats/${wireId}`, {
@@ -793,6 +806,7 @@ describe("DELETE / restore idempotency (archive-backed)", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
 
     const res = await app.request(`/api/chats/${wireId}/restore`, {
@@ -824,6 +838,7 @@ describe("PATCH /api/chats/:id/title", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     const patch = await app.request(`/api/chats/${wireId}/title`, {
       method: "PATCH",
@@ -832,7 +847,7 @@ describe("PATCH /api/chats/:id/title", () => {
     });
     expect(patch.status).toBe(204);
 
-    const list = await app.request("/api/chats");
+    const list = await app.request("/api/chats?limit=200");
     const body = (await list.json()) as { chats: ChatResponse[] };
     const session = body.chats.find((s) => s.sourceId === "session-1");
     expect(session?.title).toBe("My favourite chat");
@@ -860,6 +875,7 @@ describe("PATCH /api/chats/:id/title", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     const patch = await app.request(`/api/chats/${wireId}/title`, {
       method: "PATCH",
@@ -868,7 +884,7 @@ describe("PATCH /api/chats/:id/title", () => {
     });
     expect(patch.status).toBe(204);
 
-    const list = await app.request("/api/chats");
+    const list = await app.request("/api/chats?limit=200");
     const body = (await list.json()) as { chats: ChatResponse[] };
     const session = body.chats.find((s) => s.sourceId === "session-1");
     expect(session?.title).toBe("Build a login page");
@@ -888,6 +904,7 @@ describe("PATCH /api/chats/:id/title", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     const patch = await app.request(`/api/chats/${wireId}/title`, {
       method: "PATCH",
@@ -896,7 +913,7 @@ describe("PATCH /api/chats/:id/title", () => {
     });
     expect(patch.status).toBe(204);
 
-    const list = await app.request("/api/chats");
+    const list = await app.request("/api/chats?limit=200");
     const body = (await list.json()) as { chats: ChatResponse[] };
     const session = body.chats.find((s) => s.sourceId === "session-1");
     expect(session?.title).toBe("Untitled");
@@ -915,6 +932,7 @@ describe("PATCH /api/chats/:id/title", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     await app.request(`/api/chats/${wireId}/title`, {
       method: "PATCH",
@@ -922,7 +940,7 @@ describe("PATCH /api/chats/:id/title", () => {
       body: JSON.stringify({ title: "  Padded title  " }),
     });
 
-    const list = await app.request("/api/chats");
+    const list = await app.request("/api/chats?limit=200");
     const body = (await list.json()) as { chats: ChatResponse[] };
     const session = body.chats.find((s) => s.sourceId === "session-1");
     expect(session?.title).toBe("Padded title");
@@ -935,6 +953,7 @@ describe("PATCH /api/chats/:id/title", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
 
     const res = await app.request("/api/chats/nonexistent/title", {
@@ -957,6 +976,7 @@ describe("PATCH /api/chats/:id/title", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
 
     const wrongType = await app.request(`/api/chats/${wireId}/title`, {
@@ -979,6 +999,7 @@ describe("PATCH /api/chats/:id/title", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
 
     const tooLong = "x".repeat(201);
@@ -1010,8 +1031,9 @@ describe("GET /api/chats?project= (server-side Project filter)", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const res = await app.request("/api/chats?project=project-a");
+    const res = await app.request("/api/chats?project=project-a&limit=200");
     const body = (await res.json()) as { chats: ChatResponse[] };
     expect(body.chats.map((c) => c.sourceId)).toEqual(["session-a"]);
   });
@@ -1039,9 +1061,10 @@ describe("GET /api/chats?project= (server-side Project filter)", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     const res = await app.request(
-      "/api/chats?project=project-a&project=project-c"
+      "/api/chats?project=project-a&project=project-c&limit=200"
     );
     const body = (await res.json()) as { chats: ChatResponse[] };
     expect(body.chats.map((c) => c.sourceId).sort()).toEqual([
@@ -1068,8 +1091,9 @@ describe("GET /api/chats?project= (server-side Project filter)", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const res = await app.request("/api/chats?project=");
+    const res = await app.request("/api/chats?project=&limit=200");
     const body = (await res.json()) as { chats: ChatResponse[] };
     expect(body.chats.map((c) => c.sourceId)).toEqual(["session-none"]);
   });
@@ -1092,8 +1116,9 @@ describe("GET /api/chats?project= (server-side Project filter)", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const res = await app.request("/api/chats");
+    const res = await app.request("/api/chats?limit=200");
     const body = (await res.json()) as { chats: ChatResponse[] };
     expect(body.chats.map((c) => c.sourceId).sort()).toEqual([
       "session-a",
@@ -1120,13 +1145,14 @@ describe("GET /api/chats?project= (server-side Project filter)", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
-    const main = await app.request("/api/chats?project=project-a");
+    const main = await app.request("/api/chats?project=project-a&limit=200");
     const mainBody = (await main.json()) as { chats: ChatResponse[] };
     expect(mainBody.chats.map((c) => c.sourceId)).toEqual(["session-active"]);
 
     const trash = await app.request(
-      "/api/chats?project=project-a&includeTrashed=true"
+      "/api/chats?project=project-a&includeTrashed=true&limit=200"
     );
     const trashBody = (await trash.json()) as { chats: ChatResponse[] };
     expect(trashBody.chats.map((c) => c.sourceId).sort()).toEqual([
@@ -1155,8 +1181,15 @@ describe("GET /api/chats?tags= (server-side Tag filter)", () => {
     tags.assignTag(both, idea.id);
     tags.assignTag(bugOnly, bug.id);
 
-    const app = createApp({ archive, metadata, tags });
-    const res = await app.request(`/api/chats?tags=${bug.id},${idea.id}`);
+    const app = createApp({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const res = await app.request(
+      `/api/chats?tags=${bug.id},${idea.id}&limit=200`
+    );
     const body = (await res.json()) as { chats: ChatResponse[] };
     expect(body.chats.map((c) => c.sourceId)).toEqual(["session-both"]);
   });
@@ -1179,9 +1212,14 @@ describe("GET /api/chats?tags= (server-side Tag filter)", () => {
     tags.assignTag(inA, bug.id);
     tags.assignTag(inB, bug.id);
 
-    const app = createApp({ archive, metadata, tags });
+    const app = createApp({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
     const res = await app.request(
-      `/api/chats?tags=${bug.id}&project=project-a`
+      `/api/chats?tags=${bug.id}&project=project-a&limit=200`
     );
     const body = (await res.json()) as { chats: ChatResponse[] };
     expect(body.chats.map((c) => c.sourceId)).toEqual(["session-a-tagged"]);
@@ -1202,8 +1240,13 @@ describe("GET /api/chats?tags= (server-side Tag filter)", () => {
     const bug = tags.createTag("bug", "red");
     tags.assignTag(tagged, bug.id);
 
-    const app = createApp({ archive, metadata, tags });
-    const res = await app.request("/api/chats?tags=");
+    const app = createApp({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const res = await app.request("/api/chats?tags=&limit=200");
     const body = (await res.json()) as { chats: ChatResponse[] };
     expect(body.chats.map((c) => c.sourceId)).toEqual(["session-bare"]);
   });
@@ -1223,8 +1266,13 @@ describe("GET /api/chats?tags= (server-side Tag filter)", () => {
     const bug = tags.createTag("bug", "red");
     tags.assignTag(a, bug.id);
 
-    const app = createApp({ archive, metadata, tags });
-    const res = await app.request("/api/chats");
+    const app = createApp({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const res = await app.request("/api/chats?limit=200");
     const body = (await res.json()) as { chats: ChatResponse[] };
     expect(body.chats.map((c) => c.sourceId).sort()).toEqual([
       "session-a",
@@ -1242,6 +1290,7 @@ describe("GET /api/chats/:id (route status mapping)", () => {
       archive,
       metadata,
       tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
     });
     const res = await app.request("/api/chats/does-not-exist");
     expect(res.status).toBe(404);
@@ -1253,7 +1302,12 @@ describe("Tag API", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
     const tags = createTagRepository({ dataDir });
-    const app = createApp({ archive, metadata, tags });
+    const app = createApp({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
     return { archive, metadata, tags, app };
   }
 
@@ -1410,7 +1464,7 @@ describe("Tag API", () => {
     tags.assignTag(row.id, bug.id);
     tags.assignTag(row.id, idea.id);
 
-    const res = await app.request("/api/chats");
+    const res = await app.request("/api/chats?limit=200");
     const body = (await res.json()) as {
       chats: Array<{ sourceId: string; tags: Tag[] }>;
     };
@@ -1425,7 +1479,7 @@ describe("Tag API", () => {
       firstSeenAt: new Date(1700000000000),
     });
 
-    const res = await app.request("/api/chats");
+    const res = await app.request("/api/chats?limit=200");
     const body = (await res.json()) as {
       chats: Array<{ sourceId: string; tags: Tag[] }>;
     };

@@ -64,77 +64,62 @@ export function createApp({
   app.get("/api/chats", (c) => {
     const includeTrashed = c.req.query("includeTrashed") === "true";
 
-    // Paginated mode: `?limit=` opts into one server-sorted keyset page. The
-    // legacy full-list path below stays for callers that omit `limit` (Trash and
-    // the title sort, until they migrate).
+    // The List reads one server-sorted keyset page per request (ADR-0017): the
+    // sort + window run inside the cross-store SQL pass, so `?limit=` is
+    // required and the endpoint never loads the full list.
     const limitParam = c.req.query("limit");
-    if (limitParam !== undefined) {
-      if (!pageQuery) {
-        return c.json({ error: "Pagination is not available" }, 501);
-      }
-      const limit = Number.parseInt(limitParam, 10);
-      if (!Number.isInteger(limit) || limit <= 0 || limit > MAX_PAGE_LIMIT) {
-        return c.json({ error: "Invalid limit" }, 400);
-      }
-      const sort = c.req.query("sort") ?? "updatedAt";
-      // `deletedAt` is the Trash view's deleted-time axis (#145); it sorts
-      // through the ATTACHed Metadata store and is trash-only by nature.
-      // `title` sorts through the ATTACHed `chat_sort_keys` collation index
-      // (#146 / ADR-0019), in both the main view and Trash.
-      if (
-        sort !== "createdAt" &&
-        sort !== "updatedAt" &&
-        sort !== "deletedAt" &&
-        sort !== "title"
-      ) {
-        return c.json({ error: "Invalid sort" }, 400);
-      }
-      // Direction defaults to "desc" (newest-first) so existing callers that
-      // omit it are unchanged; the covering index scans either way (#143).
-      const direction = c.req.query("direction") ?? "desc";
-      if (direction !== "asc" && direction !== "desc") {
-        return c.json({ error: "Invalid direction" }, 400);
-      }
-      // The Trash view scopes the page to soft-deleted chats only (#145),
-      // distinct from `includeTrashed` (active + trashed). The frontend sends it
-      // for every Trash page; the `deletedAt` axis is trash-only regardless.
-      const trashedOnly = c.req.query("trashedOnly") === "true";
-      // The active filter pages server-side alongside the keyset window (#130),
-      // parsed the same way as the legacy full-list branch: repeated `?project=`
-      // unions (OR), a single comma-separated `?tags=` ANDs. An empty value
-      // selects the `(No project)` / `Untagged` group; an absent param is
-      // undefined => unfiltered.
-      const projects = c.req.queries("project");
-      const tagsParam = c.req.query("tags");
-      const tagSelection =
-        tagsParam === undefined ? undefined : tagsParam.split(",");
-      const { chats, nextCursor } = reader.listChatsPage({
-        sort,
-        direction,
-        limit,
-        cursor: c.req.query("cursor"),
-        includeTrashed,
-        trashedOnly,
-        projects,
-        tags: tagSelection,
-      });
-      return c.json({ chats, nextCursor });
+    if (limitParam === undefined) {
+      return c.json({ error: "Missing limit" }, 400);
     }
-
-    // Repeated `?project=` params union (OR); an empty value selects the
-    // `(No project)` group. Absent param => undefined => unfiltered.
+    if (!pageQuery) {
+      return c.json({ error: "Pagination is not available" }, 501);
+    }
+    const limit = Number.parseInt(limitParam, 10);
+    if (!Number.isInteger(limit) || limit <= 0 || limit > MAX_PAGE_LIMIT) {
+      return c.json({ error: "Invalid limit" }, 400);
+    }
+    const sort = c.req.query("sort") ?? "updatedAt";
+    // `deletedAt` is the Trash view's deleted-time axis (#145); it sorts
+    // through the ATTACHed Metadata store and is trash-only by nature.
+    // `title` sorts through the ATTACHed `chat_sort_keys` collation index
+    // (#146 / ADR-0019), in both the main view and Trash.
+    if (
+      sort !== "createdAt" &&
+      sort !== "updatedAt" &&
+      sort !== "deletedAt" &&
+      sort !== "title"
+    ) {
+      return c.json({ error: "Invalid sort" }, 400);
+    }
+    // Direction defaults to "desc" (newest-first) so existing callers that
+    // omit it are unchanged; the covering index scans either way (#143).
+    const direction = c.req.query("direction") ?? "desc";
+    if (direction !== "asc" && direction !== "desc") {
+      return c.json({ error: "Invalid direction" }, 400);
+    }
+    // The Trash view scopes the page to soft-deleted chats only (#145),
+    // distinct from `includeTrashed` (active + trashed). The frontend sends it
+    // for every Trash page; the `deletedAt` axis is trash-only regardless.
+    const trashedOnly = c.req.query("trashedOnly") === "true";
+    // The active filter pages server-side alongside the keyset window (#130):
+    // repeated `?project=` unions (OR), a single comma-separated `?tags=` ANDs.
+    // An empty value selects the `(No project)` / `Untagged` group; an absent
+    // param is undefined => unfiltered.
     const projects = c.req.queries("project");
-    // A single comma-separated `?tags=` param, AND within. `tags=` (empty)
-    // splits to `[""]` — the `Untagged` group — mirroring `project=`'s empty
-    // `(No project)` convention. Absent param => undefined => unfiltered.
     const tagsParam = c.req.query("tags");
-    const tags = tagsParam === undefined ? undefined : tagsParam.split(",");
-    const chats = reader.listChats({
+    const tagSelection =
+      tagsParam === undefined ? undefined : tagsParam.split(",");
+    const { chats, nextCursor } = reader.listChatsPage({
+      sort,
+      direction,
+      limit,
+      cursor: c.req.query("cursor"),
       includeTrashed,
+      trashedOnly,
       projects,
-      tags,
+      tags: tagSelection,
     });
-    return c.json({ chats });
+    return c.json({ chats, nextCursor });
   });
 
   // The live-update channel (issue #132): a Server-Sent Events stream that

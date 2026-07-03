@@ -72,22 +72,6 @@ function toApiBlock(block: StoredBlock): ApiContentBlock {
 
 export interface ChatReader {
   /**
-   * List visible chats. `projects`, when given, filters server-side to chats in
-   * any of those Projects (OR / union); an empty-string entry selects the
-   * `(No project)` group. Omitting it returns every visible chat.
-   */
-  listChats(opts: {
-    includeTrashed: boolean;
-    projects?: string[];
-    /**
-     * Tag filter, AND within: a Chat must hold every selected Tag to pass. An
-     * empty-string entry selects the `Untagged` group (zero Tags) — mixing it
-     * with a real Tag id naturally yields nothing. Combined with `projects` (OR
-     * within) the two AND across types. Omitting it leaves Tags unfiltered.
-     */
-    tags?: string[];
-  }): ChatResponse[];
-  /**
    * One keyset-paginated, server-sorted page of visible chats (ADR-0017). The
    * sort + windowing run inside the cross-store SQL pass, so the caller never
    * loads the full list. `cursor` is the opaque token returned as a prior page's
@@ -163,8 +147,8 @@ interface ChatReaderDeps {
   tags: TagRepository;
   /**
    * The keyset page query that runs the cross-store sorted + paginated listing
-   * (ADR-0017). Optional so the full-list read paths (and their tests) compose
-   * without it; `listChatsPage` requires it.
+   * (ADR-0017). Optional so the read paths that don't page (and their tests)
+   * compose without it; `listChatsPage` requires it.
    */
   pageQuery?: ChatPageQuery;
   /**
@@ -205,61 +189,11 @@ export function createChatReader({
     return [agent, sourceId].join("\u0000");
   }
 
-  function listChats({
-    includeTrashed,
-    projects,
-    tags: tagSelection,
-  }: {
-    includeTrashed: boolean;
-    projects?: string[];
-    tags?: string[];
-  }): ChatResponse[] {
-    const visibility = loadChatVisibility(metadata, { includeTrashed });
-    const rows = archive.read.listChatRows(projects ? { projects } : undefined);
-
-    // Tag filter (AND within) is resolved as a per-Chat predicate intersected
-    // in app code with the Project-filtered Archive rows — the cross-store
-    // intersection ADR-0016 mandates instead of a single cross-database JOIN.
-    // A real-id set comes from the AND-intersection query; the `Untagged`
-    // group is "holds no Tag at all", so it excludes any Chat that appears in
-    // the grouped tags map. Selecting both at once leaves nothing, as intended.
-    let passesTagFilter: ((chatInternalId: string) => boolean) | null = null;
-    if (tagSelection) {
-      const realTagIds = tagSelection.filter((t) => t !== "");
-      const wantUntagged = tagSelection.includes("");
-      const allowedByTags =
-        realTagIds.length > 0
-          ? new Set(tags.listChatIdsWithAllTags(realTagIds))
-          : null;
-      const taggedChatIds = wantUntagged
-        ? new Set(tags.listTagsByChat().keys())
-        : null;
-      passesTagFilter = (chatInternalId) => {
-        if (allowedByTags && !allowedByTags.has(chatInternalId)) return false;
-        if (taggedChatIds && taggedChatIds.has(chatInternalId)) return false;
-        return true;
-      };
-    }
-
-    const toResponse = loadHydration();
-
-    const chats: ChatResponse[] = [];
-    for (const row of rows) {
-      if (!visibility.isVisible(row.id)) continue;
-      if (passesTagFilter && !passesTagFilter(row.id)) continue;
-      chats.push(toResponse(row, visibility));
-    }
-
-    return chats;
-  }
-
   // Loads the grouped/windowed derivation maps once (one query per derived
   // field, never ~3 per row — issue #106) and returns an assembler that turns a
-  // single Archive chat row + visibility into the public Chat shape. Shared by
-  // the full-list (`listChats`) and paginated (`listChatsPage`) read paths.
+  // single Archive chat row + visibility into the public Chat shape.
   // `scope.sourceIds` bounds the message/raw aggregations to a page's chats so
-  // the paginated path stays O(page); the full-list path calls this with no
-  // scope and aggregates every chat as before (issue #158).
+  // the paginated read path stays O(page) (issue #158).
   function loadHydration(scope?: {
     sourceIds?: string[];
   }): (
@@ -422,7 +356,6 @@ export function createChatReader({
   }
 
   return {
-    listChats,
     listChatsPage,
     listCounts,
     listFilteredTotal,
