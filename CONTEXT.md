@@ -102,6 +102,20 @@ _Avoid_: delete, hard-delete (in prose), wipe
 Whether a Chat appears, decided at read time from Metadata — never by changing the Archive or the Index.
 _Avoid_: filtering, access
 
+### Selection
+
+**Selection**:
+The set of Chats the user has marked in the Chat list to act on together — the target of a batch action. Distinct from the **Open Chat** (the single Chat shown in the reading pane): opening a Chat and adding it to the Selection are separate gestures, and a Chat can be in one, both, or neither.
+_Avoid_: selected chat (ambiguous with Open Chat), checked, highlighted
+
+**Open Chat**:
+The single Chat currently shown in the reading pane, chosen by clicking a row's body. Independent of the Selection.
+_Avoid_: active chat, current chat, selected chat
+
+**Cursor**:
+The row keyboard navigation currently rests on, shown with a focus ring. Arrow keys move the Cursor; on a plain arrow it also becomes the Open Chat and the anchor for range selection, but during a `Shift`+arrow range paint the Cursor moves without changing the Open Chat. Distinct from both the Open Chat and the Selection.
+_Avoid_: focus, active row, highlighted row
+
 ### List ordering
 
 **Frozen order**:
