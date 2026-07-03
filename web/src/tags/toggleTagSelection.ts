@@ -1,4 +1,4 @@
-import { UNTAGGED } from "@/tags/filterChatsByTags";
+import { UNTAGGED } from "@/tags/untagged";
 
 /**
  * Toggle one entry in the Tag filter selection while keeping a single

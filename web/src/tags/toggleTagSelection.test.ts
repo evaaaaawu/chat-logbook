@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { UNTAGGED } from "./filterChatsByTags";
+import { UNTAGGED } from "./untagged";
 import { toggleTagSelection } from "./toggleTagSelection";
 
 describe("toggleTagSelection", () => {
