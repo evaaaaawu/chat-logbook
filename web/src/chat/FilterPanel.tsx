@@ -5,6 +5,7 @@ import type { ProjectFacet } from "@/chat/projects/projectFacets";
 import { TagsSection } from "@/tags/TagsSection";
 import type { Tag } from "@/types";
 import type { ColorToken } from "@/tags/palette";
+import type { TagMode } from "@/tags/tagModePreference";
 
 interface FilterPanelProps {
   /** How many chats are in Trash — the server-derived trashed total (#131). */
@@ -18,6 +19,8 @@ interface FilterPanelProps {
   countForTag: (tagId: string) => number;
   untaggedCount: number;
   selectedTags: ReadonlySet<string>;
+  tagMode: TagMode;
+  onTagModeChange: (mode: TagMode) => void;
   onToggleTag: (tagId: string) => void;
   onRenameTag: (id: string, name: string) => void;
   onRecolorTag: (id: string, color: ColorToken) => void;
@@ -35,6 +38,8 @@ export function FilterPanel({
   countForTag,
   untaggedCount,
   selectedTags,
+  tagMode,
+  onTagModeChange,
   onToggleTag,
   onRenameTag,
   onRecolorTag,
@@ -61,6 +66,8 @@ export function FilterPanel({
           countForTag={countForTag}
           untaggedCount={untaggedCount}
           selected={selectedTags}
+          tagMode={tagMode}
+          onTagModeChange={onTagModeChange}
           onToggle={onToggleTag}
           onRename={onRenameTag}
           onRecolor={onRecolorTag}

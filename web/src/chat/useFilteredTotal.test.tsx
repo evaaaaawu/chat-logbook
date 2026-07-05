@@ -24,6 +24,27 @@ describe("useFilteredTotal", () => {
     expect(result.current).toBeUndefined();
   });
 
+  it("sends ?tagMode=any when the Any mode is active, and omits it for All", async () => {
+    const urls: string[] = [];
+    server.use(
+      http.get("/api/chats/list-total", ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json({ total: 0 });
+      })
+    );
+
+    const { rerender } = renderHook(
+      ({ mode }: { mode: "all" | "any" }) =>
+        useFilteredTotal("main", [], ["bug"], mode),
+      { initialProps: { mode: "all" as "all" | "any" } }
+    );
+    await waitFor(() => expect(urls.length).toBeGreaterThan(0));
+    expect(urls.at(-1)).not.toContain("tagMode");
+
+    rerender({ mode: "any" });
+    await waitFor(() => expect(urls.at(-1)).toContain("tagMode=any"));
+  });
+
   it("keeps the previous total while the next filter's total is in flight", async () => {
     const { result, rerender } = renderHook(
       ({ projects }) => useFilteredTotal("main", projects, []),

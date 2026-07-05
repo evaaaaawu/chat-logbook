@@ -14,6 +14,7 @@ import { TAG_COLOR_HEX, type ColorToken } from "@/tags/palette";
 import { ColorSwatches } from "@/tags/ColorSwatches";
 import { sortTagsByName } from "@/tags/sortTags";
 import { UNTAGGED } from "@/tags/untagged";
+import type { TagMode } from "@/tags/tagModePreference";
 
 interface TagsSectionProps {
   tags: Tag[];
@@ -23,10 +24,57 @@ interface TagsSectionProps {
   untaggedCount: number;
   // The active Tag filter: tag ids plus the `UNTAGGED` sentinel. AND within.
   selected: ReadonlySet<string>;
+  // How the selected Tags combine: `all` (AND) or `any` (OR). The Match control
+  // switches it; `any` also drops the Untagged dimming (ADR-0016 update).
+  tagMode: TagMode;
+  onTagModeChange: (mode: TagMode) => void;
   onToggle: (tagId: string) => void;
   onRename: (id: string, name: string) => void;
   onRecolor: (id: string, color: ColorToken) => void;
   onDelete: (id: string) => void;
+}
+
+// The All / Any match control beside the Tags header label. `all` ANDs the
+// selected Tags, `any` ORs them (ADR-0016 update). A bordered segmented control:
+// a hairline frame with the two `aria-pressed` segments flush to it (no inner
+// gap) and a divider between them, the active one on a soft `bg-primary/15`
+// fill. `overflow-hidden` clips the active fill to the frame's rounded corners.
+// A sibling of the collapse toggle, never nested in it.
+function MatchControl({
+  mode,
+  onChange,
+}: {
+  mode: TagMode;
+  onChange: (mode: TagMode) => void;
+}) {
+  const modes = ["all", "any"] as const;
+  return (
+    <div
+      data-testid="tag-match-control"
+      role="group"
+      aria-label="Tag match mode"
+      className="flex items-center overflow-hidden rounded-md border border-border text-[11px] font-medium"
+    >
+      {modes.map((value, i) => (
+        <button
+          key={value}
+          type="button"
+          data-testid={`tag-match-${value}`}
+          aria-pressed={mode === value}
+          onClick={() => onChange(value)}
+          className={`px-2 py-0.5 capitalize transition-colors ${
+            i < modes.length - 1 ? "border-r border-border" : ""
+          } ${
+            mode === value
+              ? "bg-primary/15 text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {value}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function RenameRow({
@@ -252,6 +300,7 @@ function TagRow({
     <li
       data-testid="tag-manage-row"
       data-tag-id={tag.id}
+      data-dimmed={dimmed ? "true" : undefined}
       className={`group/tag relative flex items-center rounded-md pr-2 text-sm transition ${
         isSelected ? "bg-primary/15" : "hover:bg-card"
       } ${dimmed ? "opacity-40 hover:opacity-100" : ""}`}
@@ -347,6 +396,8 @@ export function TagsSection({
   countForTag,
   untaggedCount,
   selected,
+  tagMode,
+  onTagModeChange,
   onToggle,
   onRename,
   onRecolor,
@@ -354,24 +405,42 @@ export function TagsSection({
 }: TagsSectionProps) {
   const [collapsed, setCollapsed] = useState(false);
   const sorted = useMemo(() => sortTagsByName(tags), [tags]);
-  // While Untagged is the active filter, real Tags can't combine with it, so
-  // they read as dimmed-but-available (clicking one switches the filter).
+  // While Untagged is the active filter in All mode, real Tags can't combine
+  // with it, so they read as dimmed-but-available (clicking one switches the
+  // filter). In Any mode "Untagged OR Tag X" is a real union, so no dimming
+  // (ADR-0016 update).
   const untaggedActive = selected.has(UNTAGGED);
+  const dimRealTags = untaggedActive && tagMode === "all";
 
   return (
     <div data-testid="tags-section" className="flex flex-col">
-      <button
-        type="button"
-        data-testid="tags-header"
-        onClick={() => setCollapsed((c) => !c)}
-        aria-expanded={!collapsed}
-        className="flex items-center justify-between px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <span>Tags</span>
-        <span
+      {/* Header row: "Tags" and the All/Any match control sit together on the
+          left; the "A–Z" order caption stays on the right. Both "Tags" and the
+          A–Z caption are collapse toggles (the caption carries the chevron); the
+          match control is a sibling — never nested — so its buttons don't also
+          collapse the section, and it stays visible while collapsed. */}
+      <div className="flex items-center justify-between px-2 py-1.5 text-xs font-medium text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            data-testid="tags-header"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-expanded={!collapsed}
+            className="transition-colors hover:text-foreground"
+          >
+            Tags
+          </button>
+          {sorted.length > 0 && (
+            <MatchControl mode={tagMode} onChange={onTagModeChange} />
+          )}
+        </div>
+        <button
+          type="button"
           data-testid="tags-order-caption"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-expanded={!collapsed}
           title="Sorted A–Z"
-          className="flex items-center gap-0.5 text-muted-foreground/80"
+          className="flex items-center gap-0.5 text-muted-foreground/80 transition-colors hover:text-foreground"
         >
           A–Z
           <ChevronDown
@@ -379,8 +448,8 @@ export function TagsSection({
             aria-hidden="true"
             className={`transition-transform ${collapsed ? "-rotate-90" : ""}`}
           />
-        </span>
-      </button>
+        </button>
+      </div>
       {!collapsed &&
         (sorted.length === 0 ? (
           <p className="px-2 py-1.5 text-xs text-muted-foreground">
@@ -394,7 +463,7 @@ export function TagsSection({
                 tag={tag}
                 count={countForTag(tag.id)}
                 isSelected={selected.has(tag.id)}
-                dimmed={untaggedActive}
+                dimmed={dimRealTags}
                 onToggle={() => onToggle(tag.id)}
                 onRename={(name) => onRename(tag.id, name)}
                 onRecolor={(color) => onRecolor(tag.id, color)}

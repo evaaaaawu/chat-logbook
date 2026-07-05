@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { TagMode } from "@/tags/tagModePreference";
 
 // The filtered List count ("Chats N" when a filter is active; #131 Phase B).
 // Kept separate from the static facet counts (useChatCounts) so toggling a
@@ -11,7 +12,8 @@ const BACKGROUND_REFRESH_MS = 4000;
 function listTotalUrl(
   mode: "main" | "trash",
   projects: string[],
-  tags: string[]
+  tags: string[],
+  tagMode: TagMode
 ): string {
   const params = new URLSearchParams();
   if (mode === "trash") params.set("includeTrashed", "true");
@@ -19,6 +21,9 @@ function listTotalUrl(
   // the same wire shape the paginated list query uses (#130).
   for (const p of projects) params.append("project", p);
   if (tags.length > 0) params.set("tags", tags.join(","));
+  // `tagMode=any` opts into OR; `all` is the server default, so it rides only
+  // when active — keeping the default URL (and its fetch cache key) unchanged.
+  if (tagMode === "any") params.set("tagMode", "any");
   return `/api/chats/list-total?${params.toString()}`;
 }
 
@@ -41,13 +46,14 @@ interface FetchedTotal {
 export function useFilteredTotal(
   mode: "main" | "trash",
   projects: string[],
-  tags: string[]
+  tags: string[],
+  tagMode: TagMode = "all"
 ): number | undefined {
   const [fetched, setFetched] = useState<FetchedTotal | null>(null);
   // The URL fully encodes view + filter, so depending on it re-runs the fetch
   // exactly when the selection changes — no array-identity churn across renders.
   const active = projects.length > 0 || tags.length > 0;
-  const url = active ? listTotalUrl(mode, projects, tags) : null;
+  const url = active ? listTotalUrl(mode, projects, tags, tagMode) : null;
 
   useEffect(() => {
     if (url === null) return;
