@@ -74,6 +74,10 @@ export function useChatCounts(mode: "main" | "trash"): UseChatCountsResult {
   }, [mode]);
 
   useEffect(() => {
+    // `refresh` only setStates after `await fetch`, so this is not the
+    // synchronous cascading render the rule guards against — it's a standard
+    // fetch-on-mount / on-view-change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
 
