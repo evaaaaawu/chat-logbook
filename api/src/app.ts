@@ -109,6 +109,14 @@ export function createApp({
     const tagsParam = c.req.query("tags");
     const tagSelection =
       tagsParam === undefined ? undefined : tagsParam.split(",");
+    // `tagMode` chooses how the selected real Tags combine: `all` (default, AND)
+    // or `any` (OR, with `Untagged` joining the union) — ADR-0016 update.
+    // Validated to the fixed pair like `direction`, so an unknown value is a 400
+    // rather than a silent fallback.
+    const tagMode = c.req.query("tagMode") ?? "all";
+    if (tagMode !== "all" && tagMode !== "any") {
+      return c.json({ error: "Invalid tagMode" }, 400);
+    }
     const { chats, nextCursor } = reader.listChatsPage({
       sort,
       direction,
@@ -118,6 +126,7 @@ export function createApp({
       trashedOnly,
       projects,
       tags: tagSelection,
+      tagMode,
     });
     return c.json({ chats, nextCursor });
   });
@@ -178,7 +187,18 @@ export function createApp({
     const projects = c.req.queries("project");
     const tagsParam = c.req.query("tags");
     const tags = tagsParam === undefined ? undefined : tagsParam.split(",");
-    const total = reader.listFilteredTotal({ includeTrashed, projects, tags });
+    // `tagMode` chooses how the selected real Tags combine (ADR-0016 update);
+    // validated to the fixed pair like the paginated list route.
+    const tagMode = c.req.query("tagMode") ?? "all";
+    if (tagMode !== "all" && tagMode !== "any") {
+      return c.json({ error: "Invalid tagMode" }, 400);
+    }
+    const total = reader.listFilteredTotal({
+      includeTrashed,
+      projects,
+      tags,
+      tagMode,
+    });
     return c.json({ total });
   });
 

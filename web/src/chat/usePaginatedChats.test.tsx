@@ -101,6 +101,31 @@ describe("usePaginatedChats", () => {
     expect(result.current.hasMore).toBe(false);
   });
 
+  it("sends ?tagMode=any on the page request when the Any mode is active", async () => {
+    const urls: string[] = [];
+    server.use(
+      http.get("/api/chats", ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json({ chats: [], nextCursor: null });
+      })
+    );
+
+    const { rerender } = renderHook(
+      ({ mode }: { mode: "all" | "any" }) =>
+        usePaginatedChats("updatedAt", "desc", {
+          pageSize: 2,
+          tags: ["bug"],
+          tagMode: mode,
+        }),
+      { initialProps: { mode: "all" as "all" | "any" } }
+    );
+    await waitFor(() => expect(urls.length).toBeGreaterThan(0));
+    expect(urls.at(-1)).not.toContain("tagMode");
+
+    rerender({ mode: "any" });
+    await waitFor(() => expect(urls.at(-1)).toContain("tagMode=any"));
+  });
+
   it("does not fetch more once the last page is reached", async () => {
     // A page large enough to hold every active chat: first page is the last.
     const { result } = renderHook(() =>

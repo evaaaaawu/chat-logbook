@@ -5,6 +5,7 @@ import {
   type ListSort,
 } from "@/chat/usePaginatedChats";
 import { useTags } from "@/tags/useTags";
+import { useTagMode } from "@/tags/useTagMode";
 import { useMessages } from "@/conversation/useMessages";
 import { useToast } from "@/shared/useToast";
 import { useChatOrder } from "@/chat/sort/useChatOrder";
@@ -70,6 +71,12 @@ function App() {
   const [selectedTags, setSelectedTags] = useState<ReadonlySet<string>>(
     () => new Set()
   );
+  // The Tag filter's Match mode (all/any), persisted per view like the sort
+  // preference (ADR-0016 update). Main and Trash keep independent modes; the
+  // active one rides the read hooks and the TagsSection control.
+  const mainTagMode = useTagMode("main");
+  const trashTagMode = useTagMode("trash");
+  const tagMode = mode === "trash" ? trashTagMode : mainTagMode;
 
   // The paginated path filters server-side: the selection rides the keyset query
   // and re-anchors the window on change (#130). Both views read through it now;
@@ -78,6 +85,7 @@ function App() {
     enabled: mainPaginate,
     projects: [...selectedProjects],
     tags: [...selectedTags],
+    tagMode: mainTagMode.mode,
   });
   // The Trash view reuses the same paginated read path, scoped to trashed-only
   // (#145). It re-anchors on the active filter and its axis the same way the main
@@ -87,6 +95,7 @@ function App() {
     trashedOnly: true,
     projects: [...selectedProjects],
     tags: [...selectedTags],
+    tagMode: trashTagMode.mode,
   });
   const source = mode === "trash" ? trashPaginated : paginated;
   const { chats, sortEpoch, softDelete, restore, setTitle, reload } = source;
@@ -99,10 +108,14 @@ function App() {
   // Trash counts independently of the active view's counts.
   const trashCounts = useChatCounts("trash");
 
+  // Destructure the (stable) counts reloader into a local so the callback deps
+  // are plain identifiers — a `counts.reload` member dep can't be tracked by the
+  // React Compiler's manual-memoization check.
+  const { reload: reloadCounts } = counts;
   const onAssignmentChange = useCallback(() => {
     void reload();
-    void counts.reload();
-  }, [reload, counts.reload]);
+    void reloadCounts();
+  }, [reload, reloadCounts]);
   const {
     tags: tagCatalog,
     createTag,
@@ -194,7 +207,8 @@ function App() {
   const filteredTotal = useFilteredTotal(
     mode,
     [...selectedProjects],
-    [...selectedTags]
+    [...selectedTags],
+    tagMode.mode
   );
   // While the first filtered total is still loading (filteredTotal undefined),
   // hold the view's facet total rather than letting the header fall back to the
@@ -327,6 +341,8 @@ function App() {
             countForTag={countForTag}
             untaggedCount={untaggedCount}
             selectedTags={selectedTags}
+            tagMode={tagMode.mode}
+            onTagModeChange={tagMode.setMode}
             onToggleTag={toggleTag}
             onRenameTag={(id, name) => void renameTag(id, name)}
             onRecolorTag={(id, color) => void recolorTag(id, color)}

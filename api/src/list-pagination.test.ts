@@ -608,6 +608,76 @@ describe("ChatReader.listChatsPage — server-side filtering (#130)", () => {
     pageQuery.close();
   });
 
+  it("unions the selected Tags when tagMode is 'any'", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const both = seedChat(archive, {
+      sourceId: "both",
+      firstSeenAt: new Date(1_000),
+    });
+    const onlyX = seedChat(archive, {
+      sourceId: "onlyX",
+      firstSeenAt: new Date(2_000),
+    });
+    seedChat(archive, { sourceId: "none", firstSeenAt: new Date(3_000) });
+
+    const x = tags.createTag("x", "violet");
+    const y = tags.createTag("y", "blue");
+    tags.assignTag(both, x.id);
+    tags.assignTag(both, y.id);
+    tags.assignTag(onlyX, x.id);
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+    const page = reader.listChatsPage({
+      sort: "createdAt",
+      limit: 10,
+      tags: [x.id, y.id],
+      tagMode: "any",
+    });
+
+    // Any: every chat holding at least one of x/y — "onlyX" and "both"
+    // (newest-first by createdAt), not the untagged "none".
+    expect(page.chats.map((c) => c.sourceId)).toEqual(["onlyX", "both"]);
+
+    pageQuery.close();
+  });
+
+  it("ORs the Untagged group into the union in 'any' mode", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const tagged = seedChat(archive, {
+      sourceId: "tagged",
+      firstSeenAt: new Date(1_000),
+    });
+    seedChat(archive, { sourceId: "other", firstSeenAt: new Date(2_000) });
+    seedChat(archive, { sourceId: "bare", firstSeenAt: new Date(3_000) });
+
+    const x = tags.createTag("x", "violet");
+    const other = tags.createTag("other", "blue");
+    tags.assignTag(tagged, x.id);
+    // "other" (sourceId) holds a different Tag; "bare" holds none.
+    const otherId = archive.ensureChat("claude-code", "other", new Date(2_000));
+    tags.assignTag(otherId, other.id);
+
+    const { reader, pageQuery } = makeReader(archive, metadata, tags);
+    const page = reader.listChatsPage({
+      sort: "createdAt",
+      limit: 10,
+      tags: [x.id, ""],
+      tagMode: "any",
+    });
+
+    // Any + Untagged: "holds x OR holds no Tags" — bare (3000) then tagged
+    // (1000), newest-first; the differently-tagged "other" is excluded.
+    expect(page.chats.map((c) => c.sourceId)).toEqual(["bare", "tagged"]);
+
+    pageQuery.close();
+  });
+
   it("ANDs the Project and Tag filters across types", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });

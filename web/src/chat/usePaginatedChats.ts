@@ -3,6 +3,7 @@ import { MAX_PAGE_LIMIT } from "@contract";
 import type { Chat } from "@/types";
 import { useChatMutations, type ChatListSource } from "@/chat/useChatMutations";
 import { useListStream, type ListStreamConnector } from "@/chat/useListStream";
+import type { TagMode } from "@/tags/tagModePreference";
 
 // The sort axes the keyset page endpoint supports. createdAt/updatedAt are the
 // main view's time axes (#129 / ADR-0017); deletedAt is the Trash view's
@@ -72,6 +73,12 @@ interface UsePaginatedChatsOptions {
    */
   tags?: readonly string[];
   /**
+   * How the selected real Tags combine (ADR-0016 update): `all` (default) ANDs
+   * them, `any` ORs them and lets the Untagged group join the union. Rides the
+   * page request as `tagMode=any` only when active; re-anchors on change.
+   */
+  tagMode?: TagMode;
+  /**
    * Trash view scope (#145): when true the page is trashed-only, the inverse of
    * the default active list. Pairs with the `deletedAt` sort axis but also
    * scopes the time axes within Trash. Sent to the keyset query as
@@ -90,6 +97,7 @@ interface UsePaginatedChatsOptions {
 interface ActiveFilter {
   projects: readonly string[];
   tags: readonly string[];
+  tagMode: TagMode;
 }
 
 // Adds the window-reconciling background refresh to the shared source shape; the
@@ -123,6 +131,9 @@ function pageUrl(
   if (filter.tags.length > 0) {
     base += `&tags=${filter.tags.map(encodeURIComponent).join(",")}`;
   }
+  // `tagMode=any` opts into OR; `all` is the server default, so it rides only
+  // when active — keeping the default request URL unchanged.
+  if (filter.tagMode === "any") base += `&tagMode=any`;
   return cursor ? `${base}&cursor=${encodeURIComponent(cursor)}` : base;
 }
 
@@ -153,6 +164,7 @@ export function usePaginatedChats(
     enabled = true,
     projects = [],
     tags = [],
+    tagMode = "all",
     trashedOnly = false,
     connect,
   }: UsePaginatedChatsOptions = {}
@@ -168,8 +180,9 @@ export function usePaginatedChats(
     () => ({
       projects: JSON.parse(projectsKey) as string[],
       tags: JSON.parse(tagsKey) as string[],
+      tagMode,
     }),
-    [projectsKey, tagsKey]
+    [projectsKey, tagsKey, tagMode]
   );
 
   // The loaded window is a list of fetched pages, each carrying the cursors that

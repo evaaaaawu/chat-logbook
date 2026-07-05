@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { buildFilterClauses } from "./list-filter.js";
+import { buildFilterClauses, type TagMode } from "./list-filter.js";
 
 /**
  * The keyset page query (issue #129, ADR-0017). Owns one Archive connection with
@@ -90,6 +90,13 @@ export interface KeysetPageQuery {
    * `ATTACH`ed `meta.chat_tags` (ADR-0017); ANDs across types with `projects`.
    */
   tags?: string[];
+  /**
+   * How the selected real Tags combine (ADR-0016 update): `all` (default)
+   * intersects them (hold every Tag), `any` unions them (hold at least one) and
+   * lets the `Untagged` marker OR into that union. Governs Tag-to-Tag
+   * combination only; `projects` stays an OR/union ANDed across types.
+   */
+  tagMode?: TagMode;
 }
 
 export interface ChatPageQuery {
@@ -218,6 +225,7 @@ export function createChatPageQuery({
     const filter = buildFilterClauses({
       projects: query.projects,
       tags: query.tags,
+      tagMode: query.tagMode,
       hasMetadata,
     });
     clauses.push(...filter.clauses);

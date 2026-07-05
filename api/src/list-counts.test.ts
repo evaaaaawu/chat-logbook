@@ -413,6 +413,87 @@ describe("ChatCountsQuery.queryFilteredTotal — Tag filter", () => {
   });
 });
 
+describe("ChatCountsQuery.queryFilteredTotal — Tag filter Any (OR) mode", () => {
+  it("ORs the Untagged group into the union in 'any' mode", () => {
+    const archive = createArchiveRepository({ dataDir });
+    createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const c1 = seedChat(archive, { sourceId: "c1", firstSeenAt: new Date(1) });
+    const c2 = seedChat(archive, { sourceId: "c2", firstSeenAt: new Date(2) });
+    seedChat(archive, { sourceId: "c3", firstSeenAt: new Date(3) });
+
+    const work = tags.createTag("work", "blue");
+    const fun = tags.createTag("fun", "violet");
+    // c1 holds work, c2 holds fun, c3 holds nothing (untagged).
+    tags.assignTag(c1, work.id);
+    tags.assignTag(c2, fun.id);
+
+    const countsQuery = createChatCountsQuery({ dataDir });
+    // Any + Untagged: "holds work OR holds no tags" — c1 and c3, not c2.
+    const total = countsQuery.queryFilteredTotal({
+      tags: [work.id, ""],
+      tagMode: "any",
+    });
+
+    expect(total).toBe(2);
+
+    countsQuery.close();
+  });
+
+  it("treats Untagged alone the same in 'any' mode as in 'all'", () => {
+    const archive = createArchiveRepository({ dataDir });
+    createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const c1 = seedChat(archive, { sourceId: "c1", firstSeenAt: new Date(1) });
+    seedChat(archive, { sourceId: "c2", firstSeenAt: new Date(2) });
+    seedChat(archive, { sourceId: "c3", firstSeenAt: new Date(3) });
+
+    const work = tags.createTag("work", "blue");
+    tags.assignTag(c1, work.id);
+
+    const countsQuery = createChatCountsQuery({ dataDir });
+    // With no real Tag selected the mode is irrelevant — c2, c3 are untagged.
+    const total = countsQuery.queryFilteredTotal({
+      tags: [""],
+      tagMode: "any",
+    });
+
+    expect(total).toBe(2);
+
+    countsQuery.close();
+  });
+
+  it("unions multiple selected tags when tagMode is 'any'", () => {
+    const archive = createArchiveRepository({ dataDir });
+    createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const c1 = seedChat(archive, { sourceId: "c1", firstSeenAt: new Date(1) });
+    const c2 = seedChat(archive, { sourceId: "c2", firstSeenAt: new Date(2) });
+    seedChat(archive, { sourceId: "c3", firstSeenAt: new Date(3) });
+
+    const work = tags.createTag("work", "blue");
+    const fun = tags.createTag("fun", "violet");
+    // c1 holds both, c2 holds only work, c3 holds neither.
+    tags.assignTag(c1, work.id);
+    tags.assignTag(c1, fun.id);
+    tags.assignTag(c2, work.id);
+
+    const countsQuery = createChatCountsQuery({ dataDir });
+    // Any: a chat holding AT LEAST ONE of work/fun — c1 and c2, not c3.
+    const total = countsQuery.queryFilteredTotal({
+      tags: [work.id, fun.id],
+      tagMode: "any",
+    });
+
+    expect(total).toBe(2);
+
+    countsQuery.close();
+  });
+});
+
 describe("ChatCountsQuery.queryFilteredTotal — cross-type and view", () => {
   it("ANDs a Project and a Tag filter across types", () => {
     const archive = createArchiveRepository({ dataDir });

@@ -19,6 +19,15 @@ export interface FilterClauses {
 }
 
 /**
+ * How the selected real Tags combine (ADR-0016 update). `all` (default) keeps
+ * the AND intersection — a Chat must hold every selected Tag. `any` keeps a Chat
+ * holding at least one, and lets the `Untagged` marker OR into that union
+ * instead of ANDing to nothing. Governs Tag-to-Tag combination only; the Project
+ * axis stays an OR/union and the cross-axis relation is unchanged.
+ */
+export type TagMode = "all" | "any";
+
+/**
  * Build the Project (OR / union) and Tag (AND / intersection) filter clauses.
  *
  * An empty-string Project entry selects the `(No project)` group (NULL or '');
@@ -31,10 +40,12 @@ export interface FilterClauses {
 export function buildFilterClauses({
   projects,
   tags,
+  tagMode = "all",
   hasMetadata,
 }: {
   projects?: string[];
   tags?: string[];
+  tagMode?: TagMode;
   hasMetadata: boolean;
 }): FilterClauses {
   const clauses: string[] = [];
@@ -48,30 +59,54 @@ export function buildFilterClauses({
     params.push(...projects);
   }
 
-  // Tag filter (AND / intersection). A real-Tag selection keeps only chats
-  // holding every selected Tag — the grouped subquery counts matched Tags per
-  // chat and requires the full set. The `Untagged` group (the '' marker) keeps
-  // only chats with zero Tags. Selecting both a real Tag and '' at once ANDs to
-  // nothing, as intended.
+  // Tag filter. `all` (default) intersects the selected real Tags — a chat must
+  // hold every one — and the `Untagged` group ('' marker) keeps chats with zero
+  // Tags; selecting both a real Tag and '' ANDs to nothing, as intended. `any`
+  // unions the selected real Tags — a chat holding at least one — and lets
+  // `Untagged` OR into that union ("holds no Tags OR holds a selected Tag"),
+  // which is why the two fragments compose with OR here and AND in `all` mode
+  // (ADR-0016 update). The real-Tag membership subquery is bound, never
+  // interpolated, and stays an index range scan on `chat_tags` either way.
   if (tags && tags.length > 0) {
     const realTagIds = tags.filter((t) => t !== "");
     const wantUntagged = tags.includes("");
+
+    // The real-Tag fragment, or null when nothing real is selected / no tags
+    // can exist. In the no-Metadata case a real-Tag selection matches nothing
+    // ("0"); the `Untagged` fragment is dropped there since every chat is
+    // untagged (matching everything needs no clause).
+    let realFragment: string | null = null;
     if (realTagIds.length > 0) {
       if (!hasMetadata) {
-        // No tags exist, so no chat can hold the selected Tag.
-        clauses.push("0");
+        realFragment = "0";
       } else {
         const placeholders = realTagIds.map(() => "?").join(", ");
-        clauses.push(
-          `c.id IN (SELECT chat_id FROM meta.chat_tags
+        if (tagMode === "any") {
+          realFragment = `c.id IN (SELECT DISTINCT chat_id FROM meta.chat_tags
+                    WHERE tag_id IN (${placeholders}))`;
+          params.push(...realTagIds);
+        } else {
+          realFragment = `c.id IN (SELECT chat_id FROM meta.chat_tags
                     WHERE tag_id IN (${placeholders})
-                    GROUP BY chat_id HAVING count(*) = ?)`
-        );
-        params.push(...realTagIds, realTagIds.length);
+                    GROUP BY chat_id HAVING count(*) = ?)`;
+          params.push(...realTagIds, realTagIds.length);
+        }
       }
     }
-    if (wantUntagged && hasMetadata) {
-      clauses.push("c.id NOT IN (SELECT chat_id FROM meta.chat_tags)");
+
+    const untaggedFragment =
+      wantUntagged && hasMetadata
+        ? "c.id NOT IN (SELECT chat_id FROM meta.chat_tags)"
+        : null;
+
+    // In `any` mode a real-Tag union and `Untagged` compose with OR into one
+    // clause; in `all` mode they are independent predicates that each AND onto
+    // the WHERE.
+    if (tagMode === "any" && realFragment && untaggedFragment) {
+      clauses.push(`(${realFragment} OR ${untaggedFragment})`);
+    } else {
+      if (realFragment) clauses.push(realFragment);
+      if (untaggedFragment) clauses.push(untaggedFragment);
     }
   }
 
