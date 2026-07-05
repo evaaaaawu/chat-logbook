@@ -138,7 +138,7 @@ function ManageMenu({
     >
       <PopoverTrigger
         aria-label={`Manage tag ${tag.name}`}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-card text-muted-foreground opacity-0 transition hover:bg-white/10 hover:text-foreground focus-visible:opacity-100 group-hover/tag:opacity-100 data-[popup-open]:opacity-100 pointer-events-none focus-visible:pointer-events-auto group-hover/tag:pointer-events-auto data-[popup-open]:pointer-events-auto"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-card text-muted-foreground opacity-0 transition hover:bg-white/10 hover:text-foreground focus-visible:opacity-100 group-hover/tag:opacity-100 data-popup-open:opacity-100 pointer-events-none focus-visible:pointer-events-auto group-hover/tag:pointer-events-auto data-popup-open:pointer-events-auto"
       >
         <MoreHorizontal size={14} aria-hidden="true" />
       </PopoverTrigger>
