@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { buildFilterClauses } from "./list-filter.js";
+import { buildFilterClauses, type TagMode } from "./list-filter.js";
 
 /**
  * The facet-count aggregation (issue #131 Phase A, ADR-0017). Owns one Archive
@@ -55,6 +55,12 @@ export interface ChatCountsQuery {
     includeTrashed?: boolean;
     projects?: string[];
     tags?: string[];
+    /**
+     * How the selected real Tags combine (ADR-0016 update): `all` (default) ANDs
+     * them (hold every Tag), `any` ORs them (hold at least one) and lets
+     * `Untagged` join that union. Only the List total follows the mode.
+     */
+    tagMode?: TagMode;
   }): number;
   close(): void;
 }
@@ -148,10 +154,12 @@ export function createChatCountsQuery({
     includeTrashed = false,
     projects,
     tags,
+    tagMode = "all",
   }: {
     includeTrashed?: boolean;
     projects?: string[];
     tags?: string[];
+    tagMode?: TagMode;
   }): number {
     const clauses: string[] = [];
     const params: (string | number)[] = [];
@@ -170,7 +178,7 @@ export function createChatCountsQuery({
 
     // The Project/Tag filter is the same predicate the keyset page applies
     // (#130); it lives in `buildFilterClauses` so the two read paths share it.
-    const filter = buildFilterClauses({ projects, tags, hasMetadata });
+    const filter = buildFilterClauses({ projects, tags, tagMode, hasMetadata });
     clauses.push(...filter.clauses);
     params.push(...filter.params);
 

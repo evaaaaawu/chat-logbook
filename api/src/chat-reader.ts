@@ -13,6 +13,7 @@ import {
   type ListSort,
 } from "./list-pagination.js";
 import type { ChatCountsQuery, ListCounts } from "./list-counts.js";
+import type { TagMode } from "./list-filter.js";
 
 /**
  * The Chat read face. At read time it composes Archive + Metadata into the
@@ -103,6 +104,11 @@ export interface ChatReader {
      * it leaves Tags unfiltered.
      */
     tags?: string[];
+    /**
+     * How the selected real Tags combine (ADR-0016 update): `all` (default) ANDs
+     * them, `any` ORs them and lets `Untagged` join that union.
+     */
+    tagMode?: TagMode;
   }): { chats: ChatResponse[]; nextCursor: string | null };
   /**
    * The filter-panel facet counts and the unfiltered List count for a view
@@ -123,6 +129,8 @@ export interface ChatReader {
     includeTrashed?: boolean;
     projects?: string[];
     tags?: string[];
+    /** How the selected real Tags combine (ADR-0016 update); `all` by default. */
+    tagMode?: TagMode;
   }): number;
   /**
    * Messages for a Chat resolved by its public wire-form chat id (`clog_…`).
@@ -254,6 +262,7 @@ export function createChatReader({
     trashedOnly = false,
     projects,
     tags: tagSelection,
+    tagMode,
   }: {
     sort: ListSort;
     direction?: ListDirection;
@@ -263,6 +272,7 @@ export function createChatReader({
     trashedOnly?: boolean;
     projects?: string[];
     tags?: string[];
+    tagMode?: TagMode;
   }): { chats: ChatResponse[]; nextCursor: string | null } {
     if (!pageQuery) {
       throw new Error("listChatsPage requires a pageQuery dependency");
@@ -279,6 +289,7 @@ export function createChatReader({
       trashedOnly,
       projects,
       tags: tagSelection,
+      tagMode,
     });
 
     // The keyset SQL already applied visibility + ordering; hydration is pure
@@ -325,15 +336,22 @@ export function createChatReader({
     includeTrashed = false,
     projects,
     tags,
+    tagMode,
   }: {
     includeTrashed?: boolean;
     projects?: string[];
     tags?: string[];
+    tagMode?: TagMode;
   }): number {
     if (!countsQuery) {
       throw new Error("listFilteredTotal requires a countsQuery dependency");
     }
-    return countsQuery.queryFilteredTotal({ includeTrashed, projects, tags });
+    return countsQuery.queryFilteredTotal({
+      includeTrashed,
+      projects,
+      tags,
+      tagMode,
+    });
   }
 
   function getMessages(

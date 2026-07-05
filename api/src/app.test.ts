@@ -264,6 +264,57 @@ describe("GET /api/chats — keyset pagination mode", () => {
     expect(byTagBody.chats.map((c) => c.sourceId)).toEqual(["alpha1"]);
   });
 
+  it("unions the selected Tags when ?tagMode=any", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const c1 = seedChat(archive, { sourceId: "c1", firstSeenAt: new Date(1) });
+    const c2 = seedChat(archive, { sourceId: "c2", firstSeenAt: new Date(2) });
+    seedChat(archive, { sourceId: "c3", firstSeenAt: new Date(3) });
+
+    const work = tags.createTag("work", "blue");
+    const fun = tags.createTag("fun", "violet");
+    tags.assignTag(c1, work.id);
+    tags.assignTag(c2, fun.id);
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+
+    // `all` (default) intersects → nothing holds both.
+    const allRes = await app.request(
+      `/api/chats?sort=createdAt&limit=10&tags=${work.id},${fun.id}`
+    );
+    const allBody = (await allRes.json()) as { chats: ChatResponse[] };
+    expect(allBody.chats).toEqual([]);
+
+    // `any` unions → c2 (fun, newer) then c1 (work); c3 excluded.
+    const anyRes = await app.request(
+      `/api/chats?sort=createdAt&limit=10&tags=${work.id},${fun.id}&tagMode=any`
+    );
+    const anyBody = (await anyRes.json()) as { chats: ChatResponse[] };
+    expect(anyBody.chats.map((c) => c.sourceId)).toEqual(["c2", "c1"]);
+  });
+
+  it("rejects an invalid tagMode with 400", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const res = await app.request(
+      "/api/chats?sort=createdAt&limit=10&tagMode=bogus"
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("rejects an invalid sort with 400", async () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
@@ -474,6 +525,41 @@ describe("GET /api/chats/list-total — filtered List count (Phase B)", () => {
       `/api/chats/list-total?project=alpha&tags=${work.id}`
     );
     expect(((await byBoth.json()) as { total: number }).total).toBe(1);
+  });
+
+  it("unions the selected Tags when ?tagMode=any", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const c1 = seedChat(archive, { sourceId: "c1", firstSeenAt: new Date(1) });
+    const c2 = seedChat(archive, { sourceId: "c2", firstSeenAt: new Date(2) });
+    seedChat(archive, { sourceId: "c3", firstSeenAt: new Date(3) });
+
+    const work = tags.createTag("work", "blue");
+    const fun = tags.createTag("fun", "violet");
+    tags.assignTag(c1, work.id);
+    tags.assignTag(c2, fun.id);
+
+    const app = createApp({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+      countsQuery: createChatCountsQuery({ dataDir }),
+    });
+
+    // `all` (default) intersects → nothing holds both.
+    const all = await app.request(
+      `/api/chats/list-total?tags=${work.id},${fun.id}`
+    );
+    expect(((await all.json()) as { total: number }).total).toBe(0);
+
+    // `any` unions → c1 and c2 each hold one.
+    const any = await app.request(
+      `/api/chats/list-total?tags=${work.id},${fun.id}&tagMode=any`
+    );
+    expect(((await any.json()) as { total: number }).total).toBe(2);
   });
 });
 
