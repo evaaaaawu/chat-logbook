@@ -44,7 +44,7 @@ The full problem statement, user stories, and direction live in the [PRD](docs/P
 - **Live updates.** While Claude Code is actively writing to a chat, new messages appear in chat-logbook within seconds — no restart needed. New and changed chats surface in the list on their own, without a manual refresh.
 - **Chat metadata at a glance.** A ⓘ button on the conversation header opens a popover showing when the chat started, when it was last updated, the agent, the project working directory, and the chat's IDs — with one-click copy.
 - **Tags.** Create tags, give them colors, and assign them to chats. They show as colored chips on the chat and in the list. Rename or delete them anytime.
-- **Filter by tag or project.** Narrow the chat list to a project, or to chats that carry all of several selected tags.
+- **Filter by tag or project.** Narrow the chat list to a project, or to chats by tag — match every tag you pick, or any one of them.
 
 ## Quick start
 

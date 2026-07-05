@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.15.0] - 2026-07-05
+
+You can now match tags by _any_ instead of _all_. Pick a few tags and choose whether a chat needs every one or just one of them to show up.
+
+### Added
+
+- A Match control on the tag filter lets you switch between **All** and **Any**. **All** keeps the current behavior — a chat shows only if it has every tag you picked. **Any** widens the list to chats that have at least one of them.
+
 ## [0.14.0] - 2026-07-02
 
 Your chat list now stays fast no matter how large your history grows, and it updates on its own as new chats come in.
