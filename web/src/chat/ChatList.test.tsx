@@ -1,4 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import type { Chat } from "@/types";
@@ -86,6 +92,31 @@ describe("ChatList virtualization", () => {
     const rows = await screen.findAllByTestId("chat-row");
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.length).toBeLessThan(total);
+  });
+});
+
+describe("ChatList keyboard cursor", () => {
+  it("renders the focus-ring Cursor on the row ArrowDown lands on", async () => {
+    render(
+      <ChatList
+        chats={makeChats(5)}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onDelete={vi.fn()}
+      />
+    );
+
+    await screen.findAllByTestId("chat-row");
+
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowDown" });
+    });
+
+    await waitFor(() => {
+      const cursorRow = document.querySelector('[data-cursor="true"]');
+      expect(cursorRow).not.toBeNull();
+      expect(cursorRow).toHaveTextContent("Chat 0");
+    });
   });
 });
 
