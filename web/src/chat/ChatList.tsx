@@ -10,6 +10,7 @@ import { ArrowLeft, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import type { Chat } from "@/types";
 import { EditableTitle } from "@/metadata/EditableTitle";
 import { TagChipList } from "@/tags/TagChipList";
+import { useCursorNavigation } from "@/chat/useCursorNavigation";
 
 interface ChatListProps {
   mode?: "main" | "trash";
@@ -177,6 +178,23 @@ export function ChatList({
     // measured offsets, anchoring scroll to the content under the viewport.
     getItemKey: (index) => chats[index]?.id ?? index,
   });
+
+  // The Cursor: ArrowUp/ArrowDown walk a focus-ring row through the list and,
+  // debounced, open it (opening = the Open Chat, i.e. onSelect). Distinct from
+  // the Open Chat and the Selection (see CONTEXT.md).
+  const { cursorId, cursorIndex } = useCursorNavigation({
+    chats,
+    openId: selectedId,
+    onOpen: onSelect,
+  });
+
+  // Keep the Cursor visible: scroll its row into the virtualized window as it
+  // moves. The Cursor may be far outside the rendered window, so scroll by
+  // index through the virtualizer rather than a DOM ref.
+  useEffect(() => {
+    if (cursorIndex < 0) return;
+    virtualizer.scrollToIndex(cursorIndex, { align: "auto" });
+  }, [cursorIndex, virtualizer]);
 
   // Keep the selected chat visible after a sort change; otherwise scroll to top.
   // The selected row may be far outside the rendered window, so scroll by index
@@ -365,9 +383,18 @@ export function ChatList({
             {virtualizer.getVirtualItems().map((virtualItem) => {
               const chat = chats[virtualItem.index];
               const isSelected = chat.id === selectedId;
+              const isCursor = chat.id === cursorId;
+              // The Cursor wears the same accent as the Open Chat, so moving it
+              // by keyboard looks exactly like clicking a row — and shows before
+              // the debounced open lands (no visual lag).
+              const isAccented = isSelected || isCursor;
               const isEditing = editingId === chat.id && !!onRenameTitle;
-              const rowClassName = `flex w-full flex-col gap-1 border-b border-border px-4 py-3 text-left transition-colors hover:bg-card ${
-                isSelected
+              // The row's accent is our left-border affordance, driven by state
+              // (Open Chat / Cursor). Suppress the browser's focus-visible
+              // outline so a mouse-clicked row doesn't strand a ring when
+              // keyboard navigation then moves the Cursor off it.
+              const rowClassName = `flex w-full flex-col gap-1 border-b border-border px-4 py-3 text-left transition-colors hover:bg-card focus-visible:outline-none ${
+                isAccented
                   ? "border-l-2 border-l-primary bg-card"
                   : "border-l-2 border-l-transparent"
               }`;
@@ -415,6 +442,7 @@ export function ChatList({
                   data-index={virtualItem.index}
                   ref={virtualizer.measureElement}
                   data-testid="chat-row"
+                  data-cursor={isCursor || undefined}
                   className="group absolute left-0 right-0 top-0"
                   style={{ transform: `translateY(${virtualItem.start}px)` }}
                   onContextMenu={(e) => handleContextMenu(e, chat.id)}
