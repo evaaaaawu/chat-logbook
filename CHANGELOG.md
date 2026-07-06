@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.16.0] - 2026-07-06
+
+Move through your chat list with the keyboard. Press the arrow keys to walk up and down the list and open each chat as you land on it — no reaching for the mouse.
+
+### Added
+
+- Arrow-key navigation in the chat list. `ArrowUp` and `ArrowDown` move a cursor through the rows and open the chat you land on. Holding or tapping the arrows quickly loads once when you settle, not once per row, so fast scrolling stays smooth.
+- Keyboard and mouse stay in sync. Clicking a row picks up the cursor there, so the next arrow keypress continues from where you clicked. Typing in a title field or inside a popover is never hijacked by the arrow keys.
+
 ## [0.15.0] - 2026-07-05
 
 You can now match tags by _any_ instead of _all_. Pick a few tags and choose whether a chat needs every one or just one of them to show up.
