@@ -202,6 +202,51 @@ export function createApp({
     return c.json({ total });
   });
 
+  // Resolve a batch request body's `{ chatIds: [...] }` into the internal ids
+  // the metadata write flips (#161, ADR-0021 explicit-ids branch). Unknown or
+  // malformed ids are dropped rather than failing the batch, so an id already
+  // purged from the Archive can't 500 the whole action. Returns null when the
+  // body is not a `chatIds` string array at all.
+  async function resolveBatchIds(c: {
+    req: { json: () => Promise<unknown> };
+  }): Promise<string[] | null> {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return null;
+    }
+    const chatIds = (body as { chatIds?: unknown })?.chatIds;
+    if (!Array.isArray(chatIds)) return null;
+    const internalIds: string[] = [];
+    for (const wireId of chatIds) {
+      if (typeof wireId !== "string") continue;
+      const row = reader.findChat(wireId);
+      if (row) internalIds.push(row.id);
+    }
+    return internalIds;
+  }
+
+  // Registered before `/api/chats/:id/restore` so the literal `batch` segment is
+  // not captured as an id.
+  app.post("/api/chats/batch/trash", async (c) => {
+    const internalIds = await resolveBatchIds(c);
+    if (internalIds === null) {
+      return c.json({ error: "Invalid chatIds" }, 400);
+    }
+    metadata.softDeleteBatch(internalIds);
+    return c.json({ count: internalIds.length });
+  });
+
+  app.post("/api/chats/batch/restore", async (c) => {
+    const internalIds = await resolveBatchIds(c);
+    if (internalIds === null) {
+      return c.json({ error: "Invalid chatIds" }, 400);
+    }
+    metadata.restoreBatch(internalIds);
+    return c.json({ count: internalIds.length });
+  });
+
   app.delete("/api/chats/:id", (c) => {
     const row = reader.findChat(c.req.param("id"));
     if (!row) {

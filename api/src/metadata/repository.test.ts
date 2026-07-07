@@ -239,6 +239,33 @@ describe("MetadataRepository", () => {
     expect(reopened.isDeleted("vendor-orphan")).toBe(false);
   });
 
+  it("marks every id trashed in one softDeleteBatch", () => {
+    const repo = createMetadataRepository({ dataDir });
+
+    repo.softDeleteBatch(["a", "b", "c"]);
+
+    expect(repo.isDeleted("a")).toBe(true);
+    expect(repo.isDeleted("b")).toBe(true);
+    expect(repo.isDeleted("c")).toBe(true);
+    expect(
+      repo
+        .listDeleted()
+        .map((r) => r.id)
+        .sort()
+    ).toEqual(["a", "b", "c"]);
+  });
+
+  it("restores every id in one restoreBatch", () => {
+    const repo = createMetadataRepository({ dataDir });
+    repo.softDeleteBatch(["a", "b", "c"]);
+
+    repo.restoreBatch(["a", "c"]);
+
+    expect(repo.isDeleted("a")).toBe(false);
+    expect(repo.isDeleted("b")).toBe(true);
+    expect(repo.isDeleted("c")).toBe(false);
+  });
+
   it("only runs the rekey migration once across multiple startups", () => {
     const legacy = createMetadataRepository({ dataDir });
     legacy.softDelete("vendor-x");

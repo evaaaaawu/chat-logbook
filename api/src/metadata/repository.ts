@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { eq, isNotNull, sql } from "drizzle-orm";
+import { eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { openStore } from "../storage/openStore.js";
 import * as schema from "./schema.js";
@@ -31,6 +31,14 @@ function migrateLegacyDbFile(dataDir: string): void {
 export interface MetadataRepository {
   softDelete(internalId: string): void;
   restore(internalId: string): void;
+  /**
+   * Trash every id in one transaction (batch Move to Trash, #161). Mirrors
+   * `softDelete`'s upsert per row so an id with no prior metadata row still gets
+   * one, and stamps a single `deletedAt` across the set. Empty input is a no-op.
+   */
+  softDeleteBatch(internalIds: string[]): void;
+  /** Restore every id in one transaction — the inverse of `softDeleteBatch`. */
+  restoreBatch(internalIds: string[]): void;
   isDeleted(internalId: string): boolean;
   getDeletedAt(internalId: string): Date | null;
   listDeleted(): Array<{ id: string; deletedAt: Date | null }>;
@@ -117,6 +125,39 @@ export function createMetadataRepository({
         .set({ isDeleted: false, updatedAt: now, deletedAt: null })
         .where(eq(chatsMeta.id, internalId))
         .run();
+    },
+
+    softDeleteBatch(internalIds) {
+      if (internalIds.length === 0) return;
+      const now = new Date();
+      db.transaction((tx) => {
+        for (const id of internalIds) {
+          tx.insert(chatsMeta)
+            .values({
+              id,
+              isDeleted: true,
+              createdAt: now,
+              updatedAt: now,
+              deletedAt: now,
+            })
+            .onConflictDoUpdate({
+              target: chatsMeta.id,
+              set: { isDeleted: true, updatedAt: now, deletedAt: now },
+            })
+            .run();
+        }
+      });
+    },
+
+    restoreBatch(internalIds) {
+      if (internalIds.length === 0) return;
+      const now = new Date();
+      db.transaction((tx) => {
+        tx.update(chatsMeta)
+          .set({ isDeleted: false, updatedAt: now, deletedAt: null })
+          .where(inArray(chatsMeta.id, internalIds))
+          .run();
+      });
     },
 
     isDeleted(internalId) {
