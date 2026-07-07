@@ -105,11 +105,11 @@ _Avoid_: filtering, access
 ### Selection
 
 **Selection**:
-The set of Chats the user has marked in the Chat list to act on together — the target of a batch action. Distinct from the **Open Chat** (the single Chat shown in the reading pane): opening a Chat and adding it to the Selection are separate gestures, and a Chat can be in one, both, or neither.
+The set of Chats the user has marked in the Chat list to act on together — the target of a batch action. The **Open Chat** is its primary member: a plain click makes a Chat the sole Selection, and modifier-clicks (`Cmd/Ctrl+click` to toggle, `Shift+click` for a range) extend it. When the Selection holds a single Chat it _is_ just the Open Chat and no batch UI shows; the floating batch bar appears only at two or more. An id set, so it survives a sort change and a background refresh and clears on a filter change or view switch.
 _Avoid_: selected chat (ambiguous with Open Chat), checked, highlighted
 
 **Open Chat**:
-The single Chat currently shown in the reading pane, chosen by clicking a row's body. Independent of the Selection.
+The primary member of the Selection — the single Chat whose content the reading pane shows, chosen by a plain click on a row's body or a keyboard move (never a modifier-click). When the Selection holds several Chats, the Open Chat is the one still shown in the pane; the rest are marked but not shown. Deselecting the Open Chat moves the primary to the nearest remaining member.
 _Avoid_: active chat, current chat, selected chat
 
 **Cursor**:
