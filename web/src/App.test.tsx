@@ -711,8 +711,9 @@ describe("Undo toast on delete", () => {
 
     const toast = await screen.findByTestId("toast");
     expect(within(toast).getByText(/chat deleted/i)).toBeInTheDocument();
-    // The Undo action shows its keyboard shortcut hint.
-    expect(within(toast).getByText("⌘Z")).toBeInTheDocument();
+    // The Undo action shows its platform-aware keyboard shortcut hint (#179).
+    // jsdom reports no macOS platform, so the hint resolves to the Ctrl branch.
+    expect(within(toast).getByText("Ctrl+Z")).toBeInTheDocument();
 
     await user.click(within(toast).getByRole("button", { name: /undo/i }));
 
@@ -759,9 +760,10 @@ describe("Batch Move to Trash", () => {
       ).not.toBeInTheDocument();
     });
 
-    // Undo restores both; the toast shows the ⌘Z hint.
+    // Undo restores both; the toast shows the platform-aware hint (#179).
+    // jsdom reports no macOS platform, so the hint resolves to the Ctrl branch.
     const toast = await screen.findByTestId("toast");
-    expect(within(toast).getByText("⌘Z")).toBeInTheDocument();
+    expect(within(toast).getByText("Ctrl+Z")).toBeInTheDocument();
     await user.click(within(toast).getByRole("button", { name: /undo/i }));
     await waitFor(() => {
       expect(
