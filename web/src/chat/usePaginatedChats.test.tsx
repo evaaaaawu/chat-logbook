@@ -296,6 +296,86 @@ describe("usePaginatedChats", () => {
     // Refresh is a no-op on failure; the window stays intact, nothing throws.
     expect(result.current.chats.map((c) => c.id)).toEqual(before);
   });
+
+  it("drops a row that left the active filter on a user-initiated reload (#176)", async () => {
+    // Active by updatedAt desc, filtered to my-web-app: chat-1, chat-3.
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", {
+        pageSize: 10,
+        projects: ["my-web-app"],
+      })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.chats.map((c) => c.id)).toEqual(["chat-1", "chat-3"]);
+
+    // A mutation moves chat-3 out of the active filter (its project changes), so a
+    // same-window, same-filter refetch no longer returns it.
+    fakeChats.find((c) => c.id === "chat-3")!.project = "backend-api";
+
+    await act(async () => {
+      await result.current.reload();
+    });
+
+    // The reconciling reload drops the departed row; membership is
+    // server-authoritative — the client never re-derives the filter (#176).
+    expect(result.current.chats.map((c) => c.id)).toEqual(["chat-1"]);
+  });
+
+  it("keeps a row that left the active filter on a background refresh (#176)", async () => {
+    // Same setup as the reload case, but the background pass must stay grow-only:
+    // a Chat under the viewport is never dropped by a bounded background refetch.
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", {
+        pageSize: 10,
+        projects: ["my-web-app"],
+      })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.chats.map((c) => c.id)).toEqual(["chat-1", "chat-3"]);
+
+    // chat-3 leaves the active filter, so the refetch no longer returns it.
+    fakeChats.find((c) => c.id === "chat-3")!.project = "backend-api";
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    // Grow-only: the departed row is retained, not dropped.
+    expect(result.current.chats.map((c) => c.id)).toEqual(["chat-1", "chat-3"]);
+  });
+
+  it("keeps the still-present rows in place when a reload drops one (#176)", async () => {
+    // Active by updatedAt desc: chat-2, chat-1, chat-3, chat-missing.
+    const { result } = renderHook(() =>
+      usePaginatedChats("updatedAt", "desc", { pageSize: 10 })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.chats.map((c) => c.id)).toEqual([
+      "chat-2",
+      "chat-1",
+      "chat-3",
+      "chat-missing",
+    ]);
+
+    // A middle row leaves the active list (soft-deleted), while a surviving row
+    // also gets a field update to prove the refetch is merged, not ignored.
+    fakeChats.find((c) => c.id === "chat-1")!.isDeleted = true;
+    fakeChats.find((c) => c.id === "chat-3")!.defaultTitle = "Renamed utils";
+
+    await act(async () => {
+      await result.current.reload();
+    });
+
+    // The departed row is gone; every still-present row keeps its relative place,
+    // and the surviving row carries its refreshed field.
+    expect(result.current.chats.map((c) => c.id)).toEqual([
+      "chat-2",
+      "chat-3",
+      "chat-missing",
+    ]);
+    const byId = new Map(result.current.chats.map((c) => [c.id, c]));
+    expect(byId.get("chat-3")!.title).toBe("Renamed utils");
+  });
 });
 
 // Bounded loaded window / page eviction (#132). The loaded window is capped at

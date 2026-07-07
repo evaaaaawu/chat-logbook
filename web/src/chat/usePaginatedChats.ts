@@ -309,39 +309,64 @@ export function usePaginatedChats(
     });
   }, [sort, direction, pageSize, filter, trashedOnly, maxWindowPages]);
 
-  // Re-read the head of the loaded window and reconcile it in place (live-update
-  // path, #132). Only acts when the head page is still loaded: new Chats appear
-  // at the list head (newest-first), so a window scrolled far past the head has
-  // nothing at the top to reconcile, and re-reading the head there would fight
-  // eviction. Sized to the loaded window but clamped to the page-limit cap so a
-  // large window never asks for more than the endpoint allows (#147).
-  const refresh = useCallback(async () => {
-    const current = pagesRef.current;
-    if (current.length === 0 || current[0].fromCursor !== null) return;
-    const windowLen = current.reduce((n, p) => n + p.chats.length, 0);
-    const limit = Math.min(Math.max(windowLen, pageSize), MAX_PAGE_LIMIT);
-    const data = await fetchPage(
-      pageUrl(sort, direction, limit, filter, trashedOnly)
-    );
-    if (!data) return;
-    setPages((prev) => {
-      if (prev.length === 0) return prev;
-      const incomingById = new Map(data.chats.map((c) => [c.id, c]));
-      const loadedIds = new Set(prev.flatMap((p) => p.chats).map((c) => c.id));
-      // Refresh fields in place for chats the server still returns; keep loaded
-      // rows the refetch no longer covers (the window only grows here).
-      const updated = prev.map((p) => ({
-        ...p,
-        chats: p.chats.map((c) => incomingById.get(c.id) ?? c),
-      }));
-      // Brand-new chats now ranking into the window slot onto the head page, in
-      // server order; the frozen-sort layer places them among the held rows.
-      const added = data.chats.filter((c) => !loadedIds.has(c.id));
-      if (added.length === 0) return updated;
-      const [head, ...rest] = updated;
-      return [{ ...head, chats: [...added, ...head.chats] }, ...rest];
-    });
-  }, [sort, direction, pageSize, filter, trashedOnly]);
+  // Re-read the head of the loaded window and reconcile it against a fresh
+  // same-window, same-filter refetch (#132). Only acts when the head page is
+  // still loaded: new Chats appear at the list head (newest-first), so a window
+  // scrolled far past the head has nothing at the top to reconcile, and
+  // re-reading the head there would fight eviction. Sized to the loaded window
+  // but clamped to the page-limit cap so a large window never asks for more than
+  // the endpoint allows (#147).
+  //
+  // `drop` splits the two reconcile intents (#176). Background passes call with
+  // `drop=false` (grow-only): a Chat you are looking at must not vanish because a
+  // bounded background page happened not to include it. A user-initiated reload
+  // calls with `drop=true`: rows the refetch no longer returns leave the window,
+  // so a mutation that moves a Chat out of the active filter is reflected.
+  // Membership stays server-authoritative either way — the client never
+  // re-derives the filter (ADR-0016); it just trusts the refetch. Page
+  // boundaries and their cursors are preserved, so scroll anchoring and the
+  // bounded window survive a reconciling reload.
+  const reconcileHead = useCallback(
+    async (drop: boolean) => {
+      const current = pagesRef.current;
+      if (current.length === 0 || current[0].fromCursor !== null) return;
+      const windowLen = current.reduce((n, p) => n + p.chats.length, 0);
+      const limit = Math.min(Math.max(windowLen, pageSize), MAX_PAGE_LIMIT);
+      const data = await fetchPage(
+        pageUrl(sort, direction, limit, filter, trashedOnly)
+      );
+      if (!data) return;
+      setPages((prev) => {
+        if (prev.length === 0) return prev;
+        const incomingById = new Map(data.chats.map((c) => [c.id, c]));
+        const loadedIds = new Set(
+          prev.flatMap((p) => p.chats).map((c) => c.id)
+        );
+        // Refresh fields in place for chats the server still returns. Grow-only
+        // keeps a loaded row the refetch no longer covers; a reconciling reload
+        // drops it, leaving the page shorter but its cursors intact.
+        const updated = prev.map((p) => ({
+          ...p,
+          chats: drop
+            ? p.chats
+                .filter((c) => incomingById.has(c.id))
+                .map((c) => incomingById.get(c.id) as Chat)
+            : p.chats.map((c) => incomingById.get(c.id) ?? c),
+        }));
+        // Brand-new chats now ranking into the window slot onto the head page, in
+        // server order; the frozen-sort layer places them among the held rows.
+        const added = data.chats.filter((c) => !loadedIds.has(c.id));
+        if (added.length === 0) return updated;
+        const [head, ...rest] = updated;
+        return [{ ...head, chats: [...added, ...head.chats] }, ...rest];
+      });
+    },
+    [sort, direction, pageSize, filter, trashedOnly]
+  );
+
+  // Background reconcile: grow-only, so ingestion surfaces without ever dropping
+  // a row under the viewport. Exposed so the interval and tests drive it.
+  const refresh = useCallback(() => reconcileHead(false), [reconcileHead]);
 
   // Primary trigger: reconcile the window head on each server-pushed change, so
   // ingestion shows up the instant it settles instead of on a fixed poll
@@ -363,11 +388,12 @@ export function usePaginatedChats(
     return () => clearInterval(id);
   }, [enabled, refresh]);
 
-  // A user-initiated reload: reconcile the window, then re-anchor the order.
+  // A user-initiated reload: reconcile the window with drop (rows the refetch no
+  // longer returns leave the list), then re-anchor the order (#176).
   const reload = useCallback(async () => {
-    await refresh();
+    await reconcileHead(true);
     bumpEpoch();
-  }, [refresh, bumpEpoch]);
+  }, [reconcileHead, bumpEpoch]);
 
   // Bridge the mutations' flat-list optimistic updates onto the page model.
   // Mutations only update fields or drop a row by id, so re-distributing the
