@@ -8,6 +8,7 @@ import { useTags } from "@/tags/useTags";
 import { useTagMode } from "@/tags/useTagMode";
 import { useMessages } from "@/conversation/useMessages";
 import { useToast } from "@/shared/useToast";
+import { modifierHint } from "@/shared/platform";
 import { useChatOrder } from "@/chat/sort/useChatOrder";
 import { useSortPreference } from "@/chat/sort/useSortPreference";
 import { CHAT_SORT_CONFIG, TRASH_SORT_CONFIG } from "@/chat/sort/sortConfig";
@@ -340,7 +341,7 @@ function App() {
     showToast({
       message: "Chat deleted.",
       actionLabel: "Undo",
-      actionHint: "⌘Z",
+      actionHint: modifierHint("Z"),
       onAction: () => {
         void restore(id);
         void counts.reload();
@@ -373,7 +374,7 @@ function App() {
     showToast({
       message: `${n} chat${n > 1 ? "s" : ""} moved to Trash.`,
       actionLabel: "Undo",
-      actionHint: "⌘Z",
+      actionHint: modifierHint("Z"),
       onAction: () => {
         void restoreBatch(chatIds);
         refreshCounts();
