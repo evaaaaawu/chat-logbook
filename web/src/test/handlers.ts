@@ -418,6 +418,33 @@ export const handlers = [
     }
     return HttpResponse.json({ messages });
   }),
+  // Registered before `/api/chats/:id` so `batch` is not captured as an id.
+  http.post("/api/chats/batch/trash", async ({ request }) => {
+    const body = (await request.json()) as { chatIds?: unknown };
+    const chatIds = Array.isArray(body?.chatIds) ? body.chatIds : [];
+    let count = 0;
+    for (const id of chatIds) {
+      const chat = fakeChats.find((c) => c.id === id);
+      if (!chat) continue;
+      chat.isDeleted = true;
+      chat.deletedAt = Date.now();
+      count++;
+    }
+    return HttpResponse.json({ count });
+  }),
+  http.post("/api/chats/batch/restore", async ({ request }) => {
+    const body = (await request.json()) as { chatIds?: unknown };
+    const chatIds = Array.isArray(body?.chatIds) ? body.chatIds : [];
+    let count = 0;
+    for (const id of chatIds) {
+      const chat = fakeChats.find((c) => c.id === id);
+      if (!chat) continue;
+      chat.isDeleted = false;
+      chat.deletedAt = null;
+      count++;
+    }
+    return HttpResponse.json({ count });
+  }),
   http.delete("/api/chats/:id", ({ params }) => {
     const id = params.id as string;
     const chat = fakeChats.find((c) => c.id === id);

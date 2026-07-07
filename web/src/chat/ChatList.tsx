@@ -45,6 +45,24 @@ interface ChatListProps {
   hasPrevious?: boolean;
   /** Called when the user scrolls within a few rows of the loaded window's start. */
   onLoadPrevious?: () => void;
+  /**
+   * The Selection — the set of Chats marked for a batch action (#161), distinct
+   * from the Open Chat. When provided, rows reveal a checkbox on hover and a
+   * batch bar appears once at least one Chat is marked.
+   */
+  selectedIds?: ReadonlySet<string>;
+  /** `Cmd`/`Ctrl`+click on a row: toggle that Chat's Selection membership. */
+  onToggleSelect?: (id: string) => void;
+  /**
+   * `Shift`+click on a row: range-select from the anchor to that Chat. `additive`
+   * (`Cmd`/`Ctrl`+`Shift`) unions the range with the current Selection instead
+   * of replacing it.
+   */
+  onRangeSelect?: (id: string, additive: boolean) => void;
+  /** The batch bar's Clear (and `Esc`): collapse the Selection to the Open Chat. */
+  onClearSelection?: () => void;
+  /** The batch bar's Move to Trash: trash every Chat in the Selection. */
+  onBatchTrash?: () => void;
 }
 
 // Trigger the next page once the rendered window reaches within this many rows
@@ -114,14 +132,18 @@ function MenuItem({
   );
 }
 
-function ActionTooltip({ label, hint }: { label: string; hint: string }) {
+function ActionTooltip({ label, hint }: { label: string; hint?: string }) {
   return (
     <span
       aria-hidden="true"
       className="pointer-events-none absolute right-full top-1/2 mr-1.5 flex -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/10 bg-[#0a0a0a] px-2 py-1 text-xs text-card-foreground opacity-0 shadow-lg transition-opacity duration-100 group-hover/action:opacity-100"
     >
       {label}
-      <span className="text-xs tabular-nums text-muted-foreground">{hint}</span>
+      {hint && (
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {hint}
+        </span>
+      )}
     </span>
   );
 }
@@ -145,6 +167,11 @@ export function ChatList({
   onLoadMore,
   hasPrevious = false,
   onLoadPrevious,
+  selectedIds,
+  onToggleSelect,
+  onRangeSelect,
+  onClearSelection,
+  onBatchTrash,
 }: ChatListProps) {
   const [internalEditingId, setInternalEditingId] = useState<string | null>(
     null
@@ -307,8 +334,52 @@ export function ChatList({
     setContextMenu({ chatId, x: e.clientX, y: e.clientY });
   };
 
+  // The Selection lives only in the main Chat list for now (batch Move to Trash,
+  // #161); the Trash view's batch Restore is a later issue.
+  const selectionEnabled = !!onToggleSelect && !isTrash;
+  const selectionCount = selectedIds?.size ?? 0;
+
+  // A plain row-body click opens the Chat (collapsing the Selection to it); a
+  // modifier click is a Selection gesture instead. Shift takes precedence so
+  // Cmd/Ctrl+Shift is an additive range: Shift+click paints a range from the
+  // anchor (replacing the rest), Cmd/Ctrl+Shift+click adds the range, and a bare
+  // Cmd/Ctrl+click toggles one id. There is no checkbox — a Selection member
+  // wears the accent instead. preventDefault suppresses the browser's
+  // shift-click text selection over the row.
+  const handleRowClick = (e: React.MouseEvent, chatId: string) => {
+    const meta = e.metaKey || e.ctrlKey;
+    if (selectionEnabled && e.shiftKey) {
+      e.preventDefault();
+      onRangeSelect?.(chatId, meta);
+      return;
+    }
+    if (selectionEnabled && meta) {
+      e.preventDefault();
+      onToggleSelect?.(chatId);
+      return;
+    }
+    onSelect(chatId);
+  };
+
+  // Esc collapses a multi-selection back to the primary (the batch bar's Clear
+  // shares the path), before any other Esc handling. Only acts on a real
+  // multi-selection (≥ 2) so a lone Open Chat's Esc still falls through to the
+  // app-level handler (Trash → main).
+  useEffect(() => {
+    if (selectionCount < 2 || !onClearSelection) return;
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClearSelection();
+      }
+    };
+    // Capture so the Selection clears before App's global Esc (view switch).
+    window.addEventListener("keydown", onEsc, true);
+    return () => window.removeEventListener("keydown", onEsc, true);
+  }, [selectionCount, onClearSelection]);
+
   return (
-    <div data-testid="chat-list" className="flex h-full flex-col">
+    <div data-testid="chat-list" className="relative flex h-full flex-col">
       <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border px-4 text-sm">
         {isTrash ? (
           <>
@@ -379,24 +450,41 @@ export function ChatList({
           <div
             className="relative w-full"
             style={{ height: `${virtualizer.getTotalSize()}px` }}
+            // A click that lands on the empty area below the rows (not on a row
+            // button) collapses a multi-selection back to the primary.
+            onClick={(e) => {
+              if (
+                selectionEnabled &&
+                selectionCount >= 2 &&
+                e.target === e.currentTarget
+              ) {
+                onClearSelection?.();
+              }
+            }}
           >
             {virtualizer.getVirtualItems().map((virtualItem) => {
               const chat = chats[virtualItem.index];
               const isSelected = chat.id === selectedId;
               const isCursor = chat.id === cursorId;
-              // The Cursor wears the same accent as the Open Chat, so moving it
-              // by keyboard looks exactly like clicking a row — and shows before
-              // the debounced open lands (no visual lag).
-              const isAccented = isSelected || isCursor;
+              const isInSelection = selectedIds?.has(chat.id) ?? false;
+              // Two-tier highlight: the primary (Open Chat, or the Cursor before
+              // its debounced open lands) wears the strong accent — left primary
+              // border + fill — exactly like a clicked row. A Selection member
+              // that is not the primary wears a lighter fill with no left border,
+              // so what you are reading stays distinct from what you have merely
+              // marked (see CONTEXT.md, #161).
+              const isPrimary = isSelected || isCursor;
+              const isMarked = isInSelection && !isPrimary;
               const isEditing = editingId === chat.id && !!onRenameTitle;
-              // The row's accent is our left-border affordance, driven by state
-              // (Open Chat / Cursor). Suppress the browser's focus-visible
-              // outline so a mouse-clicked row doesn't strand a ring when
-              // keyboard navigation then moves the Cursor off it.
+              // Suppress the browser's focus-visible outline so a mouse-clicked
+              // row doesn't strand a ring when keyboard navigation then moves the
+              // Cursor off it.
               const rowClassName = `flex w-full flex-col gap-1 border-b border-border px-4 py-3 text-left transition-colors hover:bg-card focus-visible:outline-none ${
-                isAccented
+                isPrimary
                   ? "border-l-2 border-l-primary bg-card"
-                  : "border-l-2 border-l-transparent"
+                  : isMarked
+                    ? "border-l-2 border-l-transparent bg-primary/10"
+                    : "border-l-2 border-l-transparent"
               }`;
               const titleNode =
                 onRenameTitle && !isTrash ? (
@@ -451,7 +539,7 @@ export function ChatList({
                     <div className={rowClassName}>{rowContent}</div>
                   ) : (
                     <button
-                      onClick={() => onSelect(chat.id)}
+                      onClick={(e) => handleRowClick(e, chat.id)}
                       className={rowClassName}
                     >
                       {rowContent}
@@ -531,6 +619,39 @@ export function ChatList({
               }}
             />
           )}
+        </div>
+      )}
+      {selectionEnabled && selectionCount >= 2 && (
+        <div
+          data-testid="batch-bar"
+          className="absolute inset-x-4 bottom-4 z-20 flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-lg"
+        >
+          <span className="flex items-center gap-3">
+            <span className="font-medium tabular-nums text-accent-foreground">
+              {selectionCount} selected
+            </span>
+            {/* Same affordance as a row's Move to Trash: bordered icon button
+                with the destructive hover tone and a hover tooltip. */}
+            <span className="group/action relative">
+              <button
+                type="button"
+                aria-label="Move to Trash"
+                onClick={() => onBatchTrash?.()}
+                className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive"
+              >
+                <Trash2 size={14} aria-hidden="true" />
+              </button>
+              <ActionTooltip label="Move to Trash" />
+            </span>
+          </span>
+          {/* Matches the filter panel's "Clear" — a plain primary text link. */}
+          <button
+            type="button"
+            onClick={() => onClearSelection?.()}
+            className="text-xs text-primary transition-colors hover:text-primary/80"
+          >
+            Clear
+          </button>
         </div>
       )}
     </div>

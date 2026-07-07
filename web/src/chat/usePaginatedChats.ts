@@ -386,11 +386,8 @@ export function usePaginatedChats(
     });
   }, []);
 
-  const { softDelete, restore, setTitle } = useChatMutations(
-    setChats,
-    bumpEpoch,
-    reload
-  );
+  const { softDelete, restore, setTitle, softDeleteBatch, restoreBatch } =
+    useChatMutations(setChats, bumpEpoch, reload);
 
   const tail = pages[pages.length - 1];
   const head = pages[0];
@@ -410,5 +407,7 @@ export function usePaginatedChats(
     softDelete,
     restore,
     setTitle,
+    softDeleteBatch,
+    restoreBatch,
   };
 }

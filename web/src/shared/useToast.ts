@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export interface ToastState {
   message: string;
   actionLabel?: string;
+  /** Keyboard hint shown next to the action (e.g. "⌘Z" for the undo shortcut). */
+  actionHint?: string;
   onAction?: () => void;
 }
 

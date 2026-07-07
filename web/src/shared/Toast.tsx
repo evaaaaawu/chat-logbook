@@ -21,13 +21,20 @@ export function Toast({ toast, onDismiss }: ToastProps) {
     >
       <span>{toast.message}</span>
       {toast.actionLabel && toast.onAction && (
-        <button
-          type="button"
-          onClick={handleAction}
-          className="text-xs font-semibold uppercase tracking-wide text-primary transition-colors hover:text-primary/80"
-        >
-          {toast.actionLabel}
-        </button>
+        <span className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleAction}
+            className="text-xs font-semibold uppercase tracking-wide text-primary transition-colors hover:text-primary/80"
+          >
+            {toast.actionLabel}
+          </button>
+          {toast.actionHint && (
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {toast.actionHint}
+            </span>
+          )}
+        </span>
       )}
     </div>
   );

@@ -1592,3 +1592,94 @@ describe("Tag API", () => {
     expect(tags.listTagsForChat(row.id)).toEqual([]);
   });
 });
+
+describe("Batch trash and restore (archive-backed)", () => {
+  function makeApp() {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const app = createApp({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    return { archive, metadata, app };
+  }
+
+  it("trashes every chatId in one request and hides them from the list", async () => {
+    const { archive, app } = makeApp();
+    seedChat(archive, { sourceId: "s1", firstSeenAt: new Date(1700000000000) });
+    seedChat(archive, { sourceId: "s2", firstSeenAt: new Date(1700000000001) });
+    seedChat(archive, { sourceId: "s3", firstSeenAt: new Date(1700000000002) });
+    const id1 = wireIdFor(archive, "s1");
+    const id2 = wireIdFor(archive, "s2");
+
+    const res = await app.request("/api/chats/batch/trash", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chatIds: [id1, id2] }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ count: 2 });
+
+    const list = await app.request("/api/chats?limit=200");
+    const body = (await list.json()) as { chats: ChatResponse[] };
+    const ids = body.chats.map((c) => c.sourceId);
+    expect(ids).not.toContain("s1");
+    expect(ids).not.toContain("s2");
+    expect(ids).toContain("s3");
+  });
+
+  it("restores every chatId in one request, returning them to the list", async () => {
+    const { archive, metadata, app } = makeApp();
+    seedChat(archive, { sourceId: "s1", firstSeenAt: new Date(1700000000000) });
+    seedChat(archive, { sourceId: "s2", firstSeenAt: new Date(1700000000001) });
+    metadata.softDelete(archive.read.findChatBySourceId("s1")!.id);
+    metadata.softDelete(archive.read.findChatBySourceId("s2")!.id);
+    const id1 = wireIdFor(archive, "s1");
+    const id2 = wireIdFor(archive, "s2");
+
+    const res = await app.request("/api/chats/batch/restore", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chatIds: [id1, id2] }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ count: 2 });
+
+    const list = await app.request("/api/chats?limit=200");
+    const body = (await list.json()) as { chats: ChatResponse[] };
+    const ids = body.chats.map((c) => c.sourceId);
+    expect(ids).toContain("s1");
+    expect(ids).toContain("s2");
+  });
+
+  it("skips unknown ids instead of failing the batch", async () => {
+    const { archive, app } = makeApp();
+    seedChat(archive, { sourceId: "s1", firstSeenAt: new Date(1700000000000) });
+    const id1 = wireIdFor(archive, "s1");
+
+    const res = await app.request("/api/chats/batch/trash", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chatIds: [id1, "clog_zzzzzz", "not-an-id"] }),
+    });
+    expect(res.status).toBe(200);
+    // Only the one resolvable id counts; the unknown/malformed ids are dropped.
+    expect(await res.json()).toEqual({ count: 1 });
+
+    const list = await app.request("/api/chats?limit=200");
+    const body = (await list.json()) as { chats: ChatResponse[] };
+    expect(body.chats.map((c) => c.sourceId)).not.toContain("s1");
+  });
+
+  it("rejects a body without a chatIds array", async () => {
+    const { app } = makeApp();
+    const res = await app.request("/api/chats/batch/trash", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ notChatIds: true }),
+    });
+    expect(res.status).toBe(400);
+  });
+});

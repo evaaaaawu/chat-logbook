@@ -17,6 +17,7 @@ import { useFilteredTotal } from "@/chat/useFilteredTotal";
 import { toggleTagSelection } from "@/tags/toggleTagSelection";
 import { FilterPanel } from "@/chat/FilterPanel";
 import { ChatList } from "@/chat/ChatList";
+import { useSelection } from "@/chat/useSelection";
 import { SortControl } from "@/chat/sort/SortControl";
 import { ConversationView } from "@/conversation/ConversationView";
 import { Toast } from "@/shared/Toast";
@@ -98,7 +99,16 @@ function App() {
     tagMode: trashTagMode.mode,
   });
   const source = mode === "trash" ? trashPaginated : paginated;
-  const { chats, sortEpoch, softDelete, restore, setTitle, reload } = source;
+  const {
+    chats,
+    sortEpoch,
+    softDelete,
+    restore,
+    setTitle,
+    reload,
+    softDeleteBatch,
+    restoreBatch,
+  } = source;
 
   // Filter-panel facet counts and the unfiltered List count come from a server
   // aggregation (#131 Phase A), not from folding the loaded window — so they
@@ -193,6 +203,72 @@ function App() {
   const visibleChats = order.orderedChats;
   const selectedChat = chats.find((c) => c.id === selectedId) ?? null;
 
+  // The Selection (batch Move to Trash, #161) with the Open Chat as its primary
+  // member. Keyed to filter + view so it re-seeds to the primary on a filter
+  // change or view switch but rides sort changes and background refreshes (an id
+  // set). Range selection walks the visible order.
+  const visibleIds = visibleChats.map((c) => c.id);
+  const selectionResetKey = `${mode}:${[...selectedProjects].sort().join(",")}:${[...selectedTags].sort().join(",")}:${tagMode.mode}`;
+  const selection = useSelection({
+    orderedIds: visibleIds,
+    primaryId: selectedId,
+    resetKey: selectionResetKey,
+  });
+
+  // Open a Chat: it becomes the Open Chat and the sole Selection (a plain click
+  // or keyboard move collapses any multi-selection). Shared by the row click and
+  // the Cursor's debounced open.
+  const openChat = useCallback(
+    (id: string) => {
+      setSelectedId(id);
+      selection.selectOnly(id);
+    },
+    [selection]
+  );
+
+  // Cmd/Ctrl+click toggles one id. The reading pane does not follow a modifier
+  // click — except when you toggle off the Open Chat itself, where the primary
+  // has to move to the nearest remaining member (or empty when none remain).
+  const toggleSelect = useCallback(
+    (id: string) => {
+      if (id === selectedId && selection.selectedIds.has(id)) {
+        const remaining = visibleIds.filter(
+          (x) => x !== id && selection.selectedIds.has(x)
+        );
+        const at = visibleIds.indexOf(id);
+        const below = visibleIds
+          .slice(at + 1)
+          .find((x) => remaining.includes(x));
+        const above = [...visibleIds.slice(0, at)]
+          .reverse()
+          .find((x) => remaining.includes(x));
+        setSelectedId(below ?? above ?? null);
+      }
+      selection.toggle(id);
+    },
+    [selectedId, selection, visibleIds]
+  );
+
+  // Shift+click ranges from the primary (the anchor) to the target; the reading
+  // pane stays put. Cmd/Ctrl+Shift makes it additive.
+  const rangeSelect = useCallback(
+    (id: string, additive: boolean) => {
+      if (selectedId === null) {
+        openChat(id);
+        return;
+      }
+      selection.selectRange(selectedId, id, additive);
+    },
+    [selectedId, selection, openChat]
+  );
+
+  // Clear (the batch bar button and Esc) collapses the Selection to the Open
+  // Chat, dismissing the batch bar without disturbing what you are reading.
+  const clearSelection = useCallback(() => {
+    if (selectedId) selection.selectOnly(selectedId);
+    else selection.clear();
+  }, [selectedId, selection]);
+
   // Tag and Untagged counts are server-derived per view (main vs Trash). They
   // state each group's size in this view, not the post-filter result, so
   // selecting a Tag never moves the numbers.
@@ -264,10 +340,43 @@ function App() {
     showToast({
       message: "Chat deleted.",
       actionLabel: "Undo",
+      actionHint: "⌘Z",
       onAction: () => {
         void restore(id);
         void counts.reload();
         void trashCounts.reload();
+      },
+    });
+  };
+
+  // Batch Move to Trash over the Selection (#161). One request flips the whole
+  // set (ADR-0021 explicit-ids branch); the client reloads its window and the
+  // facet counts rather than mutating rows in place, then raises an Undo toast
+  // whose inverse is a batch restore. Selection clears immediately so the bar
+  // dismisses without waiting on the round-trip.
+  const handleBatchTrash = () => {
+    const chatIds = [...selection.selectedIds];
+    if (chatIds.length === 0) return;
+    // The batch trashes the primary too, so move the Open Chat to the first
+    // surviving row (or empty), then collapse the Selection.
+    const trashed = new Set(chatIds);
+    const nextOpen = visibleIds.find((x) => !trashed.has(x)) ?? null;
+    setSelectedId(nextOpen);
+    selection.clear();
+    const refreshCounts = () => {
+      void counts.reload();
+      void trashCounts.reload();
+    };
+    void softDeleteBatch(chatIds);
+    refreshCounts();
+    const n = chatIds.length;
+    showToast({
+      message: `${n} chat${n > 1 ? "s" : ""} moved to Trash.`,
+      actionLabel: "Undo",
+      actionHint: "⌘Z",
+      onAction: () => {
+        void restoreBatch(chatIds);
+        refreshCounts();
       },
     });
   };
@@ -357,7 +466,7 @@ function App() {
             selectedId={selectedId}
             editingId={editingTitleId}
             onEditingIdChange={setEditingTitleId}
-            onSelect={setSelectedId}
+            onSelect={openChat}
             onDelete={handleDelete}
             onRestore={handleRestore}
             onRenameTitle={handleRenameTitle}
@@ -370,6 +479,11 @@ function App() {
             onLoadMore={source.loadMore}
             hasPrevious={source.hasPrevious}
             onLoadPrevious={source.loadPrevious}
+            selectedIds={selection.selectedIds}
+            onToggleSelect={toggleSelect}
+            onRangeSelect={rangeSelect}
+            onClearSelection={clearSelection}
+            onBatchTrash={handleBatchTrash}
           />
         </ResizablePanel>
         <ResizableHandle />
