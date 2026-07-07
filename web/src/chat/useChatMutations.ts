@@ -5,6 +5,13 @@ export interface ChatMutations {
   softDelete: (id: string) => Promise<void>;
   restore: (id: string) => Promise<void>;
   setTitle: (id: string, title: string) => Promise<void>;
+  // Batch Move to Trash / Restore over the Selection (#161). Each applies one
+  // optimistic pass over the id set — so the trashed rows leave (or return to)
+  // the list at once — then fires a single batch request (ADR-0021 explicit-ids
+  // branch). The optimistic pass is what removes the rows: the window refresh
+  // only grows, never drops, so a reload alone would keep the trashed rows.
+  softDeleteBatch: (ids: string[]) => Promise<void>;
+  restoreBatch: (ids: string[]) => Promise<void>;
 }
 
 // The shared shape both chat-list read hooks expose: the loaded chats plus the
@@ -94,5 +101,44 @@ export function useChatMutations(
     [setChats, bumpEpoch, reload]
   );
 
-  return { softDelete, restore, setTitle };
+  const softDeleteBatch = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) return;
+      const idSet = new Set(ids);
+      const now = Date.now();
+      setChats((prev) =>
+        prev.map((c) =>
+          idSet.has(c.id) ? { ...c, isDeleted: true, deletedAt: now } : c
+        )
+      );
+      bumpEpoch();
+      await fetch("/api/chats/batch/trash", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chatIds: ids }),
+      });
+    },
+    [setChats, bumpEpoch]
+  );
+
+  const restoreBatch = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) return;
+      const idSet = new Set(ids);
+      setChats((prev) =>
+        prev.map((c) =>
+          idSet.has(c.id) ? { ...c, isDeleted: false, deletedAt: null } : c
+        )
+      );
+      bumpEpoch();
+      await fetch("/api/chats/batch/restore", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chatIds: ids }),
+      });
+    },
+    [setChats, bumpEpoch]
+  );
+
+  return { softDelete, restore, setTitle, softDeleteBatch, restoreBatch };
 }

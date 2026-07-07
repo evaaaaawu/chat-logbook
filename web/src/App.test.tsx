@@ -711,8 +711,95 @@ describe("Undo toast on delete", () => {
 
     const toast = await screen.findByTestId("toast");
     expect(within(toast).getByText(/chat deleted/i)).toBeInTheDocument();
+    // The Undo action shows its keyboard shortcut hint.
+    expect(within(toast).getByText("⌘Z")).toBeInTheDocument();
 
     await user.click(within(toast).getByRole("button", { name: /undo/i }));
+
+    await waitFor(() => {
+      expect(
+        within(list).getByText("Fix database migration")
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("Batch Move to Trash", () => {
+  it("trashes the whole Selection and restores it from the Undo toast", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const list = screen.getByTestId("chat-list");
+    await within(list).findByText("Fix database migration");
+
+    // Mark two chats with Cmd+click on the row body (no checkbox affordance).
+    fireEvent.click(
+      within(list).getByText("Fix database migration").closest("button")!,
+      { metaKey: true }
+    );
+    fireEvent.click(
+      within(list).getByText("Build a login page").closest("button")!,
+      { metaKey: true }
+    );
+
+    // The batch bar reports the count and offers Move to Trash.
+    const bar = await screen.findByTestId("batch-bar");
+    expect(bar).toHaveTextContent("2 selected");
+    await user.click(
+      within(bar).getByRole("button", { name: /Move to Trash/i })
+    );
+
+    // Both leave the main list.
+    await waitFor(() => {
+      expect(
+        within(list).queryByText("Fix database migration")
+      ).not.toBeInTheDocument();
+      expect(
+        within(list).queryByText("Build a login page")
+      ).not.toBeInTheDocument();
+    });
+
+    // Undo restores both; the toast shows the ⌘Z hint.
+    const toast = await screen.findByTestId("toast");
+    expect(within(toast).getByText("⌘Z")).toBeInTheDocument();
+    await user.click(within(toast).getByRole("button", { name: /undo/i }));
+    await waitFor(() => {
+      expect(
+        within(list).getByText("Fix database migration")
+      ).toBeInTheDocument();
+      expect(within(list).getByText("Build a login page")).toBeInTheDocument();
+    });
+  });
+
+  it("undoes a batch trash with Cmd+Z", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const list = screen.getByTestId("chat-list");
+    await within(list).findByText("Fix database migration");
+
+    // Two chats so the batch bar (N ≥ 2) appears.
+    fireEvent.click(
+      within(list).getByText("Fix database migration").closest("button")!,
+      { metaKey: true }
+    );
+    fireEvent.click(
+      within(list).getByText("Build a login page").closest("button")!,
+      { metaKey: true }
+    );
+    const bar = await screen.findByTestId("batch-bar");
+    await user.click(
+      within(bar).getByRole("button", { name: /Move to Trash/i })
+    );
+
+    await waitFor(() => {
+      expect(
+        within(list).queryByText("Fix database migration")
+      ).not.toBeInTheDocument();
+    });
+
+    await screen.findByTestId("toast");
+    await user.keyboard("{Meta>}z{/Meta}");
 
     await waitFor(() => {
       expect(
