@@ -1,8 +1,8 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Tag } from "@/types";
 import type { ColorToken } from "@/tags/palette";
 import { TagChip } from "@/tags/TagChip";
-import { AddTagPopover } from "@/tags/AddTagPopover";
+import { TagPickerDialog } from "@/tags/TagPickerDialog";
 import { sortTagsByName } from "@/tags/sortTags";
 
 interface TagStripProps {
@@ -71,6 +71,17 @@ export function TagStrip({
   const visible = sorted.slice(0, visibleCount);
   const hiddenCount = sorted.length - visible.length;
 
+  // A single chat's assignment is binary — a tag is either on it or not. Map
+  // that onto the dialog's tri-state contract so "some" never appears here.
+  const assignedIds = useMemo(
+    () => new Set(assigned.map((t) => t.id)),
+    [assigned]
+  );
+  const stateFor = (tagId: string) =>
+    assignedIds.has(tagId) ? ("all" as const) : ("none" as const);
+  const handleToggle = (tagId: string) =>
+    assignedIds.has(tagId) ? onRemove(chatId, tagId) : onAssign(chatId, tagId);
+
   return (
     <div
       data-testid="tag-strip"
@@ -103,11 +114,11 @@ export function TagStrip({
           />
         ))}
         {hiddenCount > 0 && (
-          <AddTagPopover
-            assigned={assigned}
-            allTags={allTags}
-            onAssign={(tagId) => onAssign(chatId, tagId)}
-            onRemove={(tagId) => onRemove(chatId, tagId)}
+          <TagPickerDialog
+            title="Add tags"
+            tags={allTags}
+            stateFor={stateFor}
+            onToggle={handleToggle}
             onCreate={(name, color) => onCreate(chatId, name, color)}
             triggerTestId="tag-overflow"
             triggerAriaLabel={`Show ${hiddenCount} more tags`}
@@ -115,11 +126,11 @@ export function TagStrip({
             triggerContent={`+${hiddenCount}`}
           />
         )}
-        <AddTagPopover
-          assigned={assigned}
-          allTags={allTags}
-          onAssign={(tagId) => onAssign(chatId, tagId)}
-          onRemove={(tagId) => onRemove(chatId, tagId)}
+        <TagPickerDialog
+          title="Add tags"
+          tags={allTags}
+          stateFor={stateFor}
+          onToggle={handleToggle}
           onCreate={(name, color) => onCreate(chatId, name, color)}
         />
       </div>
