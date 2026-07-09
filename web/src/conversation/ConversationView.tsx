@@ -1,10 +1,8 @@
 import { useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { RotateCcw } from "lucide-react";
-import Markdown from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
-import remarkGfm from "remark-gfm";
 import type { Message, ContentBlock, Chat, Tag } from "@/types";
+import { MarkdownText } from "@/conversation/MarkdownText";
 import { CollapsibleThinking } from "@/conversation/CollapsibleThinking";
 import { CollapsibleToolCall } from "@/conversation/CollapsibleToolCall";
 import { ChatMetadataPopover } from "@/metadata/ChatMetadataPopover";
@@ -123,14 +121,6 @@ function ConversationHeader({
         </>
       )}
     </div>
-  );
-}
-
-function MarkdownText({ children }: { children: string }) {
-  return (
-    <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-      {children}
-    </Markdown>
   );
 }
 
