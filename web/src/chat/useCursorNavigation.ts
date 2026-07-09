@@ -63,6 +63,11 @@ export function useCursorNavigation({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      // Only bare arrows walk the Cursor. A modifier makes it a different
+      // shortcut — Cmd/Ctrl+Arrow is the conversation's jump-to-top/bottom
+      // (see useScrollShortcuts) — so leave those alone or the same keypress
+      // moves the list Cursor and jumps the conversation at once.
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       // Typing in a title field owns its own arrows; never hijack them.
       const target = e.target as HTMLElement | null;
