@@ -69,8 +69,11 @@ test.describe("Virtual scrolling", () => {
     // Click the chat to load messages
     await page.getByText("Large conversation").click();
 
-    // Wait for at least one message to render
-    await expect(page.getByText("User message 1")).toBeVisible();
+    // Wait for at least one message to render. Chats open at the bottom
+    // (latest messages), so the last message is what lands in view (#187).
+    await expect(
+      page.getByText(`Assistant response ${MESSAGE_COUNT}`)
+    ).toBeVisible();
 
     // Count rendered message bubbles (each has a data-role attribute)
     const renderedNodes = await page.locator("[data-role]").count();

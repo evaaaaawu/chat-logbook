@@ -1,10 +1,16 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { RotateCcw } from "lucide-react";
 import type { Message, ContentBlock, Chat, Tag } from "@/types";
 import { MarkdownText } from "@/conversation/MarkdownText";
 import { CollapsibleThinking } from "@/conversation/CollapsibleThinking";
 import { CollapsibleToolCall } from "@/conversation/CollapsibleToolCall";
+import { ScrollPill } from "@/conversation/ScrollPill";
+import {
+  getScrollPillTarget,
+  type ScrollPillTarget,
+} from "@/conversation/scrollPillVisibility";
+import { useScrollShortcuts } from "@/conversation/useScrollShortcuts";
 import { ChatMetadataPopover } from "@/metadata/ChatMetadataPopover";
 import { EditableTitle } from "@/metadata/EditableTitle";
 import { TagStrip } from "@/tags/TagStrip";
@@ -197,15 +203,77 @@ export function ConversationView({
   // that the React Compiler cannot memoize without risking stale UI, so the
   // compiler intentionally skips memoizing this component. This is expected and
   // safe here: the virtualizer values are consumed locally and not passed into
-  // other memoized components/hooks. The warning cannot be compiled away, so we
-  // silence it at the call site rather than disabling the rule globally.
-  // eslint-disable-next-line react-hooks/incompatible-library
+  // other memoized components/hooks.
   const virtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => 100,
     initialRect: { width: 800, height: 600 },
   });
+
+  // Which direction the scroll pill offers. Kept in state (rather than read
+  // during render) so it survives scroll events, jumps, and content that grows
+  // or shrinks as messages expand/collapse. Defaults to hidden until the first
+  // measurement, so the pill never flashes on mount.
+  const [pillTarget, setPillTarget] = useState<ScrollPillTarget>(null);
+  const measurePill = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    setPillTarget(
+      getScrollPillTarget({
+        scrollTop: el.scrollTop,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      })
+    );
+  }, []);
+
+  const jumpTop = useCallback(() => {
+    // Instant index jump, not a smooth scroll: smooth-scrolling across
+    // thousands of virtualized rows is slow and janky.
+    virtualizer.scrollToIndex(0, { align: "start" });
+  }, [virtualizer]);
+  const jumpBottom = useCallback(() => {
+    virtualizer.scrollToIndex(messages.length - 1, { align: "end" });
+  }, [virtualizer, messages.length]);
+
+  // Keyboard equivalents of the pill: Cmd/Ctrl+arrows and Home/End. Enabled
+  // only while a chat with content is open.
+  useScrollShortcuts({
+    enabled: Boolean(chat) && messages.length > 0,
+    onJumpTop: jumpTop,
+    onJumpBottom: jumpBottom,
+  });
+
+  // Open a chat at the bottom (latest messages), matching Claude Code desktop:
+  // the most common recall question is "how did this session end?".
+  const chatId = chat?.id;
+  const landedChatRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!chatId) {
+      landedChatRef.current = null;
+      return;
+    }
+    // Messages load a tick after the chat id is set, so land the moment they
+    // first arrive — not on the initial empty render. Guard by chat id so a
+    // later streamed message doesn't yank an already-positioned view.
+    if (messages.length === 0) return;
+    if (landedChatRef.current === chatId) return;
+    landedChatRef.current = chatId;
+    virtualizer.scrollToIndex(messages.length - 1, { align: "end" });
+    // Re-measure after the jump settles so the pill reflects the landed
+    // position (at the bottom it offers "back to top").
+    const raf = requestAnimationFrame(measurePill);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, messages.length]);
+
+  // Keep the pill correct as content height changes (messages expanding or
+  // collapsing) even without a scroll event.
+  const totalSize = virtualizer.getTotalSize();
+  useEffect(() => {
+    measurePill();
+  }, [totalSize, measurePill]);
 
   return (
     <div className="flex h-full flex-col">
@@ -243,27 +311,35 @@ export function ConversationView({
           Select a chat to view the conversation
         </div>
       ) : (
-        <div
-          data-testid="conversation-panel"
-          ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto p-6"
-        >
+        <div className="relative min-h-0 flex-1">
           <div
-            className="relative flex flex-col"
-            style={{ height: `${virtualizer.getTotalSize()}px` }}
+            data-testid="conversation-panel"
+            ref={scrollContainerRef}
+            onScroll={measurePill}
+            className="absolute inset-0 overflow-y-auto p-6"
           >
-            {virtualizer.getVirtualItems().map((virtualItem) => (
-              <div
-                key={virtualItem.index}
-                data-index={virtualItem.index}
-                ref={virtualizer.measureElement}
-                className="absolute left-0 right-0 flex flex-col pb-4"
-                style={{ transform: `translateY(${virtualItem.start}px)` }}
-              >
-                <MessageBubble message={messages[virtualItem.index]} />
-              </div>
-            ))}
+            <div
+              className="relative flex flex-col"
+              style={{ height: `${totalSize}px` }}
+            >
+              {virtualizer.getVirtualItems().map((virtualItem) => (
+                <div
+                  key={virtualItem.index}
+                  data-index={virtualItem.index}
+                  ref={virtualizer.measureElement}
+                  className="absolute left-0 right-0 flex flex-col pb-4"
+                  style={{ transform: `translateY(${virtualItem.start}px)` }}
+                >
+                  <MessageBubble message={messages[virtualItem.index]} />
+                </div>
+              ))}
+            </div>
           </div>
+          <ScrollPill
+            target={pillTarget}
+            onJumpTop={jumpTop}
+            onJumpBottom={jumpBottom}
+          />
         </div>
       )}
     </div>
