@@ -29,23 +29,25 @@ The full problem statement, user stories, and direction live in the [PRD](docs/P
 
 ## What works today
 
-- **Three-column layout.** Resizable panels for filters, chat list,
-  and conversation content.
-- **Rich conversation rendering.** Markdown, syntax-highlighted code blocks, collapsible tool calls with one-line summaries, and collapsible thinking blocks.
-- **Virtual scrolling.** Long conversations scroll smoothly.
-- **A chat list that scales.** The list loads on demand as you scroll and stays fast even with tens of thousands of chats.
-- **Solarized Dark theme.** Easy on the eyes, consistent with Claude
-  Code's terminal look.
-- **Soft delete with Trash.** Hide chats you don't want to see; restore
-  them anytime. Select several at once to move them together.
-- **Sortable lists.** Sort your chats by title, created time, or updated time, and the choice sticks between visits. Trash sorts independently — by deleted time by default.
-- **Custom chat titles.** Rename any chat — click its title in the list or conversation header, or select it and press `F2` / `↵`. Clear the title to fall back to the first message.
-- **Keyboard navigation.** Walk the chat list with `↑` / `↓` — each row you land on opens, and clicking a row picks up where the arrows continue from.
-- **Local archive.** Every conversation chat-logbook reads is copied into `~/.chat-logbook/archive.db`. The UI reads from the archive, so a chat stays visible even after the source JSONL is gone.
-- **Live updates.** While Claude Code is actively writing to a chat, new messages appear in chat-logbook within seconds — no restart needed. New and changed chats surface in the list on their own, without a manual refresh.
-- **Chat metadata at a glance.** A ⓘ button on the conversation header opens a popover showing when the chat started, when it was last updated, the agent, the project working directory, and the chat's IDs — with one-click copy.
-- **Tags.** Create tags, give them colors, and assign them to chats. They show as colored chips on the chat and in the list. Rename or delete them anytime.
-- **Filter by tag or project.** Narrow the chat list to a project, or to chats by tag — match every tag you pick, or any one of them.
+**Reading**
+
+- **Three-column layout.** Resizable panels for filters, chat list, and conversation — in a Solarized Dark theme that matches Claude Code's terminal.
+- **Rich rendering.** Markdown, syntax-highlighted code, collapsible tool calls with one-line summaries, and collapsible thinking.
+- **Long chats stay fast.** A conversation opens at its latest message and scrolls smoothly however far it runs; a corner button and `⌘↑` / `⌘↓` (or `Home` / `End`) jump to the start or the latest.
+- **Metadata at a glance.** The ⓘ in the header shows when a chat started and last changed, its agent, project, and IDs — with one-click copy.
+
+**Finding & organizing**
+
+- **A list that scales.** Loads on demand as you scroll and stays fast across tens of thousands of chats. Walk it with `↑` / `↓` — each row opens as you land on it.
+- **Sort that sticks.** By title, created, or updated time; the choice holds between visits, and Trash sorts on its own.
+- **Tags and filters.** Tag chats with colored chips, then narrow the list to a project or to tags — matching every tag you pick or any one.
+- **Custom titles.** Rename from the list or the header (`F2` / `↵`); clear a title to fall back to the first message.
+
+**Keeping your history**
+
+- **Local archive.** Every chat is copied to `~/.chat-logbook/archive.db`, so it stays even after the source file is gone.
+- **Live updates.** New and changed chats surface within seconds — no refresh.
+- **Trash, not delete.** Move chats out one or many at a time and restore them anytime. Source directories like `~/.claude/` stay read-only, always.
 
 ## Quick start
 

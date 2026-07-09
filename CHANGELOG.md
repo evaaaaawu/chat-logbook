@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.18.0] - 2026-07-09
+
+Move around long conversations without endless scrolling. Jump to the start or the latest message in one click or one keystroke, and chats now open where the action is — the end.
+
+### Added
+
+- Jump to the start or the latest message of a conversation. A button in the bottom-right corner shows the direction that makes sense for where you are — "back to top" when you're at the bottom, "jump to latest" otherwise. From the keyboard, use `⌘↑` / `⌘↓` (`Ctrl` elsewhere) or `Home` / `End`.
+
+### Changed
+
+- Opening a chat now lands on the latest messages instead of the top, so you see how a chat ended first.
+
 ## [0.17.0] - 2026-07-09
 
 Pick several chats at once and move them to the Trash together, instead of one at a time. Your conversations also read better now — markdown formatting shows up the way it was written.
