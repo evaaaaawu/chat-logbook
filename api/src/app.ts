@@ -3,7 +3,7 @@ import { streamSSE } from "hono/streaming";
 import { serveStatic } from "@hono/node-server/serve-static";
 import type { ArchiveRepository } from "./archive/repository.js";
 import type { MetadataRepository } from "./metadata/repository.js";
-import type { TagRepository } from "./metadata/tags.js";
+import type { Tag, TagRepository } from "./metadata/tags.js";
 import { isColorToken } from "./metadata/tag-colors.js";
 import { createChatReader } from "./chat-reader.js";
 import type { ChatPageQuery } from "./list-pagination.js";
@@ -245,6 +245,56 @@ export function createApp({
     }
     metadata.restoreBatch(internalIds);
     return c.json({ count: internalIds.length });
+  });
+
+  // Apply a staged Tag add/remove diff across the Selection in one transaction
+  // (#163, ADR-0021 explicit-ids branch). The body carries the same `chatIds`
+  // set as the Trash/Restore batch plus `add`/`remove` tag-id lists; unknown
+  // ids in either dimension are dropped rather than failing the batch.
+  app.post("/api/chats/batch/tags", async (c) => {
+    const internalIds = await resolveBatchIds(c);
+    if (internalIds === null) {
+      return c.json({ error: "Invalid chatIds" }, 400);
+    }
+    const body = (await c.req.json()) as { add?: unknown; remove?: unknown };
+    const toIds = (v: unknown): string[] =>
+      Array.isArray(v)
+        ? v.filter((x): x is string => typeof x === "string")
+        : [];
+    tags.assignTagsBatch(internalIds, {
+      add: toIds(body.add),
+      remove: toIds(body.remove),
+    });
+    return c.json({ count: internalIds.length });
+  });
+
+  // Tags grouped across the Selection in one query (#163), so the batch
+  // TagPickerDialog can derive each row's tri-state (all/some/none) without a
+  // per-Chat round-trip (ADR-0016). Keyed by the wire id the client sent so it
+  // maps straight back onto the Selection.
+  app.post("/api/chats/batch/tags-by-chat", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid chatIds" }, 400);
+    }
+    const chatIds = (body as { chatIds?: unknown })?.chatIds;
+    if (!Array.isArray(chatIds)) {
+      return c.json({ error: "Invalid chatIds" }, 400);
+    }
+    const pairs: Array<[string, string]> = [];
+    for (const wireId of chatIds) {
+      if (typeof wireId !== "string") continue;
+      const row = reader.findChat(wireId);
+      if (row) pairs.push([wireId, row.id]);
+    }
+    const grouped = tags.listTagsByChat(pairs.map(([, internal]) => internal));
+    const byChat: Record<string, Tag[]> = {};
+    for (const [wireId, internalId] of pairs) {
+      byChat[wireId] = grouped.get(internalId) ?? [];
+    }
+    return c.json({ byChat });
   });
 
   app.delete("/api/chats/:id", (c) => {

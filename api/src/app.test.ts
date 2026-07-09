@@ -1683,3 +1683,84 @@ describe("Batch trash and restore (archive-backed)", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("Batch tag apply and grouped read (archive-backed)", () => {
+  function makeApp() {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+    const app = createApp({
+      archive,
+      metadata,
+      tags,
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    return { archive, metadata, tags, app };
+  }
+
+  it("POST /api/chats/batch/tags applies an add/remove diff over the resolved ids", async () => {
+    const { archive, tags, app } = makeApp();
+    seedChat(archive, { sourceId: "s1", firstSeenAt: new Date(1700000000000) });
+    seedChat(archive, { sourceId: "s2", firstSeenAt: new Date(1700000000001) });
+    const bug = tags.createTag("bug", "red");
+    const idea = tags.createTag("idea", "violet");
+    const row1 = archive.read.findChatBySourceId("s1")!;
+    const row2 = archive.read.findChatBySourceId("s2")!;
+    // Both start with bug; the batch swaps bug → idea across the selection.
+    tags.assignTag(row1.id, bug.id);
+    tags.assignTag(row2.id, bug.id);
+
+    const res = await app.request("/api/chats/batch/tags", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        chatIds: [wireIdFor(archive, "s1"), wireIdFor(archive, "s2")],
+        add: [idea.id],
+        remove: [bug.id],
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ count: 2 });
+
+    expect(tags.listTagsForChat(row1.id)).toEqual([idea]);
+    expect(tags.listTagsForChat(row2.id)).toEqual([idea]);
+  });
+
+  it("POST /api/chats/batch/tags-by-chat groups tags by the wire id sent", async () => {
+    const { archive, tags, app } = makeApp();
+    seedChat(archive, { sourceId: "s1", firstSeenAt: new Date(1700000000000) });
+    seedChat(archive, { sourceId: "s2", firstSeenAt: new Date(1700000000001) });
+    const bug = tags.createTag("bug", "red");
+    const idea = tags.createTag("idea", "violet");
+    const row1 = archive.read.findChatBySourceId("s1")!;
+    const row2 = archive.read.findChatBySourceId("s2")!;
+    tags.assignTag(row1.id, bug.id);
+    tags.assignTag(row1.id, idea.id);
+    tags.assignTag(row2.id, bug.id);
+
+    const w1 = wireIdFor(archive, "s1");
+    const w2 = wireIdFor(archive, "s2");
+    const res = await app.request("/api/chats/batch/tags-by-chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chatIds: [w1, w2] }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { byChat: Record<string, Tag[]> };
+    // Grouping is membership, not order — sort by name to compare stably.
+    const byName = (list: Tag[]) =>
+      [...list].sort((a, b) => a.name.localeCompare(b.name));
+    expect(byName(body.byChat[w1])).toEqual([bug, idea]);
+    expect(body.byChat[w2]).toEqual([bug]);
+  });
+
+  it("POST /api/chats/batch/tags rejects a body without a chatIds array", async () => {
+    const { app } = makeApp();
+    const res = await app.request("/api/chats/batch/tags", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ add: [], remove: [] }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
