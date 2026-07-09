@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.18.1] - 2026-07-09
+
+### Fixed
+
+- `⌘↑` / `⌘↓` (`Ctrl` elsewhere) to jump to the top or the latest message no longer also walks the chat list — or switches which chat is open — at the same time. List arrow navigation and the conversation jumps stay separate now.
+
 ## [0.18.0] - 2026-07-09
 
 Move around long conversations without endless scrolling. Jump to the start or the latest message in one click or one keystroke, and chats now open where the action is — the end.

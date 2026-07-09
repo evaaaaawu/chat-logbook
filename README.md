@@ -33,7 +33,7 @@ The full problem statement, user stories, and direction live in the [PRD](docs/P
 
 - **Three-column layout.** Resizable panels for filters, chat list, and conversation — in a Solarized Dark theme that matches Claude Code's terminal.
 - **Rich rendering.** Markdown, syntax-highlighted code, collapsible tool calls with one-line summaries, and collapsible thinking.
-- **Long chats stay fast.** A conversation opens at its latest message and scrolls smoothly however far it runs; a corner button and `⌘↑` / `⌘↓` (or `Home` / `End`) jump to the start or the latest.
+- **Long chats stay fast.** A conversation opens at its latest message and scrolls smoothly however far it runs; a corner button, `⌘↑` / `⌘↓` (`Ctrl` elsewhere), or `Home` / `End` jump to the start or the latest.
 - **Metadata at a glance.** The ⓘ in the header shows when a chat started and last changed, its agent, project, and IDs — with one-click copy.
 
 **Finding & organizing**
