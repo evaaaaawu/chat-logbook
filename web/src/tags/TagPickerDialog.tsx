@@ -33,6 +33,18 @@ interface TagPickerDialogProps {
   triggerAriaLabel?: string;
   triggerClassName?: string;
   triggerContent?: ReactNode;
+  // Controlled open state — batch mode (#163) drives this so it can close the
+  // dialog on `Done`. Omit for the self-managed single-Chat popover.
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  // Optional footer below the list — batch mode puts the `Done` button here to
+  // apply the staged add/remove diff. Single mode applies each toggle at once
+  // and leaves it undefined.
+  footer?: ReactNode;
+  // Batch mode's Enter action: when the user is not mid-create, Enter anywhere
+  // in the dialog submits (equivalent to clicking `Done`). Also stops the
+  // keystroke leaking to the global chat shortcuts (e.g. Enter → rename).
+  onEnter?: () => void;
 }
 
 const DEFAULT_TRIGGER_CLASS =
@@ -45,6 +57,10 @@ export function TagPickerDialog({
   triggerAriaLabel = "Add tag",
   triggerClassName = DEFAULT_TRIGGER_CLASS,
   triggerContent,
+  open,
+  onOpenChange,
+  footer,
+  onEnter,
   stateFor,
   onToggle,
   onCreate,
@@ -82,7 +98,13 @@ export function TagPickerDialog({
   };
 
   return (
-    <Dialog onOpenChange={(open) => !open && reset()}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) reset();
+        onOpenChange?.(next);
+      }}
+    >
       <DialogTrigger
         data-testid={triggerTestId}
         aria-label={triggerAriaLabel}
@@ -98,6 +120,19 @@ export function TagPickerDialog({
       <DialogContent
         data-testid="tag-picker-dialog"
         className="w-[min(100vw-2rem,34rem)]"
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          // Mid-create Enter belongs to the create flow (handled on the input);
+          // leave it alone so the row isn't submitted instead of the new tag.
+          if (canCreate) return;
+          // Otherwise Enter submits (batch `Done`) and must not bubble to the
+          // global chat shortcuts (Enter → rename the open chat).
+          if (onEnter) {
+            e.preventDefault();
+            e.stopPropagation();
+            onEnter();
+          }
+        }}
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>
 
@@ -183,6 +218,12 @@ export function TagPickerDialog({
                 inputRef.current?.focus();
               }}
             />
+          </div>
+        )}
+
+        {footer && (
+          <div className="flex justify-end border-t border-border pt-3">
+            {footer}
           </div>
         )}
       </DialogContent>

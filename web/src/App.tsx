@@ -18,6 +18,7 @@ import { useFilteredTotal } from "@/chat/useFilteredTotal";
 import { toggleTagSelection } from "@/tags/toggleTagSelection";
 import { FilterPanel } from "@/chat/FilterPanel";
 import { ChatList } from "@/chat/ChatList";
+import { BatchTagButton } from "@/tags/BatchTagButton";
 import { useSelection } from "@/chat/useSelection";
 import { SortControl } from "@/chat/sort/SortControl";
 import { ConversationView } from "@/conversation/ConversationView";
@@ -135,6 +136,8 @@ function App() {
     deleteTag,
     assignTag,
     removeTag,
+    assignTagsBatch,
+    fetchTagsByChat,
   } = useTags({ onAssignmentChange });
   const handleRenameTitle = (id: string, title: string) => {
     void setTitle(id, title);
@@ -382,6 +385,41 @@ function App() {
     });
   };
 
+  // Apply the staged batch Tag diff over the Selection (#163). One request
+  // carries the add/remove diff (ADR-0021 explicit-ids branch), then the
+  // drop-reconcile reload (#176) drops any Chat the change moved out of an active
+  // filter. That reload reports which ids left the list, so the Selection prunes
+  // to exactly those — it never dangles on Chats you can no longer see, and a
+  // Chat merely scrolled out of the window (not a drop) is untouched.
+  const applyBatchTag = useCallback(
+    async (chatIds: string[], diff: { add: string[]; remove: string[] }) => {
+      await assignTagsBatch(chatIds, diff);
+      const dropped = await reload();
+      void reloadCounts();
+      if (dropped.length > 0) selection.deselect(dropped);
+    },
+    [assignTagsBatch, reload, reloadCounts, selection]
+  );
+
+  // The Undo toast replays the inverse diff (add↔remove) through the same path.
+  const handleBatchTag = (
+    chatIds: string[],
+    diff: { add: string[]; remove: string[] }
+  ) => {
+    if (chatIds.length === 0) return;
+    if (diff.add.length === 0 && diff.remove.length === 0) return;
+    void applyBatchTag(chatIds, diff);
+    const n = chatIds.length;
+    showToast({
+      message: `Tags updated on ${n} chat${n > 1 ? "s" : ""}.`,
+      actionLabel: "Undo",
+      actionHint: modifierHint("Z"),
+      onAction: () => {
+        void applyBatchTag(chatIds, { add: diff.remove, remove: diff.add });
+      },
+    });
+  };
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -485,6 +523,15 @@ function App() {
             onRangeSelect={rangeSelect}
             onClearSelection={clearSelection}
             onBatchTrash={handleBatchTrash}
+            batchTagButton={
+              <BatchTagButton
+                selectedIds={selection.selectedIds}
+                allTags={tagCatalog}
+                fetchTagsByChat={fetchTagsByChat}
+                onApply={handleBatchTag}
+                onCreate={createTag}
+              />
+            }
           />
         </ResizablePanel>
         <ResizableHandle />

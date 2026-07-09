@@ -63,6 +63,9 @@ interface ChatListProps {
   onClearSelection?: () => void;
   /** The batch bar's Move to Trash: trash every Chat in the Selection. */
   onBatchTrash?: () => void;
+  /** The batch bar's Tag control (#163) — a self-contained button + dialog the
+   * caller wires to the Selection. Rendered alongside Move to Trash. */
+  batchTagButton?: React.ReactNode;
 }
 
 // Trigger the next page once the rendered window reaches within this many rows
@@ -172,6 +175,7 @@ export function ChatList({
   onRangeSelect,
   onClearSelection,
   onBatchTrash,
+  batchTagButton,
 }: ChatListProps) {
   const [internalEditingId, setInternalEditingId] = useState<string | null>(
     null
@@ -630,18 +634,28 @@ export function ChatList({
             <span className="font-medium tabular-nums text-accent-foreground">
               {selectionCount} selected
             </span>
-            {/* Same affordance as a row's Move to Trash: bordered icon button
-                with the destructive hover tone and a hover tooltip. */}
-            <span className="group/action relative">
-              <button
-                type="button"
-                aria-label="Move to Trash"
-                onClick={() => onBatchTrash?.()}
-                className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive"
-              >
-                <Trash2 size={14} aria-hidden="true" />
-              </button>
-              <ActionTooltip label="Move to Trash" />
+            {/* Batch Tag (#163) and Move to Trash sit as a tight icon pair —
+                one hair-thin gap — set apart from the count. */}
+            <span className="flex items-center gap-0.5">
+              {batchTagButton && (
+                <span className="group/action relative">
+                  {batchTagButton}
+                  <ActionTooltip label="Add/Remove Tag" />
+                </span>
+              )}
+              {/* Same affordance as a row's Move to Trash: bordered icon button
+                  with the destructive hover tone and a hover tooltip. */}
+              <span className="group/action relative">
+                <button
+                  type="button"
+                  aria-label="Move to Trash"
+                  onClick={() => onBatchTrash?.()}
+                  className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive"
+                >
+                  <Trash2 size={14} aria-hidden="true" />
+                </button>
+                <ActionTooltip label="Move to Trash" />
+              </span>
             </span>
           </span>
           {/* Matches the filter panel's "Clear" — a plain primary text link. */}
