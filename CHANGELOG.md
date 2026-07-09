@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.17.0] - 2026-07-09
+
+Pick several chats at once and move them to the Trash together, instead of one at a time. Your conversations also read better now — markdown formatting shows up the way it was written.
+
+### Added
+
+- Select multiple chats and move them all to the Trash in one action. Click to start a selection, add more chats to it, then move the whole set at once. Your original `~/.claude/` files are never touched.
+
+### Changed
+
+- Conversations now render their markdown — headings, bold, lists, and code blocks appear formatted instead of as flat text, with spacing tuned for reading.
+- Keyboard hints show the right keys for your machine: `⌘` on Mac, `Ctrl` elsewhere.
+
+### Fixed
+
+- Reloading now drops chats that no longer belong in the current view. After you move a chat out of a filter, a reload reflects that instead of leaving a stale row behind.
+
 ## [0.16.0] - 2026-07-06
 
 Move through your chat list with the keyboard. Press the arrow keys to walk up and down the list and open each chat as you land on it — no reaching for the mouse.

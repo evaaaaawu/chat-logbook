@@ -37,7 +37,7 @@ The full problem statement, user stories, and direction live in the [PRD](docs/P
 - **Solarized Dark theme.** Easy on the eyes, consistent with Claude
   Code's terminal look.
 - **Soft delete with Trash.** Hide chats you don't want to see; restore
-  them anytime.
+  them anytime. Select several at once to move them together.
 - **Sortable lists.** Sort your chats by title, created time, or updated time, and the choice sticks between visits. Trash sorts independently — by deleted time by default.
 - **Custom chat titles.** Rename any chat — click its title in the list or conversation header, or select it and press `F2` / `↵`. Clear the title to fall back to the first message.
 - **Keyboard navigation.** Walk the chat list with `↑` / `↓` — each row you land on opens, and clicking a row picks up where the arrows continue from.
