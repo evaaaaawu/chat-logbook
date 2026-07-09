@@ -11,6 +11,7 @@ import type { Chat } from "@/types";
 import { EditableTitle } from "@/metadata/EditableTitle";
 import { TagChipList } from "@/tags/TagChipList";
 import { useCursorNavigation } from "@/chat/useCursorNavigation";
+import { ActionTooltip } from "@/shared/ActionTooltip";
 
 interface ChatListProps {
   mode?: "main" | "trash";
@@ -129,22 +130,6 @@ function MenuItem({
       </span>
       <span className="text-xs tabular-nums text-muted-foreground">{hint}</span>
     </button>
-  );
-}
-
-function ActionTooltip({ label, hint }: { label: string; hint?: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="pointer-events-none absolute right-full top-1/2 mr-1.5 flex -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/10 bg-[#0a0a0a] px-2 py-1 text-xs text-card-foreground opacity-0 shadow-lg transition-opacity duration-100 group-hover/action:opacity-100"
-    >
-      {label}
-      {hint && (
-        <span className="text-xs tabular-nums text-muted-foreground">
-          {hint}
-        </span>
-      )}
-    </span>
   );
 }
 
