@@ -17,3 +17,17 @@ The reason is that the poll was both too slow and unbounded. A 4-second timer me
 - **The channel must recover on its own.** SSE connections drop (sleep, proxy idle timeout, network blips). The client reconnects with backoff, and a low-frequency reconcile runs as a floor so a missed event cannot leave the window stale indefinitely. A periodic heartbeat from the server surfaces a dead socket promptly.
 - **One in-process hub, no new store.** The push path is a process-local publish/subscribe hub the watcher publishes to and each stream connection subscribes to. It holds no state across restarts and touches none of the five stores ([ADR-0001](0001-four-store-split.md)); a fresh connection simply reconciles on connect.
 - **The loaded window is now bounded.** With the poll gone, the remaining unbounded cost is the loaded window itself growing on deep scroll. Page eviction (drop far-offscreen pages, re-fetch on scroll-back) bounds memory and per-render re-sort, completing the move ADR-0018 anticipated. Tracked in the same issue ([#132](https://github.com/evaaaaawu/chat-logbook/issues/132)).
+
+## Amendment ([#189](https://github.com/evaaaaawu/chat-logbook/issues/189)): the signal names which chats changed
+
+The open conversation pane became a second consumer of the same channel: while a chat is open, newly ingested messages should appear without reopening it. It re-reads the same way the list does — the `changed` event is the trigger, and the client re-fetches the open chat through the existing per-chat read path, so the message shape stays server-derived. No new transport, no message rows on the wire.
+
+To keep this scoped, the `changed` event now carries a small payload: `{ chatIds: string[] }`, the wire-form ids of the chats that ingest pass wrote a message to (the SSE `data` frame, previously empty). Without it, a client showing one conversation would re-fetch that whole chat whenever _any_ session wrote — including an unrelated one. With it, the conversation consumer re-reads only when its chat is named.
+
+This is consistent with the original decision, not a reversal of it. The payload is still a **signal, not the data**: it names _which_ chats changed, never the changed messages or their content. The chosen option above rejected pushing Chat rows because it would move filtering and ordering to the client; naming ids moves neither — the conversation pane has no sort or filter to re-derive, and the list ignores the ids entirely (any write can reorder the window, so the list still reconciles on every event).
+
+### Consequences of the amendment
+
+- **The list is unchanged.** Its connector reads only the event name and reconciles its window head as before; the `chatIds` payload is inert for it.
+- **The conversation consumer scopes its re-read by id, not by content.** It compares the open chat id against `chatIds` and re-fetches the whole open chat on a match — the same read the pane already does on open, now push-triggered. A malformed or absent payload parses to no ids, so a bad frame simply never matches rather than throwing on the stream thread.
+- **Scroll position is the client's to preserve.** A live arrival must not yank a reader who has scrolled up. The pane follows the latest only when pinned to the bottom; otherwise it holds the viewport and marks new content below on the scroll pill. This is a client-side view concern, decided by `deriveArrivalAction`, and touches neither the channel nor the stores.
