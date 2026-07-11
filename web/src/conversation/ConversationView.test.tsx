@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { ConversationView } from "@/conversation/ConversationView";
@@ -27,6 +27,79 @@ function assistant(text: string): Message {
     timestamp: "2024-01-01T00:00:00Z",
   };
 }
+
+// Give the scroll panel real geometry so the pill logic sees a scrollable,
+// scrolled-up viewport (jsdom reports 0 for scroll metrics). Returns a setter
+// for scrollTop that also fires the scroll handler.
+function makeScrollable(
+  panel: HTMLElement,
+  { scrollHeight, clientHeight }: { scrollHeight: number; clientHeight: number }
+) {
+  Object.defineProperty(panel, "scrollHeight", {
+    configurable: true,
+    get: () => scrollHeight,
+  });
+  Object.defineProperty(panel, "clientHeight", {
+    configurable: true,
+    get: () => clientHeight,
+  });
+  let top = 0;
+  Object.defineProperty(panel, "scrollTop", {
+    configurable: true,
+    get: () => top,
+    set: (v: number) => {
+      top = v;
+    },
+  });
+  return {
+    scrollTo(v: number) {
+      top = v;
+      fireEvent.scroll(panel);
+    },
+  };
+}
+
+describe("Conversation live arrival", () => {
+  it("flags new content and holds the viewport when messages arrive scrolled up", async () => {
+    const { rerender } = render(
+      <ConversationView
+        chat={chat}
+        messages={[assistant("one"), assistant("two"), assistant("three")]}
+      />
+    );
+
+    const panel = await screen.findByTestId("conversation-panel");
+    const scroller = makeScrollable(panel, {
+      scrollHeight: 1000,
+      clientHeight: 300,
+    });
+    // Scroll up, away from the bottom: the pill now offers "jump to bottom".
+    act(() => scroller.scrollTo(0));
+    await screen.findByRole("button", { name: "Jump to bottom" });
+
+    // A live message appends below.
+    act(() =>
+      rerender(
+        <ConversationView
+          chat={chat}
+          messages={[
+            assistant("one"),
+            assistant("two"),
+            assistant("three"),
+            assistant("four"),
+          ]}
+        />
+      )
+    );
+
+    // The viewport did not move, and the pill marks new content below.
+    expect(panel.scrollTop).toBe(0);
+    expect(
+      screen.getByRole("button", { name: "Jump to bottom (new messages)" })
+    ).not.toBeNull();
+    expect(screen.getByTestId("scroll-pill-new-dot")).not.toBeNull();
+  });
+});
 
 describe("Conversation markdown typography", () => {
   it("renders markdown links that open in a new tab", async () => {

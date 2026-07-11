@@ -10,6 +10,7 @@ import {
   getScrollPillTarget,
   type ScrollPillTarget,
 } from "@/conversation/scrollPillVisibility";
+import { deriveArrivalAction } from "@/conversation/liveArrival";
 import { useScrollShortcuts } from "@/conversation/useScrollShortcuts";
 import { ChatMetadataPopover } from "@/metadata/ChatMetadataPopover";
 import { EditableTitle } from "@/metadata/EditableTitle";
@@ -216,16 +217,28 @@ export function ConversationView({
   // or shrinks as messages expand/collapse. Defaults to hidden until the first
   // measurement, so the pill never flashes on mount.
   const [pillTarget, setPillTarget] = useState<ScrollPillTarget>(null);
+  // Whether live messages landed below a scrolled-up reader (issue #189). Drives
+  // the down pill's "new messages" marker; cleared the moment the reader reaches
+  // the bottom, and reset when the chat changes.
+  const [hasNewBelow, setHasNewBelow] = useState(false);
+  // Tracks whether the viewport is pinned to the bottom, read by the arrival
+  // effect without re-subscribing to scroll. Starts true: a chat opens at the
+  // bottom (see the landing effect below).
+  const atBottomRef = useRef(true);
   const measurePill = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    setPillTarget(
-      getScrollPillTarget({
-        scrollTop: el.scrollTop,
-        scrollHeight: el.scrollHeight,
-        clientHeight: el.clientHeight,
-      })
-    );
+    const target = getScrollPillTarget({
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    });
+    setPillTarget(target);
+    // "top" (or too-short-to-scroll) means the latest message is in view, so the
+    // reader is caught up: drop any pending new-content marker.
+    const atBottom = target === "top" || target === null;
+    atBottomRef.current = atBottom;
+    if (atBottom) setHasNewBelow(false);
   }, []);
 
   const jumpTop = useCallback(() => {
@@ -249,22 +262,47 @@ export function ConversationView({
   // the most common recall question is "how did this session end?".
   const chatId = chat?.id;
   const landedChatRef = useRef<string | null>(null);
+  // The message count at the previous run, to tell an append (live arrival) from
+  // an in-place change or a shrink.
+  const prevLenRef = useRef(0);
   useEffect(() => {
     if (!chatId) {
       landedChatRef.current = null;
+      prevLenRef.current = 0;
       return;
     }
     // Messages load a tick after the chat id is set, so land the moment they
-    // first arrive — not on the initial empty render. Guard by chat id so a
-    // later streamed message doesn't yank an already-positioned view.
+    // first arrive — not on the initial empty render.
     if (messages.length === 0) return;
-    if (landedChatRef.current === chatId) return;
-    landedChatRef.current = chatId;
-    virtualizer.scrollToIndex(messages.length - 1, { align: "end" });
-    // Re-measure after the jump settles so the pill reflects the landed
-    // position (at the bottom it offers "back to top").
-    const raf = requestAnimationFrame(measurePill);
-    return () => cancelAnimationFrame(raf);
+
+    // First arrival for this chat: land at the bottom and reset the live-arrival
+    // trackers. Guard by chat id so a later streamed message doesn't re-land.
+    if (landedChatRef.current !== chatId) {
+      landedChatRef.current = chatId;
+      prevLenRef.current = messages.length;
+      setHasNewBelow(false);
+      virtualizer.scrollToIndex(messages.length - 1, { align: "end" });
+      // Re-measure after the jump settles so the pill reflects the landed
+      // position (at the bottom it offers "back to top").
+      const raf = requestAnimationFrame(measurePill);
+      return () => cancelAnimationFrame(raf);
+    }
+
+    // Already landed: a live push re-read this chat (issue #189). Follow the
+    // latest only when pinned at the bottom; otherwise hold the viewport and let
+    // the pill flag new content below — never yank a scrolled-up reader down.
+    const appended = messages.length > prevLenRef.current;
+    prevLenRef.current = messages.length;
+    const action = deriveArrivalAction({
+      appended,
+      atBottom: atBottomRef.current,
+    });
+    if (action === "follow") {
+      virtualizer.scrollToIndex(messages.length - 1, { align: "end" });
+      const raf = requestAnimationFrame(measurePill);
+      return () => cancelAnimationFrame(raf);
+    }
+    if (action === "flag") setHasNewBelow(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId, messages.length]);
 
@@ -337,6 +375,7 @@ export function ConversationView({
           </div>
           <ScrollPill
             target={pillTarget}
+            hasNewBelow={hasNewBelow}
             onJumpTop={jumpTop}
             onJumpBottom={jumpBottom}
           />

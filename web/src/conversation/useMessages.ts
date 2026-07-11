@@ -1,4 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  useConversationStream,
+  type ConversationStreamConnector,
+} from "@/conversation/useConversationStream";
 import type { Message } from "@/types";
 
 interface MessagesState {
@@ -13,12 +17,23 @@ const initialState: MessagesState = {
   error: null,
 };
 
-export function useMessages(chatId: string | null): {
+export interface UseMessagesOptions {
+  /** Stream connection factory; defaults to the Server-Sent Events transport. */
+  connect?: ConversationStreamConnector;
+}
+
+export function useMessages(
+  chatId: string | null,
+  { connect }: UseMessagesOptions = {}
+): {
   messages: Message[];
   loading: boolean;
   error: string | null;
 } {
   const [state, setState] = useState<MessagesState>(initialState);
+  // Bumped by a live push for the open chat; a change re-runs the fetch effect
+  // so newly ingested messages append without reopening the chat (issue #189).
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
     if (!chatId) return;
@@ -52,7 +67,13 @@ export function useMessages(chatId: string | null): {
     return () => {
       cancelled = true;
     };
-  }, [chatId]);
+  }, [chatId, reloadNonce]);
+
+  // A live push naming the open chat triggers a re-read through the same fetch
+  // path; the fetch effect keeps the last messages until the new set settles, so
+  // the pane appends rather than flashing empty.
+  const reload = useCallback(() => setReloadNonce((n) => n + 1), []);
+  useConversationStream(chatId, reload, { connect });
 
   // Derive loading/error from whether the resolved state matches the currently
   // requested chatId, instead of writing state synchronously inside the effect.
