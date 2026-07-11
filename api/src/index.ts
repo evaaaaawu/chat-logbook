@@ -103,9 +103,11 @@ const watcher = startWatcher({
   // Each watcher-driven ingest can add a chat or change a first user message;
   // refresh the Title keys so the Title axis stays current, then push a
   // `changed` event so connected clients reconcile their loaded window (#132).
-  onIngest: () => {
+  // The event names the chats this pass wrote to so a client showing one
+  // conversation re-reads only when its chat changed (#189).
+  onIngest: (result) => {
     reconcileTitles();
-    listEvents.publish({ type: "changed" });
+    listEvents.publish({ type: "changed", chatIds: result.changedChatIds });
   },
 });
 // Don't start watching until the initial scan has populated the checkpoint store

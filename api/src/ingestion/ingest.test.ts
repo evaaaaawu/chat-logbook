@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { formatChatId } from "../archive/chat-id.js";
 import { createArchiveRepository } from "../archive/repository.js";
 import { createCheckpointRepository } from "../checkpoint/repository.js";
 import { chatScanState } from "../checkpoint/schema.js";
@@ -113,6 +114,38 @@ describe("runIngestion", () => {
     expect(second.normalizedUpserted).toBe(0);
     expect(archive.read.listChatRows().length).toBe(chatsBefore);
     expect(totalMessageCount(archive)).toBe(messagesBefore);
+
+    archive.close();
+  });
+
+  it("reports the wire-form ids of chats whose messages changed, and none on a no-op run", async () => {
+    const archive = createArchiveRepository({ dataDir: env.dataDir });
+    const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
+    const pluginsList = [new ClaudeCodePlugin()];
+
+    const first = await runIngestion({
+      plugins: pluginsList,
+      archive,
+      checkpoint,
+      env: { homeDir: env.homeDir },
+    });
+
+    const expected = archive.read
+      .listChatRows()
+      .filter(
+        (c) => archive.read.listMessagesByChat(c.agent, c.sourceId).length > 0
+      )
+      .map((c) => formatChatId(c.chatId));
+    expect(expected.length).toBeGreaterThan(0);
+    expect([...first.changedChatIds].sort()).toEqual([...expected].sort());
+
+    const second = await runIngestion({
+      plugins: pluginsList,
+      archive,
+      checkpoint,
+      env: { homeDir: env.homeDir },
+    });
+    expect(second.changedChatIds).toEqual([]);
 
     archive.close();
   });
