@@ -16,6 +16,10 @@ interface ScrollPillProps {
  * otherwise "jump to latest" — matching the single scroll button in Slack /
  * Discord / ChatGPT. Positioned absolutely against the (non-scrolling) pane
  * wrapper, it stays put while the conversation scrolls beneath it.
+ *
+ * Live-arrival signalling is a separate concern: the center-bottom
+ * NewMessagesPill announces unseen content (issue #189), keeping this control
+ * purely about navigation.
  */
 export function ScrollPill({
   target,
