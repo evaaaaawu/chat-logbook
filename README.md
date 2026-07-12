@@ -46,7 +46,7 @@ The full problem statement, user stories, and direction live in the [PRD](docs/P
 **Keeping your history**
 
 - **Local archive.** Every chat is copied to `~/.chat-logbook/archive.db`, so it stays even after the source file is gone.
-- **Live updates.** New and changed chats surface within seconds — no refresh.
+- **Live updates.** New and changed chats surface within seconds — no refresh. With a chat open, its new messages stream in live, so you can watch a running session unfold.
 - **Trash, not delete.** Move chats out one or many at a time and restore them anytime. Source directories like `~/.claude/` stay read-only, always.
 
 ## Quick start
@@ -117,7 +117,7 @@ No. chat-logbook reads files those tools write on your machine. It doesn't talk 
 
 **Spotlight search.** A keyboard-driven overlay (`⌘K` or `/`) that searches across chats, messages, tags, and projects from one input. A match lands you on the exact message with the term highlighted, and you can jump between every match without leaving the overlay.
 
-Beyond this, several smaller things are on the list without firm timing — live updates while an AI tool is writing, annotations and highlights for marking what matters, editing your own past messages, CLI commands for working with conversations from a terminal. Some will ship; some are still being weighed.
+Beyond this, several smaller things are on the list without firm timing — annotations and highlights for marking what matters, editing your own past messages, CLI commands for working with conversations from a terminal. Some will ship; some are still being weighed.
 
 Explicit non-goals: semantic / vector search, cloud sync inside the OSS core, modification of source directories like `~/.claude/`, and bulk export to bespoke formats (the archive itself is the export). See the [PRD](docs/PRD.md) for the full out-of-scope list.
 

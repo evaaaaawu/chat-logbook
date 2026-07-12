@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.19.0] - 2026-07-11
+
+With a chat open, messages from a running chat now show up live — chat-logbook works as a monitor for a chat in progress, no reopening needed.
+
+### Added
+
+- Open chats update live while a chat is running. New messages appear on their own, without reopening the chat.
+- When new messages arrive while you've scrolled up, your place is kept — the view doesn't jump. A `New messages` pill appears at the bottom, and a divider marks where the unread messages begin. Click the pill to jump to that divider and read from the start of what's new.
+
 ## [0.18.1] - 2026-07-09
 
 ### Fixed
