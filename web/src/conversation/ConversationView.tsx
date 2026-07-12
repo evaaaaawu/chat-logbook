@@ -6,11 +6,14 @@ import { MarkdownText } from "@/conversation/MarkdownText";
 import { CollapsibleThinking } from "@/conversation/CollapsibleThinking";
 import { CollapsibleToolCall } from "@/conversation/CollapsibleToolCall";
 import { ScrollPill } from "@/conversation/ScrollPill";
+import { NewMessagesPill } from "@/conversation/NewMessagesPill";
+import { UnreadDivider } from "@/conversation/UnreadDivider";
 import {
   getScrollPillTarget,
   type ScrollPillTarget,
 } from "@/conversation/scrollPillVisibility";
 import { deriveArrivalAction } from "@/conversation/liveArrival";
+import { deriveFirstUnseenIndex } from "@/conversation/firstUnseenIndex";
 import { useScrollShortcuts } from "@/conversation/useScrollShortcuts";
 import { ChatMetadataPopover } from "@/metadata/ChatMetadataPopover";
 import { EditableTitle } from "@/metadata/EditableTitle";
@@ -217,14 +220,19 @@ export function ConversationView({
   // or shrinks as messages expand/collapse. Defaults to hidden until the first
   // measurement, so the pill never flashes on mount.
   const [pillTarget, setPillTarget] = useState<ScrollPillTarget>(null);
-  // Whether live messages landed below a scrolled-up reader (issue #189). Drives
-  // the down pill's "new messages" marker; cleared the moment the reader reaches
-  // the bottom, and reset when the chat changes.
-  const [hasNewBelow, setHasNewBelow] = useState(false);
-  // Tracks whether the viewport is pinned to the bottom, read by the arrival
-  // effect without re-subscribing to scroll. Starts true: a chat opens at the
-  // bottom (see the landing effect below).
+  // Where the unread divider sits: the index of the first message that arrived
+  // while the reader was scrolled up (issue #189). null = caught up, no divider.
+  // Set once per chat (frozen thereafter), reset on chat change.
+  const [firstUnseenIndex, setFirstUnseenIndex] = useState<number | null>(null);
+  // Whether the reader has acted on the unread batch — by jumping to the divider
+  // or scrolling to the bottom. Hides the "new messages" pill without touching
+  // the divider, which persists until the chat changes (the LINE pattern).
+  const [pillConsumed, setPillConsumed] = useState(false);
+  // Refs mirror the two values the scroll handler and arrival effect read,
+  // avoiding stale closures without re-subscribing on every change.
   const atBottomRef = useRef(true);
+  const firstUnseenIndexRef = useRef<number | null>(null);
+  firstUnseenIndexRef.current = firstUnseenIndex;
   const measurePill = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
@@ -235,10 +243,11 @@ export function ConversationView({
     });
     setPillTarget(target);
     // "top" (or too-short-to-scroll) means the latest message is in view, so the
-    // reader is caught up: drop any pending new-content marker.
+    // reader is caught up: reaching the bottom with a divider present consumes
+    // the pending "new messages" pill.
     const atBottom = target === "top" || target === null;
     atBottomRef.current = atBottom;
-    if (atBottom) setHasNewBelow(false);
+    if (atBottom && firstUnseenIndexRef.current !== null) setPillConsumed(true);
   }, []);
 
   const jumpTop = useCallback(() => {
@@ -249,6 +258,15 @@ export function ConversationView({
   const jumpBottom = useCallback(() => {
     virtualizer.scrollToIndex(messages.length - 1, { align: "end" });
   }, [virtualizer, messages.length]);
+  // The "new messages" pill jumps to the divider — the start of what's new —
+  // not the very bottom, so a long run of new messages reads from its
+  // beginning. Acting on the pill consumes it; the divider stays.
+  const jumpToUnread = useCallback(() => {
+    const index = firstUnseenIndexRef.current;
+    if (index === null) return;
+    virtualizer.scrollToIndex(index, { align: "start" });
+    setPillConsumed(true);
+  }, [virtualizer]);
 
   // Keyboard equivalents of the pill: Cmd/Ctrl+arrows and Home/End. Enabled
   // only while a chat with content is open.
@@ -280,7 +298,8 @@ export function ConversationView({
     if (landedChatRef.current !== chatId) {
       landedChatRef.current = chatId;
       prevLenRef.current = messages.length;
-      setHasNewBelow(false);
+      setFirstUnseenIndex(null);
+      setPillConsumed(false);
       virtualizer.scrollToIndex(messages.length - 1, { align: "end" });
       // Re-measure after the jump settles so the pill reflects the landed
       // position (at the bottom it offers "back to top").
@@ -289,9 +308,11 @@ export function ConversationView({
     }
 
     // Already landed: a live push re-read this chat (issue #189). Follow the
-    // latest only when pinned at the bottom; otherwise hold the viewport and let
-    // the pill flag new content below — never yank a scrolled-up reader down.
-    const appended = messages.length > prevLenRef.current;
+    // latest only when pinned at the bottom; otherwise hold the viewport and
+    // anchor the unread divider before the first new message — never yank a
+    // scrolled-up reader down.
+    const prevLen = prevLenRef.current;
+    const appended = messages.length > prevLen;
     prevLenRef.current = messages.length;
     const action = deriveArrivalAction({
       appended,
@@ -302,7 +323,9 @@ export function ConversationView({
       const raf = requestAnimationFrame(measurePill);
       return () => cancelAnimationFrame(raf);
     }
-    if (action === "flag") setHasNewBelow(true);
+    setFirstUnseenIndex((current) =>
+      deriveFirstUnseenIndex({ current, action, prevLen })
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId, messages.length]);
 
@@ -368,14 +391,22 @@ export function ConversationView({
                   className="absolute left-0 right-0 flex flex-col pb-4"
                   style={{ transform: `translateY(${virtualItem.start}px)` }}
                 >
+                  {virtualItem.index === firstUnseenIndex && (
+                    <div className="pb-4">
+                      <UnreadDivider />
+                    </div>
+                  )}
                   <MessageBubble message={messages[virtualItem.index]} />
                 </div>
               ))}
             </div>
           </div>
+          <NewMessagesPill
+            visible={firstUnseenIndex !== null && !pillConsumed}
+            onClick={jumpToUnread}
+          />
           <ScrollPill
             target={pillTarget}
-            hasNewBelow={hasNewBelow}
             onJumpTop={jumpTop}
             onJumpBottom={jumpBottom}
           />
