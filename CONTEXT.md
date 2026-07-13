@@ -122,6 +122,10 @@ _Avoid_: focus, active row, highlighted row
 The single-Chat reading page a Chat's own URL opens — the conversation alone, with no list or filter panels. Reached by double-clicking a row, the row's context menu, or Copy link; built for bookmarking a Chat and comparing several side by side. The full app stays at the root address and never encodes the Open Chat in its URL.
 _Avoid_: detail page, standalone view, popup, chat page
 
+**Spotlight**:
+The overlay search surface — one input, opened with `/` or `⌘K` (Ctrl+K elsewhere), that finds Chats, Messages, Tags, and Projects and takes you there. `Enter` always means "take me there": it opens or replaces, never narrows in place (`⌘Enter` appends a Tag/Project to the current filter instead). The app's primary navigation surface, not a filter control.
+_Avoid_: search box, command palette, quick open, filter box
+
 **Demo**:
 The hosted, install-free form of the app that ships with sample Chats instead of reading your machine. Exists so someone can try the product from a plain URL; nothing of yours ever reaches it, and real use stays local.
 _Avoid_: cloud version, web version, hosted app
