@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.20.0] - 2026-07-13
+
+Chat Logbook now looks like itself in your browser. Its own mark shows in the tab and the sidebar, with `Chat Logbook` as the tab title.
+
+### Changed
+
+- The browser tab shows the Chat Logbook mark and the title `Chat Logbook`, replacing the default Vite icon and the `web` placeholder. The sidebar header shows the same mark in place of the plain square.
+
 ## [0.19.0] - 2026-07-11
 
 With a chat open, messages from a running chat now show up live — chat-logbook works as a monitor for a chat in progress, no reopening needed.

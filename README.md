@@ -1,6 +1,12 @@
-# chat-logbook
+<p align="center">
+  <img src="web/public/favicon.svg" alt="Chat Logbook" width="80" height="80" />
+</p>
 
-> _Where your AI conversations live._
+<h1 align="center">Chat Logbook</h1>
+
+<p align="center">
+  <img src="web/public/tagline.svg" alt="Where your AI conversations live." width="380" />
+</p>
 
 A local-first library for the conversations you've had with your AI tools. Read by chat-logbook, kept on your machine, browsable and searchable in one place — even after your AI tool has deleted the original.
 
