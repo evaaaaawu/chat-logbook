@@ -144,7 +144,13 @@ export function createApp({
     const hub = listEvents;
     return streamSSE(c, async (stream) => {
       const unsubscribe = hub.subscribe((event) => {
-        void stream.writeSSE({ event: event.type, data: "" });
+        // The data frame carries the changed chat ids so a client showing one
+        // conversation re-reads only when its chat is named (issue #189). The
+        // list consumer ignores the payload and reconciles on every event.
+        void stream.writeSSE({
+          event: event.type,
+          data: JSON.stringify({ chatIds: event.chatIds ?? [] }),
+        });
       });
       // Hold the connection open with periodic heartbeats until the client
       // disconnects; `onAbort` clears the timer and resolves so the callback

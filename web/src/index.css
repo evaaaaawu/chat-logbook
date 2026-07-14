@@ -4,6 +4,8 @@
 @import "@fontsource-variable/geist";
 @import "highlight.js/styles/base16/solarized-dark.min.css";
 
+@plugin "@tailwindcss/typography";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
