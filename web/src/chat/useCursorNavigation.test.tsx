@@ -129,6 +129,33 @@ describe("useCursorNavigation", () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
+  it("ignores Cmd/Ctrl-modified arrows so they stay the conversation jump", () => {
+    const onOpen = vi.fn();
+    const { result } = renderHook(() =>
+      useCursorNavigation({ chats, openId: "a", onOpen })
+    );
+
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowDown",
+          metaKey: true,
+          bubbles: true,
+        })
+      );
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowUp",
+          ctrlKey: true,
+          bubbles: true,
+        })
+      );
+    });
+
+    expect(result.current.cursorId).toBeNull();
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
   it("ignores arrows while an editable element (a title input) holds focus", () => {
     const onOpen = vi.fn();
     const { result } = renderHook(() =>

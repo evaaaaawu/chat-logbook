@@ -51,7 +51,7 @@ Status legend: `[shipped]` `[in progress]` `[aspirational]`
 4. As an AI assistant user, I want to filter by multiple tags at once with AND logic, so that I can precisely find conversations that match several conditions. `[aspirational]`
 5. As an AI assistant user, I want to filter conversations by project, so that I can focus on a specific area of work. `[aspirational]`
 6. As an AI assistant user, I want to see all projects' conversations by default, so that I don't miss anything. `[shipped]`
-7. As an AI assistant user, I want a Spotlight-style overlay search (triggered by `/` or `⌘K`) that instantly finds Chats, messages, tags, and projects from one input, so that finding past conversations feels effortless. `[in progress]`
+7. As an AI assistant user, I want a Spotlight-style overlay search (triggered by `/` or `⌘K`) that instantly finds Chats, Messages, Tags, and Projects from one input, so that finding past conversations feels effortless. `[in progress]`
 8. As an AI assistant user, I want to add notes next to any message, so that I can record my own thoughts and takeaways. `[aspirational]`
 9. As an AI assistant user, I want to highlight specific text within conversations, so that I can mark what matters. `[aspirational]`
 10. As an AI assistant user, I want to Trash (hide) Chats I don't need, so that my list stays clean. `[shipped]`
@@ -73,7 +73,7 @@ Status legend: `[shipped]` `[in progress]` `[aspirational]`
 
 ## Direction
 
-The current focus is making search a first-class experience: a Spotlight-style overlay that searches across Chats, messages, tags, and projects with full keyboard navigation and message-level precision.
+The current focus is making search a first-class experience: a Spotlight-style overlay that searches across Chats, Messages, Tags, and Projects with full keyboard navigation and message-level precision.
 
 After that, the next direction is broader tool coverage — making
 chat-logbook genuinely cross-tool by adding parser plugins for additional

@@ -22,6 +22,7 @@ describe("startIngestionInBackground", () => {
       rawInserted: 2,
       normalizedUpserted: 3,
       skippedByMtime: 0,
+      changedChatIds: [],
     });
 
     await expect(handle.done).resolves.toMatchObject({ rawInserted: 2 });

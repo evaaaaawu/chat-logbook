@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { MarkdownText } from "@/conversation/MarkdownText";
 
 interface CollapsibleThinkingProps {
   thinking: string;
@@ -18,7 +19,7 @@ export function CollapsibleThinking({ thinking }: CollapsibleThinkingProps) {
       </button>
       {isExpanded && (
         <div className="mt-1 rounded bg-card p-2 text-xs italic text-muted-foreground">
-          {thinking}
+          <MarkdownText>{thinking}</MarkdownText>
         </div>
       )}
     </div>

@@ -69,6 +69,21 @@ describe("GET /api/chats/stream", () => {
     expect(text).toContain("event: changed");
   });
 
+  it("names the changed chats in the event payload so a client can scope its re-read", async () => {
+    const hub = createListEventHub();
+    const app = buildApp(hub);
+
+    const res = await app.request("/api/chats/stream");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    hub.publish({ type: "changed", chatIds: ["clog_abc123", "clog_def456"] });
+
+    const text = await readUntil(res.body!, (t) => t.includes("data: {"));
+    const data = text.split("data: ")[1].split("\n")[0];
+    expect(JSON.parse(data)).toEqual({
+      chatIds: ["clog_abc123", "clog_def456"],
+    });
+  });
+
   it("reports 501 when no live-update hub is wired", async () => {
     const app = buildApp();
     const res = await app.request("/api/chats/stream");

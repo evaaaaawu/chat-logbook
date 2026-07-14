@@ -1,12 +1,20 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { RotateCcw } from "lucide-react";
-import Markdown from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
-import remarkGfm from "remark-gfm";
 import type { Message, ContentBlock, Chat, Tag } from "@/types";
+import { MarkdownText } from "@/conversation/MarkdownText";
 import { CollapsibleThinking } from "@/conversation/CollapsibleThinking";
 import { CollapsibleToolCall } from "@/conversation/CollapsibleToolCall";
+import { ScrollPill } from "@/conversation/ScrollPill";
+import { NewMessagesPill } from "@/conversation/NewMessagesPill";
+import { UnreadDivider } from "@/conversation/UnreadDivider";
+import {
+  getScrollPillTarget,
+  type ScrollPillTarget,
+} from "@/conversation/scrollPillVisibility";
+import { deriveArrivalAction } from "@/conversation/liveArrival";
+import { deriveFirstUnseenIndex } from "@/conversation/firstUnseenIndex";
+import { useScrollShortcuts } from "@/conversation/useScrollShortcuts";
 import { ChatMetadataPopover } from "@/metadata/ChatMetadataPopover";
 import { EditableTitle } from "@/metadata/EditableTitle";
 import { TagStrip } from "@/tags/TagStrip";
@@ -126,14 +134,6 @@ function ConversationHeader({
   );
 }
 
-function MarkdownText({ children }: { children: string }) {
-  return (
-    <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-      {children}
-    </Markdown>
-  );
-}
-
 function renderContentBlock(block: ContentBlock, index: number) {
   switch (block.type) {
     case "text":
@@ -207,15 +207,134 @@ export function ConversationView({
   // that the React Compiler cannot memoize without risking stale UI, so the
   // compiler intentionally skips memoizing this component. This is expected and
   // safe here: the virtualizer values are consumed locally and not passed into
-  // other memoized components/hooks. The warning cannot be compiled away, so we
-  // silence it at the call site rather than disabling the rule globally.
-  // eslint-disable-next-line react-hooks/incompatible-library
+  // other memoized components/hooks.
   const virtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => 100,
     initialRect: { width: 800, height: 600 },
   });
+
+  // Which direction the scroll pill offers. Kept in state (rather than read
+  // during render) so it survives scroll events, jumps, and content that grows
+  // or shrinks as messages expand/collapse. Defaults to hidden until the first
+  // measurement, so the pill never flashes on mount.
+  const [pillTarget, setPillTarget] = useState<ScrollPillTarget>(null);
+  // Where the unread divider sits: the index of the first message that arrived
+  // while the reader was scrolled up (issue #189). null = caught up, no divider.
+  // Set once per chat (frozen thereafter), reset on chat change.
+  const [firstUnseenIndex, setFirstUnseenIndex] = useState<number | null>(null);
+  // Whether the reader has acted on the unread batch — by jumping to the divider
+  // or scrolling to the bottom. Hides the "new messages" pill without touching
+  // the divider, which persists until the chat changes (the LINE pattern).
+  const [pillConsumed, setPillConsumed] = useState(false);
+  // Refs mirror the two values the scroll handler and arrival effect read,
+  // avoiding stale closures without re-subscribing on every change.
+  const atBottomRef = useRef(true);
+  const firstUnseenIndexRef = useRef<number | null>(null);
+  firstUnseenIndexRef.current = firstUnseenIndex;
+  const measurePill = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const target = getScrollPillTarget({
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    });
+    setPillTarget(target);
+    // "top" (or too-short-to-scroll) means the latest message is in view, so the
+    // reader is caught up: reaching the bottom with a divider present consumes
+    // the pending "new messages" pill.
+    const atBottom = target === "top" || target === null;
+    atBottomRef.current = atBottom;
+    if (atBottom && firstUnseenIndexRef.current !== null) setPillConsumed(true);
+  }, []);
+
+  const jumpTop = useCallback(() => {
+    // Instant index jump, not a smooth scroll: smooth-scrolling across
+    // thousands of virtualized rows is slow and janky.
+    virtualizer.scrollToIndex(0, { align: "start" });
+  }, [virtualizer]);
+  const jumpBottom = useCallback(() => {
+    virtualizer.scrollToIndex(messages.length - 1, { align: "end" });
+  }, [virtualizer, messages.length]);
+  // The "new messages" pill jumps to the divider — the start of what's new —
+  // not the very bottom, so a long run of new messages reads from its
+  // beginning. Acting on the pill consumes it; the divider stays.
+  const jumpToUnread = useCallback(() => {
+    const index = firstUnseenIndexRef.current;
+    if (index === null) return;
+    virtualizer.scrollToIndex(index, { align: "start" });
+    setPillConsumed(true);
+  }, [virtualizer]);
+
+  // Keyboard equivalents of the pill: Cmd/Ctrl+arrows and Home/End. Enabled
+  // only while a chat with content is open.
+  useScrollShortcuts({
+    enabled: Boolean(chat) && messages.length > 0,
+    onJumpTop: jumpTop,
+    onJumpBottom: jumpBottom,
+  });
+
+  // Open a chat at the bottom (latest messages), matching Claude Code desktop:
+  // the most common recall question is "how did this session end?".
+  const chatId = chat?.id;
+  const landedChatRef = useRef<string | null>(null);
+  // The message count at the previous run, to tell an append (live arrival) from
+  // an in-place change or a shrink.
+  const prevLenRef = useRef(0);
+  useEffect(() => {
+    if (!chatId) {
+      landedChatRef.current = null;
+      prevLenRef.current = 0;
+      return;
+    }
+    // Messages load a tick after the chat id is set, so land the moment they
+    // first arrive — not on the initial empty render.
+    if (messages.length === 0) return;
+
+    // First arrival for this chat: land at the bottom and reset the live-arrival
+    // trackers. Guard by chat id so a later streamed message doesn't re-land.
+    if (landedChatRef.current !== chatId) {
+      landedChatRef.current = chatId;
+      prevLenRef.current = messages.length;
+      setFirstUnseenIndex(null);
+      setPillConsumed(false);
+      virtualizer.scrollToIndex(messages.length - 1, { align: "end" });
+      // Re-measure after the jump settles so the pill reflects the landed
+      // position (at the bottom it offers "back to top").
+      const raf = requestAnimationFrame(measurePill);
+      return () => cancelAnimationFrame(raf);
+    }
+
+    // Already landed: a live push re-read this chat (issue #189). Follow the
+    // latest only when pinned at the bottom; otherwise hold the viewport and
+    // anchor the unread divider before the first new message — never yank a
+    // scrolled-up reader down.
+    const prevLen = prevLenRef.current;
+    const appended = messages.length > prevLen;
+    prevLenRef.current = messages.length;
+    const action = deriveArrivalAction({
+      appended,
+      atBottom: atBottomRef.current,
+    });
+    if (action === "follow") {
+      virtualizer.scrollToIndex(messages.length - 1, { align: "end" });
+      const raf = requestAnimationFrame(measurePill);
+      return () => cancelAnimationFrame(raf);
+    }
+    setFirstUnseenIndex((current) =>
+      deriveFirstUnseenIndex({ current, action, prevLen })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, messages.length]);
+
+  // Keep the pill correct as content height changes (messages expanding or
+  // collapsing) even without a scroll event.
+  const totalSize = virtualizer.getTotalSize();
+  useEffect(() => {
+    measurePill();
+  }, [totalSize, measurePill]);
 
   return (
     <div className="flex h-full flex-col">
@@ -253,27 +372,44 @@ export function ConversationView({
           Select a chat to view the conversation
         </div>
       ) : (
-        <div
-          data-testid="conversation-panel"
-          ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto p-6"
-        >
+        <div className="relative min-h-0 flex-1">
           <div
-            className="relative flex flex-col"
-            style={{ height: `${virtualizer.getTotalSize()}px` }}
+            data-testid="conversation-panel"
+            ref={scrollContainerRef}
+            onScroll={measurePill}
+            className="absolute inset-0 overflow-y-auto p-6"
           >
-            {virtualizer.getVirtualItems().map((virtualItem) => (
-              <div
-                key={virtualItem.index}
-                data-index={virtualItem.index}
-                ref={virtualizer.measureElement}
-                className="absolute left-0 right-0 flex flex-col pb-4"
-                style={{ transform: `translateY(${virtualItem.start}px)` }}
-              >
-                <MessageBubble message={messages[virtualItem.index]} />
-              </div>
-            ))}
+            <div
+              className="relative flex flex-col"
+              style={{ height: `${totalSize}px` }}
+            >
+              {virtualizer.getVirtualItems().map((virtualItem) => (
+                <div
+                  key={virtualItem.index}
+                  data-index={virtualItem.index}
+                  ref={virtualizer.measureElement}
+                  className="absolute left-0 right-0 flex flex-col pb-4"
+                  style={{ transform: `translateY(${virtualItem.start}px)` }}
+                >
+                  {virtualItem.index === firstUnseenIndex && (
+                    <div className="pb-4">
+                      <UnreadDivider />
+                    </div>
+                  )}
+                  <MessageBubble message={messages[virtualItem.index]} />
+                </div>
+              ))}
+            </div>
           </div>
+          <NewMessagesPill
+            visible={firstUnseenIndex !== null && !pillConsumed}
+            onClick={jumpToUnread}
+          />
+          <ScrollPill
+            target={pillTarget}
+            onJumpTop={jumpTop}
+            onJumpBottom={jumpBottom}
+          />
         </div>
       )}
     </div>

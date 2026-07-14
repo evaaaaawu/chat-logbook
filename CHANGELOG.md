@@ -4,6 +4,58 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.20.0] - 2026-07-13
+
+Chat Logbook now looks like itself in your browser. Its own mark shows in the tab and the sidebar, with `Chat Logbook` as the tab title.
+
+### Changed
+
+- The browser tab shows the Chat Logbook mark and the title `Chat Logbook`, replacing the default Vite icon and the `web` placeholder. The sidebar header shows the same mark in place of the plain square.
+
+## [0.19.0] - 2026-07-11
+
+With a chat open, messages from a running chat now show up live — chat-logbook works as a monitor for a chat in progress, no reopening needed.
+
+### Added
+
+- Open chats update live while a chat is running. New messages appear on their own, without reopening the chat.
+- When new messages arrive while you've scrolled up, your place is kept — the view doesn't jump. A `New messages` pill appears at the bottom, and a divider marks where the unread messages begin. Click the pill to jump to that divider and read from the start of what's new.
+
+## [0.18.1] - 2026-07-09
+
+### Fixed
+
+- `⌘↑` / `⌘↓` (`Ctrl` elsewhere) to jump to the top or the latest message no longer also walks the chat list — or switches which chat is open — at the same time. List arrow navigation and the conversation jumps stay separate now.
+
+## [0.18.0] - 2026-07-09
+
+Move around long conversations without endless scrolling. Jump to the start or the latest message in one click or one keystroke, and chats now open where the action is — the end.
+
+### Added
+
+- Jump to the start or the latest message of a conversation. A button in the bottom-right corner shows the direction that makes sense for where you are — "back to top" when you're at the bottom, "jump to latest" otherwise. From the keyboard, use `⌘↑` / `⌘↓` (`Ctrl` elsewhere) or `Home` / `End`.
+
+### Changed
+
+- Opening a chat now lands on the latest messages instead of the top, so you see how a chat ended first.
+
+## [0.17.0] - 2026-07-09
+
+Pick several chats at once and move them to the Trash together, instead of one at a time. Your conversations also read better now — markdown formatting shows up the way it was written.
+
+### Added
+
+- Select multiple chats and move them all to the Trash in one action. Click to start a selection, add more chats to it, then move the whole set at once. Your original `~/.claude/` files are never touched.
+
+### Changed
+
+- Conversations now render their markdown — headings, bold, lists, and code blocks appear formatted instead of as flat text, with spacing tuned for reading.
+- Keyboard hints show the right keys for your machine: `⌘` on Mac, `Ctrl` elsewhere.
+
+### Fixed
+
+- Reloading now drops chats that no longer belong in the current view. After you move a chat out of a filter, a reload reflects that instead of leaving a stale row behind.
+
 ## [0.16.0] - 2026-07-06
 
 Move through your chat list with the keyboard. Press the arrow keys to walk up and down the list and open each chat as you land on it — no reaching for the mouse.

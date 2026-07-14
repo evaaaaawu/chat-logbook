@@ -48,7 +48,12 @@ export function FilterPanel({
   return (
     <div data-testid="filter-panel" className="flex h-full flex-col">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4 text-sm font-semibold text-foreground">
-        <div className="h-4 w-4 rounded bg-primary" />
+        <img
+          data-testid="brand-mark"
+          src="/favicon.svg"
+          alt=""
+          className="h-6 w-6 rounded"
+        />
         Chat Logbook
       </div>
       <div className="flex-1 overflow-y-auto px-2 py-2">
