@@ -532,6 +532,10 @@ function App() {
                 onCreate={createTag}
               />
             }
+            allTags={tagCatalog}
+            onAssignTag={(chatId, tagId) => void assignTag(chatId, tagId)}
+            onRemoveTag={(chatId, tagId) => void removeTag(chatId, tagId)}
+            onCreateTag={createTagForChat}
           />
         </ResizablePanel>
         <ResizableHandle />

@@ -650,14 +650,12 @@ describe("Soft delete from chat list", () => {
 
     await screen.findByText("Fix database migration");
 
-    // Find the session row by title, then its delete button
-    const row = screen.getByText("Fix database migration").closest("button");
-    if (!row) throw new Error("Chat row not found");
-
-    const deleteButton = within(row.parentElement!).getByRole("button", {
-      name: /move to trash: fix database migration/i,
-    });
-    await user.click(deleteButton);
+    // Deleting a single chat lives in the row's right-click menu (#215).
+    fireEvent.contextMenu(screen.getByText("Fix database migration"));
+    const menu = await screen.findByRole("menu");
+    await user.click(
+      within(menu).getByRole("menuitem", { name: /move to trash/i })
+    );
 
     // Session should disappear from main list
     await waitFor(() => {
@@ -687,12 +685,14 @@ describe("Auto-select next after delete", () => {
     const header = screen.getByTestId("conversation-header");
     expect(within(header).getByText("Build a login page")).toBeInTheDocument();
 
-    // Delete it via hover button
+    // Delete it via the row's right-click menu (#215). Scope to the list — the
+    // open chat's title also shows in the conversation header.
     const list = screen.getByTestId("chat-list");
-    const deleteBtn = within(list).getByRole("button", {
-      name: /move to trash: build a login page/i,
-    });
-    await user.click(deleteBtn);
+    fireEvent.contextMenu(within(list).getByText("Build a login page"));
+    const menu = await screen.findByRole("menu");
+    await user.click(
+      within(menu).getByRole("menuitem", { name: /move to trash/i })
+    );
 
     // Next session ("Refactor utils") should be auto-selected
     await waitFor(() => {
@@ -708,11 +708,13 @@ describe("Undo toast on delete", () => {
 
     await screen.findByText("Fix database migration");
 
+    // Deleting a single chat lives in the row's right-click menu (#215).
     const list = screen.getByTestId("chat-list");
-    const deleteBtn = within(list).getByRole("button", {
-      name: /move to trash: fix database migration/i,
-    });
-    await user.click(deleteBtn);
+    fireEvent.contextMenu(within(list).getByText("Fix database migration"));
+    const menu = await screen.findByRole("menu");
+    await user.click(
+      within(menu).getByRole("menuitem", { name: /move to trash/i })
+    );
 
     const toast = await screen.findByTestId("toast");
     expect(within(toast).getByText(/chat deleted/i)).toBeInTheDocument();

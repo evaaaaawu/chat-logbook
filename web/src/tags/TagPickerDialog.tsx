@@ -37,6 +37,10 @@ interface TagPickerDialogProps {
   // dialog on `Done`. Omit for the self-managed single-Chat popover.
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  // Whether to render the in-flow trigger button. False lets a caller open the
+  // dialog purely through controlled `open` — e.g. the row context menu's
+  // Add/Remove Tag (#215), which has no button of its own to hang off.
+  renderTrigger?: boolean;
   // Optional footer below the list — batch mode puts the `Done` button here to
   // apply the staged add/remove diff. Single mode applies each toggle at once
   // and leaves it undefined.
@@ -59,6 +63,7 @@ export function TagPickerDialog({
   triggerContent,
   open,
   onOpenChange,
+  renderTrigger = true,
   footer,
   onEnter,
   stateFor,
@@ -105,18 +110,20 @@ export function TagPickerDialog({
         onOpenChange?.(next);
       }}
     >
-      <DialogTrigger
-        data-testid={triggerTestId}
-        aria-label={triggerAriaLabel}
-        className={triggerClassName}
-      >
-        {triggerContent ?? (
-          <>
-            <Plus size={12} aria-hidden="true" />
-            Tag
-          </>
-        )}
-      </DialogTrigger>
+      {renderTrigger && (
+        <DialogTrigger
+          data-testid={triggerTestId}
+          aria-label={triggerAriaLabel}
+          className={triggerClassName}
+        >
+          {triggerContent ?? (
+            <>
+              <Plus size={12} aria-hidden="true" />
+              Tag
+            </>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent
         data-testid="tag-picker-dialog"
         className="w-[min(100vw-2rem,34rem)]"
