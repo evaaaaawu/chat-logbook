@@ -41,6 +41,13 @@ export interface Selection {
   ) => void;
   /** Drop every id. */
   clear: () => void;
+  /**
+   * Remove specific ids from the Selection — used to prune members a
+   * server-authoritative reload dropped from the list (e.g. a batch Tag change
+   * moved them out of the active filter), so the Selection never dangles on
+   * Chats you can no longer see (#163). A no-op for ids not currently selected.
+   */
+  deselect: (ids: Iterable<string>) => void;
 }
 
 /**
@@ -101,5 +108,13 @@ export function useSelection({
     setSelectedIds(new Set());
   }, []);
 
-  return { selectedIds, selectOnly, toggle, selectRange, clear };
+  const deselect = useCallback((ids: Iterable<string>) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.delete(id);
+      return next.size === prev.size ? prev : next;
+    });
+  }, []);
+
+  return { selectedIds, selectOnly, toggle, selectRange, clear, deselect };
 }

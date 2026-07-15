@@ -34,8 +34,9 @@ export interface ChatListSource extends ChatMutations {
   // far-below page to stay bounded (a no-op on the full path / at the head).
   loadPrevious: () => void;
   // Re-read and re-sort the loaded chats (used after a tag assignment changes
-  // the chips a chat shows).
-  reload: () => Promise<void>;
+  // the chips a chat shows). Resolves with the ids that left the list, so a
+  // caller can reconcile derived state (e.g. prune a Selection) by exact id.
+  reload: () => Promise<string[]>;
 }
 
 // The chat write actions (trash / restore / rename), shared by both the
@@ -47,7 +48,7 @@ export interface ChatListSource extends ChatMutations {
 export function useChatMutations(
   setChats: (updater: (prev: Chat[]) => Chat[]) => void,
   bumpEpoch: () => void,
-  reload: () => Promise<void>
+  reload: () => Promise<string[]>
 ): ChatMutations {
   const softDelete = useCallback(
     async (id: string) => {

@@ -18,6 +18,7 @@ import { useFilteredTotal } from "@/chat/useFilteredTotal";
 import { toggleTagSelection } from "@/tags/toggleTagSelection";
 import { FilterPanel } from "@/chat/FilterPanel";
 import { ChatList } from "@/chat/ChatList";
+import { BatchTagButton } from "@/tags/BatchTagButton";
 import { useSelection } from "@/chat/useSelection";
 import { SortControl } from "@/chat/sort/SortControl";
 import { ConversationView } from "@/conversation/ConversationView";
@@ -135,6 +136,8 @@ function App() {
     deleteTag,
     assignTag,
     removeTag,
+    assignTagsBatch,
+    fetchTagsByChat,
   } = useTags({ onAssignmentChange });
   const handleRenameTitle = (id: string, title: string) => {
     void setTitle(id, title);
@@ -382,6 +385,41 @@ function App() {
     });
   };
 
+  // Apply the staged batch Tag diff over the Selection (#163). One request
+  // carries the add/remove diff (ADR-0021 explicit-ids branch), then the
+  // drop-reconcile reload (#176) drops any Chat the change moved out of an active
+  // filter. That reload reports which ids left the list, so the Selection prunes
+  // to exactly those — it never dangles on Chats you can no longer see, and a
+  // Chat merely scrolled out of the window (not a drop) is untouched.
+  const applyBatchTag = useCallback(
+    async (chatIds: string[], diff: { add: string[]; remove: string[] }) => {
+      await assignTagsBatch(chatIds, diff);
+      const dropped = await reload();
+      void reloadCounts();
+      if (dropped.length > 0) selection.deselect(dropped);
+    },
+    [assignTagsBatch, reload, reloadCounts, selection]
+  );
+
+  // The Undo toast replays the inverse diff (add↔remove) through the same path.
+  const handleBatchTag = (
+    chatIds: string[],
+    diff: { add: string[]; remove: string[] }
+  ) => {
+    if (chatIds.length === 0) return;
+    if (diff.add.length === 0 && diff.remove.length === 0) return;
+    void applyBatchTag(chatIds, diff);
+    const n = chatIds.length;
+    showToast({
+      message: `Tags updated on ${n} chat${n > 1 ? "s" : ""}.`,
+      actionLabel: "Undo",
+      actionHint: modifierHint("Z"),
+      onAction: () => {
+        void applyBatchTag(chatIds, { add: diff.remove, remove: diff.add });
+      },
+    });
+  };
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -390,13 +428,18 @@ function App() {
         target?.tagName === "TEXTAREA" ||
         target?.isContentEditable === true;
       if (isEditable) return;
-      // Keystrokes inside an open popover (find-or-create, recolor, metadata…)
-      // belong to that popover, not the global chat shortcuts. Without this,
-      // Enter/Backspace while focus sits on a non-input element in a popover
-      // (e.g. a color swatch) would start a title rename or trash the chat.
+      // Keystrokes inside an open popover or modal dialog (find-or-create,
+      // recolor, metadata, the tag picker…) belong to that surface, not the
+      // global chat shortcuts. Without this, Enter/Backspace while focus sits on
+      // a non-input element there (e.g. a color swatch or a tag row) would start
+      // a title rename or trash the chat. The dialog is portaled to <body>, so
+      // its React `stopPropagation` can't reach this window-level listener —
+      // matching on the slot is what keeps the keystroke contained.
       if (
         target instanceof Element &&
-        target.closest('[data-slot="popover-content"]')
+        target.closest(
+          '[data-slot="popover-content"], [data-slot="dialog-content"]'
+        )
       )
         return;
 
@@ -485,6 +528,19 @@ function App() {
             onRangeSelect={rangeSelect}
             onClearSelection={clearSelection}
             onBatchTrash={handleBatchTrash}
+            batchTagButton={
+              <BatchTagButton
+                selectedIds={selection.selectedIds}
+                allTags={tagCatalog}
+                fetchTagsByChat={fetchTagsByChat}
+                onApply={handleBatchTag}
+                onCreate={createTag}
+              />
+            }
+            allTags={tagCatalog}
+            onAssignTag={(chatId, tagId) => void assignTag(chatId, tagId)}
+            onRemoveTag={(chatId, tagId) => void removeTag(chatId, tagId)}
+            onCreateTag={createTagForChat}
           />
         </ResizablePanel>
         <ResizableHandle />

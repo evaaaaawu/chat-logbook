@@ -6,10 +6,18 @@ import {
   useState,
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowLeft, Pencil, RotateCcw, Trash2 } from "lucide-react";
-import type { Chat } from "@/types";
+import {
+  ArrowLeft,
+  Pencil,
+  RotateCcw,
+  Tag as TagIcon,
+  Trash2,
+} from "lucide-react";
+import type { Chat, Tag } from "@/types";
 import { EditableTitle } from "@/metadata/EditableTitle";
 import { TagChipList } from "@/tags/TagChipList";
+import { TagPickerDialog } from "@/tags/TagPickerDialog";
+import type { ColorToken } from "@/tags/palette";
 import { useCursorNavigation } from "@/chat/useCursorNavigation";
 import { ActionTooltip } from "@/shared/ActionTooltip";
 
@@ -64,6 +72,23 @@ interface ChatListProps {
   onClearSelection?: () => void;
   /** The batch bar's Move to Trash: trash every Chat in the Selection. */
   onBatchTrash?: () => void;
+  /** The batch bar's Tag control (#163) — a self-contained button + dialog the
+   * caller wires to the Selection. Rendered alongside Move to Trash. */
+  batchTagButton?: React.ReactNode;
+  /**
+   * Single-chat Tag controls for the row context menu's Add/Remove Tag (#215).
+   * The full set must be present for the menu item to appear; each handler
+   * mirrors the single-chat flow ConversationView already uses. Assignment is
+   * read off the row's own `chat.tags`, so no extra fetch is needed.
+   */
+  allTags?: Tag[];
+  onAssignTag?: (chatId: string, tagId: string) => void;
+  onRemoveTag?: (chatId: string, tagId: string) => void;
+  onCreateTag?: (
+    chatId: string,
+    name: string,
+    color: ColorToken
+  ) => Promise<Tag | null>;
 }
 
 // Trigger the next page once the rendered window reaches within this many rows
@@ -111,7 +136,7 @@ function MenuItem({
 }: {
   icon: React.ReactNode;
   label: string;
-  hint: string;
+  hint?: string;
   destructive?: boolean;
   onClick: () => void;
 }) {
@@ -128,7 +153,11 @@ function MenuItem({
         {icon}
         {label}
       </span>
-      <span className="text-xs tabular-nums text-muted-foreground">{hint}</span>
+      {hint && (
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {hint}
+        </span>
+      )}
     </button>
   );
 }
@@ -157,6 +186,11 @@ export function ChatList({
   onRangeSelect,
   onClearSelection,
   onBatchTrash,
+  batchTagButton,
+  allTags,
+  onAssignTag,
+  onRemoveTag,
+  onCreateTag,
 }: ChatListProps) {
   const [internalEditingId, setInternalEditingId] = useState<string | null>(
     null
@@ -169,6 +203,19 @@ export function ChatList({
   };
   const isTrash = mode === "trash";
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  // The chat whose Add/Remove Tag picker is open (#215), driven from the row
+  // context menu. Present only in the main list, where tag controls are wired.
+  const [tagTargetId, setTagTargetId] = useState<string | null>(null);
+  const tagControls =
+    allTags && onAssignTag && onRemoveTag && onCreateTag
+      ? { allTags, onAssignTag, onRemoveTag, onCreateTag }
+      : undefined;
+  const tagTargetChat = tagTargetId
+    ? (chats.find((chat) => chat.id === tagTargetId) ?? null)
+    : null;
+  const tagTargetAssigned = new Set(
+    (tagTargetChat?.tags ?? []).map((tag) => tag.id)
+  );
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const prevSortSignature = useRef(sortSignature);
 
@@ -530,8 +577,11 @@ export function ChatList({
                       {rowContent}
                     </button>
                   )}
-                  <div className="absolute top-2 right-2 flex items-center gap-1">
-                    {isTrash && onRestore ? (
+                  {/* Trash keeps its inline hover Restore. The main list has no
+                      inline row action — deleting a single chat lives in the
+                      right-click menu's Move to Trash (#215). */}
+                  {isTrash && onRestore && (
+                    <div className="absolute top-2 right-2 flex items-center gap-1">
                       <span className="group/action relative">
                         <button
                           type="button"
@@ -543,22 +593,8 @@ export function ChatList({
                         </button>
                         <ActionTooltip label="Restore" hint="⌫" />
                       </span>
-                    ) : (
-                      !isEditing && (
-                        <span className="group/action relative">
-                          <button
-                            type="button"
-                            aria-label={`Move to trash: ${chat.title}`}
-                            onClick={() => onDelete(chat.id)}
-                            className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground opacity-0 shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive group-hover:opacity-100 focus:opacity-100"
-                          >
-                            <Trash2 size={14} aria-hidden="true" />
-                          </button>
-                          <ActionTooltip label="Move to Trash" hint="⌫" />
-                        </span>
-                      )
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -582,6 +618,16 @@ export function ChatList({
               }}
             />
           )}
+          {!isTrash && tagControls && (
+            <MenuItem
+              icon={<TagIcon size={14} aria-hidden="true" />}
+              label="Add/Remove Tag"
+              onClick={() => {
+                setTagTargetId(contextMenu.chatId);
+                setContextMenu(null);
+              }}
+            />
+          )}
           {isTrash && onRestore ? (
             <MenuItem
               icon={<RotateCcw size={14} aria-hidden="true" />}
@@ -593,18 +639,50 @@ export function ChatList({
               }}
             />
           ) : (
-            <MenuItem
-              icon={<Trash2 size={14} aria-hidden="true" />}
-              label="Move to Trash"
-              hint="⌫"
-              destructive
-              onClick={() => {
-                onDelete(contextMenu.chatId);
-                setContextMenu(null);
-              }}
-            />
+            <>
+              {(onRenameTitle || tagControls) && (
+                <div
+                  role="separator"
+                  className="my-1 h-px bg-border"
+                  aria-hidden="true"
+                />
+              )}
+              <MenuItem
+                icon={<Trash2 size={14} aria-hidden="true" />}
+                label="Move to Trash"
+                hint="⌫"
+                destructive
+                onClick={() => {
+                  onDelete(contextMenu.chatId);
+                  setContextMenu(null);
+                }}
+              />
+            </>
           )}
         </div>
+      )}
+      {/* The row context menu's Add/Remove Tag opens the shared picker in
+          single-chat mode (#215): checked = the chat holds that tag, a click
+          assigns or removes it at once. Fully controlled — no in-flow trigger. */}
+      {tagControls && tagTargetId && (
+        <TagPickerDialog
+          title="Add or remove tags"
+          tags={tagControls.allTags}
+          open
+          onOpenChange={(next) => {
+            if (!next) setTagTargetId(null);
+          }}
+          renderTrigger={false}
+          stateFor={(tagId) => (tagTargetAssigned.has(tagId) ? "all" : "none")}
+          onToggle={(tagId) =>
+            tagTargetAssigned.has(tagId)
+              ? tagControls.onRemoveTag(tagTargetId, tagId)
+              : tagControls.onAssignTag(tagTargetId, tagId)
+          }
+          onCreate={(name, color) =>
+            tagControls.onCreateTag(tagTargetId, name, color)
+          }
+        />
       )}
       {selectionEnabled && selectionCount >= 2 && (
         <div
@@ -615,18 +693,31 @@ export function ChatList({
             <span className="font-medium tabular-nums text-accent-foreground">
               {selectionCount} selected
             </span>
-            {/* Same affordance as a row's Move to Trash: bordered icon button
-                with the destructive hover tone and a hover tooltip. */}
-            <span className="group/action relative">
-              <button
-                type="button"
-                aria-label="Move to Trash"
-                onClick={() => onBatchTrash?.()}
-                className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive"
-              >
-                <Trash2 size={14} aria-hidden="true" />
-              </button>
-              <ActionTooltip label="Move to Trash" />
+            {/* Batch Tag (#163) and Move to Trash join into one segmented
+                control — recessed chips sharing a single divider (#215) — set
+                apart from the count. Tooltips grow upward so they clear the
+                sidebar at the panel's left edge. The hovered half lifts to
+                paint its colored border over the shared seam. */}
+            <span className="flex items-center">
+              {batchTagButton && (
+                <span className="group/action relative hover:z-10">
+                  {batchTagButton}
+                  <ActionTooltip label="Add/Remove Tag" placement="top" />
+                </span>
+              )}
+              {/* Same destructive hover tone as a row's Move to Trash; the
+                  right half of the pair, overlapping the shared seam. */}
+              <span className="group/action relative -ml-px hover:z-10">
+                <button
+                  type="button"
+                  aria-label="Move to Trash"
+                  onClick={() => onBatchTrash?.()}
+                  className="rounded-r-md border border-white/10 bg-background/60 p-1.5 text-muted-foreground shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive"
+                >
+                  <Trash2 size={14} aria-hidden="true" />
+                </button>
+                <ActionTooltip label="Move to Trash" placement="top" />
+              </span>
             </span>
           </span>
           {/* Matches the filter panel's "Clear" — a plain primary text link. */}

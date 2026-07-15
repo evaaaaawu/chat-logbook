@@ -139,15 +139,29 @@ describe("TagPickerDialog", () => {
     expect(onCreate).toHaveBeenCalledWith("urgent", "blue");
   });
 
-  it("does not render a Done button in single mode", async () => {
+  it("closes on the Done button in single mode", async () => {
     const user = userEvent.setup();
     renderPicker();
 
     await user.click(screen.getByTestId("add-tag-button"));
     await screen.findByRole("dialog");
 
-    expect(
-      screen.queryByRole("button", { name: /done/i })
-    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /done/i }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("closes on Enter in single mode without submitting a create", async () => {
+    const user = userEvent.setup();
+    const { onCreate } = renderPicker();
+
+    await user.click(screen.getByTestId("add-tag-button"));
+    await screen.findByRole("dialog");
+
+    // Enter with no create pending acts as Done and closes the dialog.
+    await user.keyboard("{Enter}");
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(onCreate).not.toHaveBeenCalled();
   });
 });

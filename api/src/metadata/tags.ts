@@ -26,6 +26,14 @@ export interface TagRepository {
    * (the `(chat_id, tag_id)` primary key absorbs the conflict). */
   assignTag(chatId: string, tagId: string): void;
   removeTag(chatId: string, tagId: string): void;
+  /** Apply an add/remove Tag diff across a set of Chats in one transaction
+   * (ADR-0021 explicit-ids branch). Adds are `INSERT ... ON CONFLICT DO NOTHING`
+   * so re-adding a pair a Chat already has is a no-op; removes clear every
+   * `(chatId, tagId)` pair in the cross product. Empty inputs are a no-op. */
+  assignTagsBatch(
+    chatIds: string[],
+    diff: { add: string[]; remove: string[] }
+  ): void;
   listTagsForChat(chatId: string): Tag[];
   /** Tags grouped by Chat id in one query — never one query per Chat
    * (ADR-0016). Pass `chatIds` to scope to a subset; omit for every Chat. */
@@ -129,6 +137,29 @@ export function createTagRepository({
       db.delete(chatTags)
         .where(and(eq(chatTags.chatId, chatId), eq(chatTags.tagId, tagId)))
         .run();
+    },
+
+    assignTagsBatch(chatIds, { add, remove }) {
+      if (chatIds.length === 0) return;
+      if (add.length === 0 && remove.length === 0) return;
+      db.transaction((tx) => {
+        if (add.length > 0) {
+          const pairs = chatIds.flatMap((chatId) =>
+            add.map((tagId) => ({ chatId, tagId }))
+          );
+          tx.insert(chatTags).values(pairs).onConflictDoNothing().run();
+        }
+        if (remove.length > 0) {
+          tx.delete(chatTags)
+            .where(
+              and(
+                inArray(chatTags.chatId, chatIds),
+                inArray(chatTags.tagId, remove)
+              )
+            )
+            .run();
+        }
+      });
     },
 
     listTagsForChat(chatId) {

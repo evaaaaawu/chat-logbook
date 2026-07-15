@@ -18,6 +18,15 @@ export interface UseTagsResult {
   deleteTag: (id: string) => Promise<void>;
   assignTag: (chatId: string, tagId: string) => Promise<void>;
   removeTag: (chatId: string, tagId: string) => Promise<void>;
+  /** Apply a staged add/remove Tag diff across a set of Chats in one batch call
+   * (#163, ADR-0021 explicit-ids branch). */
+  assignTagsBatch: (
+    chatIds: string[],
+    diff: { add: string[]; remove: string[] }
+  ) => Promise<void>;
+  /** Tags grouped across a set of Chats in one query, keyed by chat id — feeds
+   * the batch dialog's tri-state derivation (#163). */
+  fetchTagsByChat: (chatIds: string[]) => Promise<Record<string, Tag[]>>;
 }
 
 async function fetchTags(): Promise<Tag[]> {
@@ -122,6 +131,37 @@ export function useTags({ onAssignmentChange }: UseTagsOptions): UseTagsResult {
     [onAssignmentChange]
   );
 
+  const assignTagsBatch = useCallback(
+    async (chatIds: string[], diff: { add: string[]; remove: string[] }) => {
+      // POST only: the batch caller (App) orchestrates the follow-up itself —
+      // the drop-reconcile reload (#176), facet counts, and pruning the
+      // Selection by the exact ids that left the list — so it needs the reload's
+      // dropped-id result, which the shared onAssignmentChange discards.
+      await fetch("/api/chats/batch/tags", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chatIds, add: diff.add, remove: diff.remove }),
+      });
+    },
+    []
+  );
+
+  const fetchTagsByChat = useCallback(
+    async (chatIds: string[]): Promise<Record<string, Tag[]>> => {
+      const res = await fetch("/api/chats/batch/tags-by-chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chatIds }),
+      });
+      if (!res.ok) return {};
+      const { byChat } = (await res.json()) as {
+        byChat: Record<string, Tag[]>;
+      };
+      return byChat;
+    },
+    []
+  );
+
   return {
     tags,
     createTag,
@@ -130,5 +170,7 @@ export function useTags({ onAssignmentChange }: UseTagsOptions): UseTagsResult {
     deleteTag,
     assignTag,
     removeTag,
+    assignTagsBatch,
+    fetchTagsByChat,
   };
 }

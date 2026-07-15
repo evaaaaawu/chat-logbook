@@ -7,6 +7,7 @@ import {
   DialogContent,
   DialogTitle,
   DialogTrigger,
+  type DialogActions,
 } from "@/shared/ui/dialog";
 import {
   TAG_COLOR_HEX,
@@ -33,6 +34,22 @@ interface TagPickerDialogProps {
   triggerAriaLabel?: string;
   triggerClassName?: string;
   triggerContent?: ReactNode;
+  // Controlled open state — batch mode (#163) drives this so it can close the
+  // dialog on `Done`. Omit for the self-managed single-Chat popover.
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  // Whether to render the in-flow trigger button. False lets a caller open the
+  // dialog purely through controlled `open` — e.g. the row context menu's
+  // Add/Remove Tag (#215), which has no button of its own to hang off.
+  renderTrigger?: boolean;
+  // Side effect to run when `Done` is activated (click or Enter), before the
+  // dialog closes. Batch mode applies the staged add/remove diff here; single
+  // mode applies each toggle at once, so it leaves this undefined and `Done`
+  // just closes the dialog.
+  onDone?: () => void;
+  // Overrides the `Done` button's test id — batch mode keeps its own so its
+  // suite can target it independently.
+  doneTestId?: string;
 }
 
 const DEFAULT_TRIGGER_CLASS =
@@ -45,6 +62,11 @@ export function TagPickerDialog({
   triggerAriaLabel = "Add tag",
   triggerClassName = DEFAULT_TRIGGER_CLASS,
   triggerContent,
+  open,
+  onOpenChange,
+  renderTrigger = true,
+  onDone,
+  doneTestId = "tag-picker-done",
   stateFor,
   onToggle,
   onCreate,
@@ -53,6 +75,12 @@ export function TagPickerDialog({
   // null means "follow the name-derived default"; a value means the user picked.
   const [override, setOverride] = useState<ColorToken | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Base UI's imperative handle. `Done` and Enter close through `close()` so the
+  // self-managed TagStrip popovers (no `open` prop) still dismiss — a synthetic
+  // click on a `Close` element does nothing, and only the caller-driven dialogs
+  // could otherwise be closed. Works for controlled callers too: `close()` fires
+  // their `onOpenChange(false)`.
+  const dialogActions = useRef<DialogActions>(null);
 
   const trimmed = query.trim();
   const filtered = useMemo(() => {
@@ -81,23 +109,53 @@ export function TagPickerDialog({
     reset();
   };
 
+  // `Done` (button click or Enter): run the caller's side effect — batch mode
+  // applies its staged diff — then close. Single mode applies each toggle at
+  // once, so closing is all `Done` does.
+  const handleDone = () => {
+    onDone?.();
+    dialogActions.current?.close();
+  };
+
   return (
-    <Dialog onOpenChange={(open) => !open && reset()}>
-      <DialogTrigger
-        data-testid={triggerTestId}
-        aria-label={triggerAriaLabel}
-        className={triggerClassName}
-      >
-        {triggerContent ?? (
-          <>
-            <Plus size={12} aria-hidden="true" />
-            Tag
-          </>
-        )}
-      </DialogTrigger>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) reset();
+        onOpenChange?.(next);
+      }}
+      actionsRef={dialogActions}
+    >
+      {renderTrigger && (
+        <DialogTrigger
+          data-testid={triggerTestId}
+          aria-label={triggerAriaLabel}
+          className={triggerClassName}
+        >
+          {triggerContent ?? (
+            <>
+              <Plus size={12} aria-hidden="true" />
+              Tag
+            </>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent
         data-testid="tag-picker-dialog"
         className="w-[min(100vw-2rem,34rem)]"
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          // Mid-create Enter belongs to the create flow (handled on the input);
+          // leave it alone so the row isn't submitted instead of the new tag.
+          if (canCreate) return;
+          // Otherwise Enter is `Done`: run onDone and close. preventDefault +
+          // stopPropagation keep the keystroke from reaching the global chat
+          // shortcuts (Enter → rename the open chat); App also guards on the
+          // dialog slot as a backstop for the portal's window-level listener.
+          e.preventDefault();
+          e.stopPropagation();
+          handleDone();
+        }}
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>
 
@@ -185,6 +243,20 @@ export function TagPickerDialog({
             />
           </div>
         )}
+
+        {/* Done closes the dialog through the shared handler so a click and
+            Enter take the exact same path. Single mode just closes; batch mode
+            applies its staged diff via onDone first. */}
+        <div className="flex justify-end border-t border-border pt-3">
+          <button
+            type="button"
+            data-testid={doneTestId}
+            onClick={handleDone}
+            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Done
+          </button>
+        </div>
       </DialogContent>
     </Dialog>
   );

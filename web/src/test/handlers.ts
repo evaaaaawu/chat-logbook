@@ -124,6 +124,16 @@ export function resetFakeChats(): void {
   fakeChatTags = {};
 }
 
+// Test seams for pre-populating the Tag catalog and Chat→Tag assignments before
+// a render (used by the batch-tag integration tests, #163).
+export function seedTags(tags: FakeTag[]): void {
+  fakeTags = tags;
+}
+
+export function seedChatTags(map: Record<string, string[]>): void {
+  fakeChatTags = map;
+}
+
 function tagsForChat(chatId: string): FakeTag[] {
   const ids = fakeChatTags[chatId] ?? [];
   return ids
@@ -444,6 +454,50 @@ export const handlers = [
       count++;
     }
     return HttpResponse.json({ count });
+  }),
+  // Batch Tag apply (#163). Applies the add/remove diff across the resolved ids
+  // in one pass; removes first, then adds, keeping stable order (existing kept
+  // ones first, newly-added appended). Registered before `/api/chats/:id/tags`
+  // so `batch` is not read as a chat id.
+  http.post("/api/chats/batch/tags", async ({ request }) => {
+    const body = (await request.json()) as {
+      chatIds?: unknown;
+      add?: unknown;
+      remove?: unknown;
+    };
+    if (!Array.isArray(body?.chatIds)) {
+      return HttpResponse.json({ error: "Invalid chatIds" }, { status: 400 });
+    }
+    const asIds = (v: unknown): string[] =>
+      Array.isArray(v)
+        ? v.filter((x): x is string => typeof x === "string")
+        : [];
+    const add = asIds(body.add);
+    const remove = asIds(body.remove);
+    let count = 0;
+    for (const id of body.chatIds) {
+      if (typeof id !== "string") continue;
+      if (!fakeChats.some((c) => c.id === id)) continue;
+      count++;
+      const removeSet = new Set(remove);
+      const kept = (fakeChatTags[id] ?? []).filter((t) => !removeSet.has(t));
+      const keptSet = new Set(kept);
+      const added = add.filter((t) => !keptSet.has(t));
+      fakeChatTags[id] = [...kept, ...added];
+    }
+    return HttpResponse.json({ count });
+  }),
+  // Tags grouped across the Selection (#163), keyed by the chat id sent.
+  http.post("/api/chats/batch/tags-by-chat", async ({ request }) => {
+    const body = (await request.json()) as { chatIds?: unknown };
+    const chatIds = Array.isArray(body?.chatIds) ? body.chatIds : [];
+    const byChat: Record<string, FakeTag[]> = {};
+    for (const id of chatIds) {
+      if (typeof id !== "string") continue;
+      if (!fakeChats.some((c) => c.id === id)) continue;
+      byChat[id] = tagsForChat(id);
+    }
+    return HttpResponse.json({ byChat });
   }),
   http.delete("/api/chats/:id", ({ params }) => {
     const id = params.id as string;
