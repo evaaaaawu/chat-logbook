@@ -2,6 +2,11 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 
 import { cn } from "@/shared/utils";
 
+// Imperative handle for `actionsRef` — `close()` dismisses the dialog without a
+// synthetic click on a `Close` element (Base UI's `Close` only reacts to real
+// pointer input, so a keyboard-driven close has to go through this).
+export type DialogActions = DialogPrimitive.Root.Actions;
+
 // A viewport-centered modal built on Base UI's Dialog. This wrapper owns the
 // modal "chrome" — the dimming scrim, centered positioning, entrance/exit
 // animation, z-index, and Esc / outside-click dismissal — so each consumer only

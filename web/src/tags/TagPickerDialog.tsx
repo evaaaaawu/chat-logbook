@@ -7,6 +7,7 @@ import {
   DialogContent,
   DialogTitle,
   DialogTrigger,
+  type DialogActions,
 } from "@/shared/ui/dialog";
 import {
   TAG_COLOR_HEX,
@@ -41,14 +42,14 @@ interface TagPickerDialogProps {
   // dialog purely through controlled `open` — e.g. the row context menu's
   // Add/Remove Tag (#215), which has no button of its own to hang off.
   renderTrigger?: boolean;
-  // Optional footer below the list — batch mode puts the `Done` button here to
-  // apply the staged add/remove diff. Single mode applies each toggle at once
-  // and leaves it undefined.
-  footer?: ReactNode;
-  // Batch mode's Enter action: when the user is not mid-create, Enter anywhere
-  // in the dialog submits (equivalent to clicking `Done`). Also stops the
-  // keystroke leaking to the global chat shortcuts (e.g. Enter → rename).
-  onEnter?: () => void;
+  // Side effect to run when `Done` is activated (click or Enter), before the
+  // dialog closes. Batch mode applies the staged add/remove diff here; single
+  // mode applies each toggle at once, so it leaves this undefined and `Done`
+  // just closes the dialog.
+  onDone?: () => void;
+  // Overrides the `Done` button's test id — batch mode keeps its own so its
+  // suite can target it independently.
+  doneTestId?: string;
 }
 
 const DEFAULT_TRIGGER_CLASS =
@@ -64,8 +65,8 @@ export function TagPickerDialog({
   open,
   onOpenChange,
   renderTrigger = true,
-  footer,
-  onEnter,
+  onDone,
+  doneTestId = "tag-picker-done",
   stateFor,
   onToggle,
   onCreate,
@@ -74,6 +75,12 @@ export function TagPickerDialog({
   // null means "follow the name-derived default"; a value means the user picked.
   const [override, setOverride] = useState<ColorToken | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Base UI's imperative handle. `Done` and Enter close through `close()` so the
+  // self-managed TagStrip popovers (no `open` prop) still dismiss — a synthetic
+  // click on a `Close` element does nothing, and only the caller-driven dialogs
+  // could otherwise be closed. Works for controlled callers too: `close()` fires
+  // their `onOpenChange(false)`.
+  const dialogActions = useRef<DialogActions>(null);
 
   const trimmed = query.trim();
   const filtered = useMemo(() => {
@@ -102,6 +109,14 @@ export function TagPickerDialog({
     reset();
   };
 
+  // `Done` (button click or Enter): run the caller's side effect — batch mode
+  // applies its staged diff — then close. Single mode applies each toggle at
+  // once, so closing is all `Done` does.
+  const handleDone = () => {
+    onDone?.();
+    dialogActions.current?.close();
+  };
+
   return (
     <Dialog
       open={open}
@@ -109,6 +124,7 @@ export function TagPickerDialog({
         if (!next) reset();
         onOpenChange?.(next);
       }}
+      actionsRef={dialogActions}
     >
       {renderTrigger && (
         <DialogTrigger
@@ -132,13 +148,13 @@ export function TagPickerDialog({
           // Mid-create Enter belongs to the create flow (handled on the input);
           // leave it alone so the row isn't submitted instead of the new tag.
           if (canCreate) return;
-          // Otherwise Enter submits (batch `Done`) and must not bubble to the
-          // global chat shortcuts (Enter → rename the open chat).
-          if (onEnter) {
-            e.preventDefault();
-            e.stopPropagation();
-            onEnter();
-          }
+          // Otherwise Enter is `Done`: run onDone and close. preventDefault +
+          // stopPropagation keep the keystroke from reaching the global chat
+          // shortcuts (Enter → rename the open chat); App also guards on the
+          // dialog slot as a backstop for the portal's window-level listener.
+          e.preventDefault();
+          e.stopPropagation();
+          handleDone();
         }}
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>
@@ -228,11 +244,19 @@ export function TagPickerDialog({
           </div>
         )}
 
-        {footer && (
-          <div className="flex justify-end border-t border-border pt-3">
-            {footer}
-          </div>
-        )}
+        {/* Done closes the dialog through the shared handler so a click and
+            Enter take the exact same path. Single mode just closes; batch mode
+            applies its staged diff via onDone first. */}
+        <div className="flex justify-end border-t border-border pt-3">
+          <button
+            type="button"
+            data-testid={doneTestId}
+            onClick={handleDone}
+            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Done
+          </button>
+        </div>
       </DialogContent>
     </Dialog>
   );

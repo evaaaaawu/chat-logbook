@@ -818,6 +818,49 @@ describe("Batch Move to Trash", () => {
   });
 });
 
+describe("Single-chat tag picker (#215 context menu)", () => {
+  it("closes on Enter (same as Done) without renaming the open chat", async () => {
+    const user = userEvent.setup();
+    seedTags([
+      { id: "tag-bug", name: "bug", color: "red" },
+      { id: "tag-idea", name: "idea", color: "violet" },
+    ]);
+    seedChatTags({ "chat-1": ["tag-bug"] });
+
+    render(<App />);
+    const list = screen.getByTestId("chat-list");
+    await within(list).findByText("Build a login page");
+    // Open chat-1 so it is the selected/open chat a stray Enter could rename.
+    await user.click(within(list).getByText("Build a login page"));
+
+    // Open the row's context menu and its single-chat tag picker.
+    const row = within(list)
+      .getByText("Build a login page")
+      .closest('[data-testid="chat-row"]') as HTMLElement;
+    fireEvent.contextMenu(row);
+    await user.click(
+      screen.getByRole("menuitem", { name: /Add\/Remove Tag/i })
+    );
+
+    const dialog = await screen.findByTestId("tag-picker-dialog");
+    // Move focus onto a non-input element (a tag row) — the case where Enter
+    // could otherwise leak past the input to the global rename shortcut, since
+    // the dialog is portaled to <body> and its stopPropagation can't reach the
+    // window-level listener.
+    await user.click(within(dialog).getByText("idea"));
+    await user.keyboard("{Enter}");
+
+    // Enter closes the picker (like clicking Done)...
+    await waitFor(() =>
+      expect(screen.queryByTestId("tag-picker-dialog")).not.toBeInTheDocument()
+    );
+    // ...and never opens the inline rename editor on the open chat's title.
+    expect(
+      screen.queryByRole("textbox", { name: /chat title/i })
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("Batch Tag (three-state, staged)", () => {
   // Select the two default main-list chats via Cmd+click so the batch bar shows.
   async function selectTwo() {

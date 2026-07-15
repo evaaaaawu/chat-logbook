@@ -428,13 +428,18 @@ function App() {
         target?.tagName === "TEXTAREA" ||
         target?.isContentEditable === true;
       if (isEditable) return;
-      // Keystrokes inside an open popover (find-or-create, recolor, metadata…)
-      // belong to that popover, not the global chat shortcuts. Without this,
-      // Enter/Backspace while focus sits on a non-input element in a popover
-      // (e.g. a color swatch) would start a title rename or trash the chat.
+      // Keystrokes inside an open popover or modal dialog (find-or-create,
+      // recolor, metadata, the tag picker…) belong to that surface, not the
+      // global chat shortcuts. Without this, Enter/Backspace while focus sits on
+      // a non-input element there (e.g. a color swatch or a tag row) would start
+      // a title rename or trash the chat. The dialog is portaled to <body>, so
+      // its React `stopPropagation` can't reach this window-level listener —
+      // matching on the slot is what keeps the keystroke contained.
       if (
         target instanceof Element &&
-        target.closest('[data-slot="popover-content"]')
+        target.closest(
+          '[data-slot="popover-content"], [data-slot="dialog-content"]'
+        )
       )
         return;
 

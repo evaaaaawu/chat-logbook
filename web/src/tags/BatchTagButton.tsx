@@ -73,9 +73,10 @@ export function BatchTagButton({
     return created;
   };
 
+  // The dialog closes itself on `Done` (via its imperative `close()`); this
+  // onDone side effect only applies the staged diff in one batch call.
   const handleDone = () => {
     onApply([...selectedIds], batchTagDiff(staged, initialStates));
-    setOpen(false);
   };
 
   return (
@@ -87,21 +88,12 @@ export function BatchTagButton({
       stateFor={(tagId) => displayStateFor(staged, initialStates, tagId)}
       onToggle={handleToggle}
       onCreate={handleCreate}
-      onEnter={handleDone}
+      onDone={handleDone}
+      doneTestId="batch-tag-done"
       triggerTestId="batch-tag-button"
       triggerAriaLabel="Add/Remove Tag"
       triggerClassName="rounded-l-md border border-white/10 bg-background/60 p-1.5 text-muted-foreground shadow-sm transition-all hover:border-[#2d716a] hover:bg-[#12302e] hover:text-[#2aa198]"
       triggerContent={<TagIcon size={14} aria-hidden="true" />}
-      footer={
-        <button
-          type="button"
-          data-testid="batch-tag-done"
-          onClick={handleDone}
-          className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          Done
-        </button>
-      }
     />
   );
 }
