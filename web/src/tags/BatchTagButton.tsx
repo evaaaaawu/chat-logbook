@@ -90,7 +90,7 @@ export function BatchTagButton({
       onEnter={handleDone}
       triggerTestId="batch-tag-button"
       triggerAriaLabel="Add/Remove Tag"
-      triggerClassName="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground shadow-sm transition-all hover:border-foreground/40 hover:text-foreground"
+      triggerClassName="rounded-l-md border border-white/10 bg-background/60 p-1.5 text-muted-foreground shadow-sm transition-all hover:border-[#2d716a] hover:bg-[#12302e] hover:text-[#2aa198]"
       triggerContent={<TagIcon size={14} aria-hidden="true" />}
       footer={
         <button

@@ -619,27 +619,30 @@ export function ChatList({
             <span className="font-medium tabular-nums text-accent-foreground">
               {selectionCount} selected
             </span>
-            {/* Batch Tag (#163) and Move to Trash sit as a tight icon pair —
-                one hair-thin gap — set apart from the count. */}
-            <span className="flex items-center gap-0.5">
+            {/* Batch Tag (#163) and Move to Trash join into one segmented
+                control — recessed chips sharing a single divider (#215) — set
+                apart from the count. Tooltips grow upward so they clear the
+                sidebar at the panel's left edge. The hovered half lifts to
+                paint its colored border over the shared seam. */}
+            <span className="flex items-center">
               {batchTagButton && (
-                <span className="group/action relative">
+                <span className="group/action relative hover:z-10">
                   {batchTagButton}
-                  <ActionTooltip label="Add/Remove Tag" />
+                  <ActionTooltip label="Add/Remove Tag" placement="top" />
                 </span>
               )}
-              {/* Same affordance as a row's Move to Trash: bordered icon button
-                  with the destructive hover tone and a hover tooltip. */}
-              <span className="group/action relative">
+              {/* Same destructive hover tone as a row's Move to Trash; the
+                  right half of the pair, overlapping the shared seam. */}
+              <span className="group/action relative -ml-px hover:z-10">
                 <button
                   type="button"
                   aria-label="Move to Trash"
                   onClick={() => onBatchTrash?.()}
-                  className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive"
+                  className="rounded-r-md border border-white/10 bg-background/60 p-1.5 text-muted-foreground shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive"
                 >
                   <Trash2 size={14} aria-hidden="true" />
                 </button>
-                <ActionTooltip label="Move to Trash" />
+                <ActionTooltip label="Move to Trash" placement="top" />
               </span>
             </span>
           </span>
