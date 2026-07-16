@@ -45,8 +45,12 @@ A single turn within a Chat, from the user or the assistant. Composed of one or 
 _Avoid_: entry, line
 
 **Block**:
-A typed piece of a Message's content: text, thinking, tool call, or tool result. A Message is an ordered sequence of Blocks, and a Block's type decides how it renders (thinking and tool blocks collapse by default).
+A typed piece of a Message's content: text, thinking, tool call, tool result, command, system notice, or image. A Message is an ordered sequence of Blocks, and a Block's type decides how it renders (thinking, tool, and system Blocks collapse by default). The set of Block types is the shared vocabulary every Plugin translates its Agent's private format into — the UI renders Block types, never Agent formats.
 _Avoid_: segment, part, chunk
+
+**Tool unit**:
+A tool call paired with its tool result, shown as one collapsible row — the result belongs to the call, not to the turn it happened to arrive in. Collapsed it is a one-line summary; expanded it shows the call's input and output.
+_Avoid_: tool call (when the pair is meant), tool block pair
 
 **chat id**:
 The short, user-facing id for a Chat that you can paste anywhere and any agent can pattern-match. The code field is `chat_id`; the wire form is `clog_` + 6 Crockford base-32 characters (e.g. `clog_a3f7kx`).
