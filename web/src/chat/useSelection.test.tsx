@@ -116,3 +116,93 @@ describe("useSelection", () => {
     expect([...result.current.selectedIds]).toEqual([]);
   });
 });
+
+describe("useSelection — select-all-matching (#164)", () => {
+  it("enters select-all-matching, counting the whole filtered total", () => {
+    const { result } = renderHook(() =>
+      useSelection({
+        orderedIds: ORDER,
+        primaryId: null,
+        resetKey: "k",
+        filteredTotal: 1234,
+      })
+    );
+
+    expect(result.current.allMatching).toBe(false);
+
+    act(() => result.current.selectAllMatching());
+
+    expect(result.current.allMatching).toBe(true);
+    // The count is the whole matching set, not just the loaded window.
+    expect(result.current.selectedCount).toBe(1234);
+    // Every visible row reads as selected.
+    expect(result.current.isSelected("a")).toBe(true);
+    expect([...result.current.excludeIds]).toEqual([]);
+  });
+
+  it("toggling under select-all records and clears exclusions", () => {
+    const { result } = renderHook(() =>
+      useSelection({
+        orderedIds: ORDER,
+        primaryId: null,
+        resetKey: "k",
+        filteredTotal: 10,
+      })
+    );
+
+    act(() => result.current.selectAllMatching());
+
+    // A toggle deselects one matching row: it lands in excludeIds.
+    act(() => result.current.toggle("b"));
+    expect([...result.current.excludeIds]).toEqual(["b"]);
+    expect(result.current.isSelected("b")).toBe(false);
+    expect(result.current.isSelected("a")).toBe(true);
+    expect(result.current.selectedCount).toBe(9);
+
+    // A second toggle re-selects it: the exclusion clears.
+    act(() => result.current.toggle("b"));
+    expect([...result.current.excludeIds]).toEqual([]);
+    expect(result.current.isSelected("b")).toBe(true);
+    expect(result.current.selectedCount).toBe(10);
+  });
+
+  it("leaves select-all-matching on clear()", () => {
+    const { result } = renderHook(() =>
+      useSelection({
+        orderedIds: ORDER,
+        primaryId: null,
+        resetKey: "k",
+        filteredTotal: 10,
+      })
+    );
+
+    act(() => result.current.selectAllMatching());
+    act(() => result.current.toggle("b"));
+    act(() => result.current.clear());
+
+    expect(result.current.allMatching).toBe(false);
+    expect([...result.current.excludeIds]).toEqual([]);
+    expect(result.current.selectedCount).toBe(0);
+  });
+
+  it("leaves select-all-matching when the filter/view resetKey changes", () => {
+    const { result, rerender } = renderHook(
+      ({ resetKey }) =>
+        useSelection({
+          orderedIds: ORDER,
+          primaryId: null,
+          resetKey,
+          filteredTotal: 10,
+        }),
+      { initialProps: { resetKey: "k1" } }
+    );
+
+    act(() => result.current.selectAllMatching());
+    act(() => result.current.toggle("b"));
+
+    rerender({ resetKey: "k2" });
+
+    expect(result.current.allMatching).toBe(false);
+    expect([...result.current.excludeIds]).toEqual([]);
+  });
+});

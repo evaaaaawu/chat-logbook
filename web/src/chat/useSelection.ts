@@ -19,6 +19,12 @@ interface UseSelectionParams {
    * it holds steady (sort change, background refresh) — see CONTEXT.md, #161.
    */
   resetKey: string;
+  /**
+   * How many Chats match the current filter across the whole store, not just the
+   * loaded window (#131). Under select-all-matching the effective count is this
+   * total minus the excluded rows; defaults to 0 when unknown.
+   */
+  filteredTotal?: number;
 }
 
 export interface Selection {
@@ -48,6 +54,31 @@ export interface Selection {
    * Chats you can no longer see (#163). A no-op for ids not currently selected.
    */
   deselect: (ids: Iterable<string>) => void;
+  /**
+   * Enter select-all-matching (#164): every Chat matching the current filter is
+   * marked, expressed as "all minus `excludeIds`" rather than an id list the
+   * client cannot enumerate (ADR-0021). A plain click, a range, `clear`, or a
+   * filter/view change all leave the mode.
+   */
+  selectAllMatching: () => void;
+  /** True while in select-all-matching mode. */
+  allMatching: boolean;
+  /**
+   * The rows the user unchecked after selecting all (`Cmd/Ctrl+click`), the
+   * "all matching except these" set. Empty and inert outside select-all-matching.
+   */
+  excludeIds: ReadonlySet<string>;
+  /**
+   * The effective number of marked Chats: the plain Selection size normally, or
+   * the filtered total minus exclusions under select-all-matching.
+   */
+  selectedCount: number;
+  /**
+   * Whether a row renders as selected — membership in the Selection normally, or
+   * "not excluded" under select-all-matching. The one predicate the list rows
+   * read so they don't branch on the mode themselves.
+   */
+  isSelected: (id: string) => boolean;
 }
 
 /**
@@ -59,35 +90,72 @@ export function useSelection({
   orderedIds,
   primaryId,
   resetKey,
+  filteredTotal = 0,
 }: UseSelectionParams): Selection {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() =>
     primaryId ? new Set([primaryId]) : new Set()
   );
+  // Select-all-matching (#164): the mode flag plus its "all minus these"
+  // exclusion set. Both are inert until `selectAllMatching` turns the mode on.
+  const [allMatching, setAllMatching] = useState(false);
+  const [excludeIds, setExcludeIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
 
   // Collapse to the primary on filter/view change without an effect: adjusting
   // state during render on a changed prop is the sanctioned React pattern. Sort
-  // and refresh never change resetKey, so the Selection survives them.
+  // and refresh never change resetKey, so the Selection survives them. A filter/
+  // view change also leaves select-all-matching — the matched set is no longer
+  // the one the user selected over.
   const [lastResetKey, setLastResetKey] = useState(resetKey);
   if (resetKey !== lastResetKey) {
     setLastResetKey(resetKey);
     setSelectedIds(primaryId ? new Set([primaryId]) : new Set());
+    setAllMatching(false);
+    setExcludeIds(new Set());
   }
 
-  const selectOnly = useCallback((id: string) => {
-    setSelectedIds(new Set([id]));
+  // Leave select-all-matching and reset its exclusions. Called by every gesture
+  // that re-establishes an explicit Selection (plain click, range, clear).
+  const exitAllMatching = useCallback(() => {
+    setAllMatching(false);
+    setExcludeIds(new Set());
   }, []);
 
+  const selectOnly = useCallback(
+    (id: string) => {
+      exitAllMatching();
+      setSelectedIds(new Set([id]));
+    },
+    [exitAllMatching]
+  );
+
   const toggle = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+    // Under select-all-matching a toggle records an exclusion (the deselect-one
+    // gesture over "all matching"); otherwise it flips plain membership.
+    setAllMatching((matching) => {
+      if (matching) {
+        setExcludeIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+      } else {
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+      }
+      return matching;
     });
   }, []);
 
   const selectRange = useCallback(
     (anchorId: string | null, targetId: string, additive: boolean) => {
+      exitAllMatching();
       if (anchorId === null) {
         setSelectedIds(new Set([targetId]));
         return;
@@ -101,12 +169,13 @@ export function useSelection({
         additive ? new Set([...prev, ...range]) : new Set(range)
       );
     },
-    [orderedIds]
+    [orderedIds, exitAllMatching]
   );
 
   const clear = useCallback(() => {
+    exitAllMatching();
     setSelectedIds(new Set());
-  }, []);
+  }, [exitAllMatching]);
 
   const deselect = useCallback((ids: Iterable<string>) => {
     setSelectedIds((prev) => {
@@ -116,5 +185,31 @@ export function useSelection({
     });
   }, []);
 
-  return { selectedIds, selectOnly, toggle, selectRange, clear, deselect };
+  const selectAllMatching = useCallback(() => {
+    setAllMatching(true);
+    setExcludeIds(new Set());
+  }, []);
+
+  const selectedCount = allMatching
+    ? Math.max(0, filteredTotal - excludeIds.size)
+    : selectedIds.size;
+
+  const isSelected = useCallback(
+    (id: string) => (allMatching ? !excludeIds.has(id) : selectedIds.has(id)),
+    [allMatching, excludeIds, selectedIds]
+  );
+
+  return {
+    selectedIds,
+    selectOnly,
+    toggle,
+    selectRange,
+    clear,
+    deselect,
+    selectAllMatching,
+    allMatching,
+    excludeIds,
+    selectedCount,
+    isSelected,
+  };
 }
