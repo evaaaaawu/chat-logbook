@@ -34,8 +34,10 @@
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-foreground-bright: var(--foreground-bright);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -64,10 +66,15 @@
   --card: #073642;
   /* Solarized base1 */
   --card-foreground: #93a1a1;
+  /* Solarized base2 — the hover target for neutral text actions. */
+  --foreground-bright: #eee8d5;
   --popover: #073642;
   --popover-foreground: #93a1a1;
   /* Solarized cyan */
   --primary: #2aa198;
+  /* Solarized cyan lifted to 50% lightness. On a dark theme hover means
+     brighter, so primary-toned actions lift here rather than dim. */
+  --primary-hover: #35cabf;
   --primary-foreground: #002b36;
   /* Solarized base02 */
   --secondary: #073642;
@@ -105,9 +112,11 @@
   --foreground: #839496;
   --card: #073642;
   --card-foreground: #93a1a1;
+  --foreground-bright: #eee8d5;
   --popover: #073642;
   --popover-foreground: #93a1a1;
   --primary: #2aa198;
+  --primary-hover: #35cabf;
   --primary-foreground: #002b36;
   --secondary: #073642;
   --secondary-foreground: #839496;
