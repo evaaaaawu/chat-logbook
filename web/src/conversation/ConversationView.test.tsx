@@ -2,6 +2,7 @@ import { render, screen, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { ConversationView } from "@/conversation/ConversationView";
+import { messageAnchorId } from "@/conversation/messageAnchor";
 import type { Chat, Message } from "@/types";
 
 const chat: Chat = {
@@ -20,8 +21,11 @@ function renderMessages(messages: Message[]) {
   return render(<ConversationView chat={chat} messages={messages} />);
 }
 
+let nextMessageId = 0;
+
 function assistant(text: string): Message {
   return {
+    id: `m-${(nextMessageId += 1)}`,
     role: "assistant",
     content: text,
     timestamp: "2024-01-01T00:00:00Z",
@@ -159,6 +163,195 @@ describe("Conversation live arrival", () => {
   });
 });
 
+describe("Conversation note-style headers", () => {
+  it("names the assistant by its agent display name, never ASSISTANT", async () => {
+    render(
+      <ConversationView
+        chat={{ ...chat, agent: "claude-code" }}
+        messages={[assistant("Sure, here goes.")]}
+      />
+    );
+
+    expect(await screen.findByText("Claude Code")).not.toBeNull();
+    // The literal role name is the thing this layout replaces: an archive
+    // header should read like a person's name, not a wire-protocol value.
+    expect(screen.queryByText(/^assistant$/i)).toBeNull();
+  });
+
+  it("stamps every header with an absolute date and time", async () => {
+    // A single-day session still carries the date (#192): the header is read as
+    // a record of when something happened, not only where it sits in the day.
+    // Asserted by shape, not a literal — the value renders in the reader's
+    // local timezone, and the suite pins no TZ.
+    renderMessages([assistant("one")]);
+
+    expect(
+      await screen.findByText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
+    ).not.toBeNull();
+  });
+
+  it("names the reader's own turns You", async () => {
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-ask",
+            role: "user",
+            content: "Build a login page",
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    expect(await screen.findByText("You")).not.toBeNull();
+  });
+});
+
+describe("Conversation note-style layout", () => {
+  async function renderBothRoles() {
+    const { container } = render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-ask",
+            role: "user",
+            content: "Build a login page",
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+          assistant("Sure, here goes."),
+        ]}
+      />
+    );
+    await screen.findByText("Sure, here goes.");
+    return {
+      user: container.querySelector('[data-role="user"]')!,
+      assistant: container.querySelector('[data-role="assistant"]')!,
+    };
+  }
+
+  it("gives user turns a background block and assistant turns none", async () => {
+    // The reader's own turns are the scanning anchors in a long session; the
+    // Agent's prose sits directly on the pane (#192).
+    const { user, assistant: agent } = await renderBothRoles();
+
+    expect(user.className).toContain("bg-card");
+    expect(agent.className).not.toContain("bg-");
+  });
+
+  it("lays both roles out full-width, with no bubbles or side alignment", async () => {
+    const { user, assistant: agent } = await renderBothRoles();
+
+    // A document flow, not a chat transcript: nothing is pushed to a side or
+    // capped to a bubble's width.
+    for (const el of [user, agent]) {
+      expect(el.className).not.toContain("self-end");
+      expect(el.className).not.toContain("self-start");
+      expect(el.className).not.toContain("max-w-[85%]");
+    }
+  });
+});
+
+describe("Conversation message anchors", () => {
+  it("anchors each message to its message id, not its position", async () => {
+    // The anchor is this layout's public contract (#192): Spotlight (#25)
+    // scrolls to an exact Message through it, so it must survive turns being
+    // dropped, reordered, or arriving live — which a positional index does not.
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-user",
+            role: "user",
+            content: [
+              { type: "tool_result", tool_use_id: "t1", content: "ok" },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+          {
+            id: "m-assistant",
+            role: "assistant",
+            content: "Sure, here goes.",
+            timestamp: "2024-01-01T00:01:00Z",
+          },
+        ]}
+      />
+    );
+
+    await screen.findByText("Sure, here goes.");
+    // The empty first turn is dropped, so the surviving message sits at index
+    // 0 — its anchor must still name the message, not that position.
+    const anchored = document.getElementById(messageAnchorId("m-assistant"));
+    expect(anchored).not.toBeNull();
+    expect(anchored!.textContent).toContain("Sure, here goes.");
+  });
+});
+
+describe("Conversation empty-turn suppression", () => {
+  it("drops a turn whose content renders nothing at all", async () => {
+    // A user turn carrying only tool results is a harness artifact, not
+    // something the reader wrote. It has nothing to show, so it contributes no
+    // header and no block — rather than an empty "You" box (#192).
+    const { container } = render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          assistant("Sure, running that now."),
+          {
+            id: "m-tool-result",
+            role: "user",
+            content: [
+              { type: "tool_result", tool_use_id: "t1", content: "ok" },
+            ],
+            timestamp: "2024-01-01T00:01:00Z",
+          },
+        ]}
+      />
+    );
+
+    await screen.findByText("Sure, running that now.");
+    expect(screen.queryByText("You")).toBeNull();
+    expect(container.querySelector('[data-role="user"]')).toBeNull();
+  });
+});
+
+describe("Conversation collapsed units", () => {
+  it("gives a tool-only turn its collapsed row but no header of its own", async () => {
+    // Tool calls nest under the message that prompted them (#192). The Agent
+    // records them as separate turns, but the reader sees one authored moment,
+    // so the run of tool calls must not repeat the author header.
+    render(
+      <ConversationView
+        chat={{ ...chat, agent: "claude-code" }}
+        messages={[
+          assistant("Let me check that file."),
+          {
+            id: "m-tool-use",
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "Read",
+                input: { file_path: "/tmp/a.ts" },
+              },
+            ],
+            timestamp: "2024-01-01T00:01:00Z",
+          },
+        ]}
+      />
+    );
+
+    // The collapsed row is still rendered — it is content, just not authored.
+    expect(await screen.findByText("Read: /tmp/a.ts")).not.toBeNull();
+    // ...but the header belongs to the text turn alone.
+    expect(screen.getAllByText("Claude Code")).toHaveLength(1);
+  });
+});
+
 describe("Conversation markdown typography", () => {
   it("renders markdown links that open in a new tab", async () => {
     renderMessages([assistant("See the [docs](https://example.com) page.")]);
@@ -185,6 +378,7 @@ describe("Conversation markdown typography", () => {
         chat={chat}
         messages={[
           {
+            id: "m-thinking",
             role: "assistant",
             content: [{ type: "thinking", thinking: "- first\n- second\n" }],
             timestamp: "2024-01-01T00:00:00Z",

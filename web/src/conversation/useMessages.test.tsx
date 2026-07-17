@@ -6,8 +6,15 @@ import type { ConversationStreamConnector } from "@/conversation/useConversation
 import { server } from "@/test/server";
 import type { Message } from "@/types";
 
+let nextMessageId = 0;
+
 function message(role: Message["role"], text: string): Message {
-  return { role, content: text, timestamp: "2024-01-01T00:00:00Z" };
+  return {
+    id: `m-${(nextMessageId += 1)}`,
+    role,
+    content: text,
+    timestamp: "2024-01-01T00:00:00Z",
+  };
 }
 
 // A connector double that lets the test push a `changed` event for given ids.
