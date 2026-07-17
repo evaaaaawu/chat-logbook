@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.21.0] - 2026-07-17
+
+Tags now work on a whole set of chats, not one at a time. Pick a few chats — or every chat matching your current filter — and add or remove tags across all of them in one go.
+
+### Added
+
+- Tag several chats at once. Select chats, click `Tag` in the batch bar, and the picker shows which tags the set already holds: all of them, some of them, or none. Click a row to add it everywhere or remove it everywhere, then `Done` applies the lot. An Undo toast lets you take it back.
+- Select every chat matching your current filter, not just the ones you've scrolled to. Start a selection and a `Select all N` link appears in the batch bar; `⌘A` (`Ctrl` elsewhere) does the same. A banner tells you the whole filtered set is selected, and `Esc` or `Clear selection` gets you out. Tag and Move to Trash then act on all of them.
+- `Add/Remove Tag` in the right-click menu of a chat, between `Rename` and `Move to Trash`. A checked row means the chat has that tag; clicking assigns or removes it right away, creating the tag if it's new.
+
+### Changed
+
+- `Move to Trash` for a single chat now lives only in the right-click menu — the hover button on each row is gone. The Trash view keeps its inline `Restore`.
+- The tag picker closes with a `Done` button in the bottom-right, or by pressing `Enter`.
+- `Tag` and `Move to Trash` in the batch bar read as buttons now, with colored hover, instead of blending into the bar.
+
+### Fixed
+
+- Tooltips in the batch bar no longer slide under the sidebar when the bar sits at the left edge of the panel.
+
 ## [0.20.0] - 2026-07-13
 
 Chat Logbook now looks like itself in your browser. Its own mark shows in the tab and the sidebar, with `Chat Logbook` as the tab title.

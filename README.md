@@ -46,7 +46,7 @@ The full problem statement, user stories, and direction live in the [PRD](docs/P
 
 - **A list that scales.** Loads on demand as you scroll and stays fast across tens of thousands of chats. Walk it with `↑` / `↓` — each row opens as you land on it.
 - **Sort that sticks.** By title, created, or updated time; the choice holds between visits, and Trash sorts on its own.
-- **Tags and filters.** Tag chats with colored chips, then narrow the list to a project or to tags — matching every tag you pick or any one.
+- **Tags and filters.** Tag chats with colored chips — one at a time, a set you pick, or every chat matching the current filter. Then narrow the list to a project or to tags, matching every tag you pick or any one.
 - **Custom titles.** Rename from the list or the header (`F2` / `↵`); clear a title to fall back to the first message.
 
 **Keeping your history**
