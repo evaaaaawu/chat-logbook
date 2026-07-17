@@ -60,6 +60,26 @@ interface ChatListProps {
    * batch bar appears once at least one Chat is marked.
    */
   selectedIds?: ReadonlySet<string>;
+  /**
+   * Whether a row renders as selected — the Selection's own predicate, so the
+   * list doesn't branch on select-all-matching (#164). Falls back to
+   * `selectedIds` membership when absent.
+   */
+  isSelected?: (id: string) => boolean;
+  /**
+   * The effective count of marked Chats: the plain Selection size, or the
+   * filtered total minus exclusions under select-all-matching (#164). Drives the
+   * batch bar's count and, with `filteredTotal`, the `Select all N` link.
+   */
+  selectedCount?: number;
+  /** True while select-all-matching is active (#164): the banner shows and the
+   * batch bar stays up even as exclusions shrink the visible Selection. */
+  allMatching?: boolean;
+  /** How many Chats match the current filter across the whole store (#131), for
+   * the `Select all N` escalation link and the banner total. */
+  filteredTotal?: number;
+  /** Enter select-all-matching — the batch bar's `Select all N` link (#164). */
+  onSelectAllMatching?: () => void;
   /** `Cmd`/`Ctrl`+click on a row: toggle that Chat's Selection membership. */
   onToggleSelect?: (id: string) => void;
   /**
@@ -182,6 +202,11 @@ export function ChatList({
   hasPrevious = false,
   onLoadPrevious,
   selectedIds,
+  isSelected,
+  selectedCount,
+  allMatching = false,
+  filteredTotal,
+  onSelectAllMatching,
   onToggleSelect,
   onRangeSelect,
   onClearSelection,
@@ -370,6 +395,24 @@ export function ChatList({
   // #161); the Trash view's batch Restore is a later issue.
   const selectionEnabled = !!onToggleSelect && !isTrash;
   const selectionCount = selectedIds?.size ?? 0;
+  // A row renders as selected via the Selection's own predicate (so select-all-
+  // matching stays out of the list's logic), falling back to plain membership.
+  const rowSelected = (id: string) =>
+    isSelected ? isSelected(id) : (selectedIds?.has(id) ?? false);
+  // The count the batch bar shows and the escalation link compares against: the
+  // effective Selection size (filtered total minus exclusions under select-all).
+  const barCount = selectedCount ?? selectionCount;
+  // The batch bar is up for a real multi-selection or whenever select-all-
+  // matching is active (exclusions can shrink the visible set below two).
+  const batchBarVisible =
+    selectionEnabled && (allMatching || selectionCount >= 2);
+  // The `Select all N` escalation appears once a Selection exists and there are
+  // more matching Chats than are currently marked (#164).
+  const canSelectAll =
+    !allMatching &&
+    !!onSelectAllMatching &&
+    filteredTotal !== undefined &&
+    barCount < filteredTotal;
 
   // A plain row-body click opens the Chat (collapsing the Selection to it); a
   // modifier click is a Selection gesture instead. Shift takes precedence so
@@ -398,7 +441,7 @@ export function ChatList({
   // multi-selection (≥ 2) so a lone Open Chat's Esc still falls through to the
   // app-level handler (Trash → main).
   useEffect(() => {
-    if (selectionCount < 2 || !onClearSelection) return;
+    if ((selectionCount < 2 && !allMatching) || !onClearSelection) return;
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
@@ -408,7 +451,7 @@ export function ChatList({
     // Capture so the Selection clears before App's global Esc (view switch).
     window.addEventListener("keydown", onEsc, true);
     return () => window.removeEventListener("keydown", onEsc, true);
-  }, [selectionCount, onClearSelection]);
+  }, [selectionCount, allMatching, onClearSelection]);
 
   return (
     <div data-testid="chat-list" className="relative flex h-full flex-col">
@@ -442,6 +485,25 @@ export function ChatList({
           </>
         )}
       </div>
+      {allMatching && (
+        <div
+          data-testid="select-all-banner"
+          className="flex shrink-0 items-center justify-center gap-2 border-b border-border bg-[#00222b] px-4 py-2 text-center text-xs text-muted-foreground"
+        >
+          <span>
+            {filteredTotal !== undefined && barCount < filteredTotal
+              ? `${barCount.toLocaleString()} chats matching this filter are selected`
+              : `All ${barCount.toLocaleString()} chats matching this filter are selected`}
+          </span>
+          <button
+            type="button"
+            onClick={() => onClearSelection?.()}
+            className="text-card-foreground transition-colors hover:text-foreground-bright"
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
       <div
         ref={scrollContainerRef}
         data-testid="chat-scroll"
@@ -487,7 +549,7 @@ export function ChatList({
             onClick={(e) => {
               if (
                 selectionEnabled &&
-                selectionCount >= 2 &&
+                (selectionCount >= 2 || allMatching) &&
                 e.target === e.currentTarget
               ) {
                 onClearSelection?.();
@@ -498,7 +560,7 @@ export function ChatList({
               const chat = chats[virtualItem.index];
               const isSelected = chat.id === selectedId;
               const isCursor = chat.id === cursorId;
-              const isInSelection = selectedIds?.has(chat.id) ?? false;
+              const isInSelection = rowSelected(chat.id);
               // Two-tier highlight: the primary (Open Chat, or the Cursor before
               // its debounced open lands) wears the strong accent — left primary
               // border + fill — exactly like a clicked row. A Selection member
@@ -684,14 +746,14 @@ export function ChatList({
           }
         />
       )}
-      {selectionEnabled && selectionCount >= 2 && (
+      {batchBarVisible && (
         <div
           data-testid="batch-bar"
           className="absolute inset-x-4 bottom-4 z-20 flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-lg"
         >
           <span className="flex items-center gap-3">
             <span className="font-medium tabular-nums text-accent-foreground">
-              {selectionCount} selected
+              {barCount.toLocaleString()} selected
             </span>
             {/* Batch Tag (#163) and Move to Trash join into one segmented
                 control — recessed chips sharing a single divider (#215) — set
@@ -720,14 +782,27 @@ export function ChatList({
               </span>
             </span>
           </span>
-          {/* Matches the filter panel's "Clear" — a plain primary text link. */}
-          <button
-            type="button"
-            onClick={() => onClearSelection?.()}
-            className="text-xs text-primary transition-colors hover:text-primary/80"
-          >
-            Clear
-          </button>
+          <span className="flex items-center gap-3">
+            {/* Escalate the Selection to every matching Chat (#164). Appears once
+                a Selection exists and more Chats match than are marked. */}
+            {canSelectAll && filteredTotal !== undefined && (
+              <button
+                type="button"
+                onClick={() => onSelectAllMatching?.()}
+                className="text-xs font-medium text-primary transition-colors hover:text-primary-hover"
+              >
+                Select all {filteredTotal.toLocaleString()}
+              </button>
+            )}
+            {/* Matches the filter panel's "Clear" — a plain primary text link. */}
+            <button
+              type="button"
+              onClick={() => onClearSelection?.()}
+              className="text-xs text-primary transition-colors hover:text-primary/80"
+            >
+              Clear
+            </button>
+          </span>
         </div>
       )}
     </div>
