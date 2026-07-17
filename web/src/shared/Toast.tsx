@@ -25,7 +25,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
           <button
             type="button"
             onClick={handleAction}
-            className="text-xs font-semibold uppercase tracking-wide text-primary transition-colors hover:text-primary/80"
+            className="text-xs font-semibold uppercase tracking-wide text-primary transition-colors hover:text-primary-hover"
           >
             {toast.actionLabel}
           </button>

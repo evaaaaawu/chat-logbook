@@ -461,7 +461,7 @@ export function ChatList({
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center gap-1 text-xs text-primary transition-colors hover:text-primary/80"
+              className="flex items-center gap-1 text-xs text-card-foreground transition-colors hover:text-foreground-bright"
             >
               <ArrowLeft size={14} aria-hidden="true" />
               Back
@@ -794,11 +794,13 @@ export function ChatList({
                 Select all {filteredTotal.toLocaleString()}
               </button>
             )}
-            {/* Matches the filter panel's "Clear" — a plain primary text link. */}
+            {/* Clear is the escape hatch (also on Esc), so it stays neutral and
+                lets the primary-toned escalation next to it carry the weight.
+                base1 over the card clears 4.5:1; muted-foreground would not. */}
             <button
               type="button"
               onClick={() => onClearSelection?.()}
-              className="text-xs text-primary transition-colors hover:text-primary/80"
+              className="text-xs text-card-foreground transition-colors hover:text-foreground-bright"
             >
               Clear
             </button>
