@@ -137,4 +137,60 @@ describe("TagRepository", () => {
     expect(second.listTags()).toEqual([tag]);
     expect(second.listTagsForChat("chat-1")).toEqual([tag]);
   });
+
+  it("adds a tag to every listed chat in one batch, idempotent on chats that already have it", () => {
+    const repo = createTagRepository({ dataDir });
+    const bug = repo.createTag("bug", "red");
+    // chat-1 already carries the tag; the batch must not duplicate it.
+    repo.assignTag("chat-1", bug.id);
+
+    repo.assignTagsBatch(["chat-1", "chat-2", "chat-3"], {
+      add: [bug.id],
+      remove: [],
+    });
+
+    expect(repo.listTagsForChat("chat-1")).toEqual([bug]);
+    expect(repo.listTagsForChat("chat-2")).toEqual([bug]);
+    expect(repo.listTagsForChat("chat-3")).toEqual([bug]);
+  });
+
+  it("removes a tag from every listed chat in one batch", () => {
+    const repo = createTagRepository({ dataDir });
+    const bug = repo.createTag("bug", "red");
+    repo.assignTag("chat-1", bug.id);
+    repo.assignTag("chat-2", bug.id);
+
+    repo.assignTagsBatch(["chat-1", "chat-2"], { add: [], remove: [bug.id] });
+
+    expect(repo.listTagsForChat("chat-1")).toEqual([]);
+    expect(repo.listTagsForChat("chat-2")).toEqual([]);
+  });
+
+  it("applies a mixed add/remove diff over the selection in one call", () => {
+    const repo = createTagRepository({ dataDir });
+    const bug = repo.createTag("bug", "red");
+    const idea = repo.createTag("idea", "violet");
+    repo.assignTag("chat-1", bug.id);
+    repo.assignTag("chat-2", bug.id);
+
+    // Swap bug → idea across both chats in a single transaction.
+    repo.assignTagsBatch(["chat-1", "chat-2"], {
+      add: [idea.id],
+      remove: [bug.id],
+    });
+
+    expect(repo.listTagsForChat("chat-1")).toEqual([idea]);
+    expect(repo.listTagsForChat("chat-2")).toEqual([idea]);
+  });
+
+  it("treats an empty chat set or empty diff as a no-op", () => {
+    const repo = createTagRepository({ dataDir });
+    const bug = repo.createTag("bug", "red");
+    repo.assignTag("chat-1", bug.id);
+
+    repo.assignTagsBatch([], { add: [bug.id], remove: [] });
+    repo.assignTagsBatch(["chat-1"], { add: [], remove: [] });
+
+    expect(repo.listTagsForChat("chat-1")).toEqual([bug]);
+  });
 });

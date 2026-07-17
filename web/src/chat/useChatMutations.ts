@@ -1,17 +1,22 @@
 import { useCallback } from "react";
 import type { Chat } from "@/types";
+import type { BatchTarget } from "@/chat/batchTarget";
 
 export interface ChatMutations {
   softDelete: (id: string) => Promise<void>;
   restore: (id: string) => Promise<void>;
   setTitle: (id: string, title: string) => Promise<void>;
-  // Batch Move to Trash / Restore over the Selection (#161). Each applies one
-  // optimistic pass over the id set — so the trashed rows leave (or return to)
-  // the list at once — then fires a single batch request (ADR-0021 explicit-ids
-  // branch). The optimistic pass is what removes the rows: the window refresh
-  // only grows, never drops, so a reload alone would keep the trashed rows.
-  softDeleteBatch: (ids: string[]) => Promise<void>;
-  restoreBatch: (ids: string[]) => Promise<void>;
+  // Batch Move to Trash / Restore over the Selection (#161, #164). The request
+  // targets either the checked ids or the live filter minus exclusions (ADR-
+  // 0021); `optimisticIds` are the loaded rows to flip locally so they leave (or
+  // return to) the list at once — the window refresh only grows, never drops, so
+  // a reload alone would keep the trashed rows. Under select-all-matching the
+  // server acts on the whole matching set; the optimism only covers the window.
+  softDeleteBatch: (
+    target: BatchTarget,
+    optimisticIds: string[]
+  ) => Promise<void>;
+  restoreBatch: (target: BatchTarget, optimisticIds: string[]) => Promise<void>;
 }
 
 // The shared shape both chat-list read hooks expose: the loaded chats plus the
@@ -34,8 +39,9 @@ export interface ChatListSource extends ChatMutations {
   // far-below page to stay bounded (a no-op on the full path / at the head).
   loadPrevious: () => void;
   // Re-read and re-sort the loaded chats (used after a tag assignment changes
-  // the chips a chat shows).
-  reload: () => Promise<void>;
+  // the chips a chat shows). Resolves with the ids that left the list, so a
+  // caller can reconcile derived state (e.g. prune a Selection) by exact id.
+  reload: () => Promise<string[]>;
 }
 
 // The chat write actions (trash / restore / rename), shared by both the
@@ -47,7 +53,7 @@ export interface ChatListSource extends ChatMutations {
 export function useChatMutations(
   setChats: (updater: (prev: Chat[]) => Chat[]) => void,
   bumpEpoch: () => void,
-  reload: () => Promise<void>
+  reload: () => Promise<string[]>
 ): ChatMutations {
   const softDelete = useCallback(
     async (id: string) => {
@@ -102,9 +108,9 @@ export function useChatMutations(
   );
 
   const softDeleteBatch = useCallback(
-    async (ids: string[]) => {
-      if (ids.length === 0) return;
-      const idSet = new Set(ids);
+    async (target: BatchTarget, optimisticIds: string[]) => {
+      if ("chatIds" in target && target.chatIds.length === 0) return;
+      const idSet = new Set(optimisticIds);
       const now = Date.now();
       setChats((prev) =>
         prev.map((c) =>
@@ -115,16 +121,16 @@ export function useChatMutations(
       await fetch("/api/chats/batch/trash", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ chatIds: ids }),
+        body: JSON.stringify(target),
       });
     },
     [setChats, bumpEpoch]
   );
 
   const restoreBatch = useCallback(
-    async (ids: string[]) => {
-      if (ids.length === 0) return;
-      const idSet = new Set(ids);
+    async (target: BatchTarget, optimisticIds: string[]) => {
+      if ("chatIds" in target && target.chatIds.length === 0) return;
+      const idSet = new Set(optimisticIds);
       setChats((prev) =>
         prev.map((c) =>
           idSet.has(c.id) ? { ...c, isDeleted: false, deletedAt: null } : c
@@ -134,7 +140,7 @@ export function useChatMutations(
       await fetch("/api/chats/batch/restore", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ chatIds: ids }),
+        body: JSON.stringify(target),
       });
     },
     [setChats, bumpEpoch]

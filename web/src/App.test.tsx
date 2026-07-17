@@ -11,7 +11,12 @@ import { http, HttpResponse } from "msw";
 import { describe, it, expect, vi } from "vitest";
 import App from "./App";
 import { server } from "./test/server";
-import { fakeChats } from "./test/handlers";
+import {
+  fakeChats,
+  fakeChatTags,
+  seedChatTags,
+  seedTags,
+} from "./test/handlers";
 
 describe("Chat list", () => {
   it("displays session titles fetched from the API", async () => {
@@ -645,14 +650,12 @@ describe("Soft delete from chat list", () => {
 
     await screen.findByText("Fix database migration");
 
-    // Find the session row by title, then its delete button
-    const row = screen.getByText("Fix database migration").closest("button");
-    if (!row) throw new Error("Chat row not found");
-
-    const deleteButton = within(row.parentElement!).getByRole("button", {
-      name: /move to trash: fix database migration/i,
-    });
-    await user.click(deleteButton);
+    // Deleting a single chat lives in the row's right-click menu (#215).
+    fireEvent.contextMenu(screen.getByText("Fix database migration"));
+    const menu = await screen.findByRole("menu");
+    await user.click(
+      within(menu).getByRole("menuitem", { name: /move to trash/i })
+    );
 
     // Session should disappear from main list
     await waitFor(() => {
@@ -682,12 +685,14 @@ describe("Auto-select next after delete", () => {
     const header = screen.getByTestId("conversation-header");
     expect(within(header).getByText("Build a login page")).toBeInTheDocument();
 
-    // Delete it via hover button
+    // Delete it via the row's right-click menu (#215). Scope to the list — the
+    // open chat's title also shows in the conversation header.
     const list = screen.getByTestId("chat-list");
-    const deleteBtn = within(list).getByRole("button", {
-      name: /move to trash: build a login page/i,
-    });
-    await user.click(deleteBtn);
+    fireEvent.contextMenu(within(list).getByText("Build a login page"));
+    const menu = await screen.findByRole("menu");
+    await user.click(
+      within(menu).getByRole("menuitem", { name: /move to trash/i })
+    );
 
     // Next session ("Refactor utils") should be auto-selected
     await waitFor(() => {
@@ -703,11 +708,13 @@ describe("Undo toast on delete", () => {
 
     await screen.findByText("Fix database migration");
 
+    // Deleting a single chat lives in the row's right-click menu (#215).
     const list = screen.getByTestId("chat-list");
-    const deleteBtn = within(list).getByRole("button", {
-      name: /move to trash: fix database migration/i,
-    });
-    await user.click(deleteBtn);
+    fireEvent.contextMenu(within(list).getByText("Fix database migration"));
+    const menu = await screen.findByRole("menu");
+    await user.click(
+      within(menu).getByRole("menuitem", { name: /move to trash/i })
+    );
 
     const toast = await screen.findByTestId("toast");
     expect(within(toast).getByText(/chat deleted/i)).toBeInTheDocument();
@@ -807,6 +814,263 @@ describe("Batch Move to Trash", () => {
       expect(
         within(list).getByText("Fix database migration")
       ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("Single-chat tag picker (#215 context menu)", () => {
+  it("closes on Enter (same as Done) without renaming the open chat", async () => {
+    const user = userEvent.setup();
+    seedTags([
+      { id: "tag-bug", name: "bug", color: "red" },
+      { id: "tag-idea", name: "idea", color: "violet" },
+    ]);
+    seedChatTags({ "chat-1": ["tag-bug"] });
+
+    render(<App />);
+    const list = screen.getByTestId("chat-list");
+    await within(list).findByText("Build a login page");
+    // Open chat-1 so it is the selected/open chat a stray Enter could rename.
+    await user.click(within(list).getByText("Build a login page"));
+
+    // Open the row's context menu and its single-chat tag picker.
+    const row = within(list)
+      .getByText("Build a login page")
+      .closest('[data-testid="chat-row"]') as HTMLElement;
+    fireEvent.contextMenu(row);
+    await user.click(
+      screen.getByRole("menuitem", { name: /Add\/Remove Tag/i })
+    );
+
+    const dialog = await screen.findByTestId("tag-picker-dialog");
+    // Move focus onto a non-input element (a tag row) — the case where Enter
+    // could otherwise leak past the input to the global rename shortcut, since
+    // the dialog is portaled to <body> and its stopPropagation can't reach the
+    // window-level listener.
+    await user.click(within(dialog).getByText("idea"));
+    await user.keyboard("{Enter}");
+
+    // Enter closes the picker (like clicking Done)...
+    await waitFor(() =>
+      expect(screen.queryByTestId("tag-picker-dialog")).not.toBeInTheDocument()
+    );
+    // ...and never opens the inline rename editor on the open chat's title.
+    expect(
+      screen.queryByRole("textbox", { name: /chat title/i })
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("Batch Tag (three-state, staged)", () => {
+  // Select the two default main-list chats via Cmd+click so the batch bar shows.
+  async function selectTwo() {
+    const list = screen.getByTestId("chat-list");
+    await within(list).findByText("Fix database migration");
+    fireEvent.click(
+      within(list).getByText("Build a login page").closest("button")!,
+      { metaKey: true }
+    );
+    fireEvent.click(
+      within(list).getByText("Fix database migration").closest("button")!,
+      { metaKey: true }
+    );
+    return within(await screen.findByTestId("batch-bar"));
+  }
+
+  function optionCheckboxState(tagId: string): string | null {
+    // Scope to the dialog — the filter panel also renders data-tag-id rows.
+    const dialog = screen.getByTestId("tag-picker-dialog");
+    const option = dialog.querySelector(`[data-tag-id="${tagId}"]`)!;
+    return option
+      .querySelector('[role="checkbox"]')!
+      .getAttribute("aria-checked");
+  }
+
+  it("opens the batch dialog with tri-state derived across the Selection", async () => {
+    const user = userEvent.setup();
+    seedTags([
+      { id: "tag-bug", name: "bug", color: "red" },
+      { id: "tag-idea", name: "idea", color: "violet" },
+    ]);
+    // bug on both selected chats → all; idea on one → some.
+    seedChatTags({
+      "chat-1": ["tag-bug", "tag-idea"],
+      "chat-2": ["tag-bug"],
+    });
+
+    render(<App />);
+    const bar = await selectTwo();
+    await user.click(bar.getByRole("button", { name: /Add\/Remove Tag/i }));
+
+    await screen.findByTestId("tag-picker-dialog");
+    await waitFor(() => {
+      expect(optionCheckboxState("tag-bug")).toBe("true");
+      expect(optionCheckboxState("tag-idea")).toBe("mixed");
+    });
+  });
+
+  it("stages a toggle and applies the diff on Done, updating the chips", async () => {
+    const user = userEvent.setup();
+    seedTags([
+      { id: "tag-bug", name: "bug", color: "red" },
+      { id: "tag-idea", name: "idea", color: "violet" },
+    ]);
+    // idea starts on chat-1 only; adding it to the Selection must reach chat-2.
+    seedChatTags({ "chat-1": ["tag-bug", "tag-idea"], "chat-2": ["tag-bug"] });
+
+    render(<App />);
+    const bar = await selectTwo();
+    await user.click(bar.getByRole("button", { name: /Add\/Remove Tag/i }));
+
+    const dialog = await screen.findByTestId("tag-picker-dialog");
+    await waitFor(() => expect(optionCheckboxState("tag-idea")).toBe("mixed"));
+    // Clicking the mixed row stages add-all; Done applies it in one call.
+    await user.click(within(dialog).getByText("idea"));
+    await user.click(within(dialog).getByTestId("batch-tag-done"));
+
+    // chat-2 (Fix database migration) now carries the idea chip after reload.
+    const list = screen.getByTestId("chat-list");
+    await waitFor(() => {
+      const row = within(list)
+        .getByText("Fix database migration")
+        .closest('[data-testid="chat-row"]') as HTMLElement;
+      expect(within(row).getByText("idea")).toBeInTheDocument();
+    });
+    expect(fakeChatTags["chat-2"]).toContain("tag-idea");
+  });
+
+  it("raises an Undo toast that replays the inverse diff", async () => {
+    const user = userEvent.setup();
+    seedTags([
+      { id: "tag-bug", name: "bug", color: "red" },
+      { id: "tag-idea", name: "idea", color: "violet" },
+    ]);
+    seedChatTags({ "chat-1": ["tag-bug", "tag-idea"], "chat-2": ["tag-bug"] });
+
+    render(<App />);
+    const bar = await selectTwo();
+    await user.click(bar.getByRole("button", { name: /Add\/Remove Tag/i }));
+    const dialog = await screen.findByTestId("tag-picker-dialog");
+    await waitFor(() => expect(optionCheckboxState("tag-idea")).toBe("mixed"));
+    await user.click(within(dialog).getByText("idea"));
+    await user.click(within(dialog).getByTestId("batch-tag-done"));
+
+    await waitFor(() => expect(fakeChatTags["chat-2"]).toContain("tag-idea"));
+
+    // Undo replays the inverse (remove what the batch added), dropping idea
+    // from chat-2. The toast shows the platform-aware hint (#179).
+    const toast = await screen.findByTestId("toast");
+    expect(within(toast).getByText("Ctrl+Z")).toBeInTheDocument();
+    await user.click(within(toast).getByRole("button", { name: /undo/i }));
+
+    await waitFor(() =>
+      expect(fakeChatTags["chat-2"]).not.toContain("tag-idea")
+    );
+  });
+
+  it("applies via Enter (same as Done) without renaming the open chat", async () => {
+    const user = userEvent.setup();
+    seedTags([
+      { id: "tag-bug", name: "bug", color: "red" },
+      { id: "tag-idea", name: "idea", color: "violet" },
+    ]);
+    seedChatTags({ "chat-1": ["tag-bug", "tag-idea"], "chat-2": ["tag-bug"] });
+
+    render(<App />);
+    const list = screen.getByTestId("chat-list");
+    await within(list).findByText("Build a login page");
+    // Open chat-1 (sets the primary/open chat), then extend the Selection to
+    // chat-2 — so a stray Enter could otherwise start renaming the open chat.
+    await user.click(within(list).getByText("Build a login page"));
+    fireEvent.click(
+      within(list).getByText("Fix database migration").closest("button")!,
+      { metaKey: true }
+    );
+    const bar = within(await screen.findByTestId("batch-bar"));
+    await user.click(bar.getByRole("button", { name: /Add\/Remove Tag/i }));
+
+    const dialog = await screen.findByTestId("tag-picker-dialog");
+    await waitFor(() => expect(optionCheckboxState("tag-idea")).toBe("mixed"));
+    await user.click(within(dialog).getByText("idea"));
+    // Enter applies the staged diff (like clicking Done) and must not leak to
+    // the global shortcut that renames the open chat.
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      const row = within(list)
+        .getByText("Fix database migration")
+        .closest('[data-testid="chat-row"]') as HTMLElement;
+      expect(within(row).getByText("idea")).toBeInTheDocument();
+    });
+    // No inline rename input was opened on the chat title.
+    expect(
+      screen.queryByRole("textbox", { name: /chat title/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("drops chats from the list when a batch removes the active Tag filter (via #176 reload)", async () => {
+    const user = userEvent.setup();
+    seedTags([{ id: "tag-bug", name: "bug", color: "red" }]);
+    // Both selectable chats carry bug; a third chat has none.
+    seedChatTags({ "chat-1": ["tag-bug"], "chat-2": ["tag-bug"] });
+
+    render(<App />);
+    const list = screen.getByTestId("chat-list");
+    await within(list).findByText("Build a login page");
+
+    // Activate the bug Tag filter — the list narrows to the two bug chats.
+    await user.click(screen.getByTestId("tag-filter-tag-bug"));
+    await waitFor(() => {
+      expect(
+        within(list).queryByText("Refactor utils")
+      ).not.toBeInTheDocument();
+    });
+
+    const bar = await selectTwo();
+    await user.click(bar.getByRole("button", { name: /Add\/Remove Tag/i }));
+    const dialog = await screen.findByTestId("tag-picker-dialog");
+    await waitFor(() => expect(optionCheckboxState("tag-bug")).toBe("true"));
+    // Remove bug from the whole Selection; under the bug filter the reconciling
+    // reload must drop them from the list (grow-only refresh would keep them).
+    await user.click(within(dialog).getByText("bug"));
+    await user.click(within(dialog).getByTestId("batch-tag-done"));
+
+    await waitFor(() => {
+      expect(
+        within(list).queryByText("Build a login page")
+      ).not.toBeInTheDocument();
+      expect(
+        within(list).queryByText("Fix database migration")
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("prunes the Selection to still-visible chats after a filtered removal", async () => {
+    const user = userEvent.setup();
+    seedTags([{ id: "tag-bug", name: "bug", color: "red" }]);
+    seedChatTags({ "chat-1": ["tag-bug"], "chat-2": ["tag-bug"] });
+
+    render(<App />);
+    const list = screen.getByTestId("chat-list");
+    await within(list).findByText("Build a login page");
+    await user.click(screen.getByTestId("tag-filter-tag-bug"));
+    await waitFor(() => {
+      expect(
+        within(list).queryByText("Refactor utils")
+      ).not.toBeInTheDocument();
+    });
+
+    const bar = await selectTwo();
+    await user.click(bar.getByRole("button", { name: /Add\/Remove Tag/i }));
+    const dialog = await screen.findByTestId("tag-picker-dialog");
+    await waitFor(() => expect(optionCheckboxState("tag-bug")).toBe("true"));
+    await user.click(within(dialog).getByText("bug"));
+    await user.click(within(dialog).getByTestId("batch-tag-done"));
+
+    // Both chats drop out under the bug filter; the Selection prunes to the
+    // ids still visible (none), so the dangling batch bar dismisses itself.
+    await waitFor(() => {
+      expect(screen.queryByTestId("batch-bar")).not.toBeInTheDocument();
     });
   });
 });
@@ -1985,5 +2249,197 @@ describe("Chat list pagination", () => {
         )
       ).toBe(true)
     );
+  });
+});
+
+describe("Select all matching (#164)", () => {
+  // Mark two chats so the batch bar appears with a Selection smaller than the
+  // filtered total — the precondition for the `Select all N` escalation.
+  async function markTwo() {
+    const list = screen.getByTestId("chat-list");
+    await within(list).findByText("Fix database migration");
+    fireEvent.click(
+      within(list).getByText("Build a login page").closest("button")!,
+      { metaKey: true }
+    );
+    fireEvent.click(
+      within(list).getByText("Fix database migration").closest("button")!,
+      { metaKey: true }
+    );
+    return within(await screen.findByTestId("batch-bar"));
+  }
+
+  it("escalates the Selection to every matching chat and says so", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const bar = await markTwo();
+    expect(bar.getByText("2 selected")).toBeInTheDocument();
+
+    await user.click(bar.getByRole("button", { name: /Select all 4/ }));
+
+    // The count now stands for the filtered total, and a banner states the mode.
+    expect(await screen.findByText("4 selected")).toBeInTheDocument();
+    const banner = await screen.findByTestId("select-all-banner");
+    expect(banner).toHaveTextContent("All 4 chats are selected");
+    // Nothing left to escalate to, so the link retires.
+    expect(
+      screen.queryByRole("button", { name: /Select all/ })
+    ).not.toBeInTheDocument();
+  });
+
+  it("sends the live filter as the batch target, not the marked ids", async () => {
+    const user = userEvent.setup();
+    const bodies: unknown[] = [];
+    server.use(
+      http.post("/api/chats/batch/trash", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ count: 4 });
+      })
+    );
+    render(<App />);
+
+    const bar = await markTwo();
+    await user.click(bar.getByRole("button", { name: /Select all 4/ }));
+    await screen.findByText("4 selected");
+    await user.click(
+      within(await screen.findByTestId("batch-bar")).getByRole("button", {
+        name: /Move to Trash/i,
+      })
+    );
+
+    // The ids are never sent — the server re-resolves the filter, so the write
+    // cannot drift from what the list matched (ADR-0021).
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toEqual({
+      filter: {
+        projects: [],
+        tags: [],
+        tagMode: "all",
+        includeTrashed: false,
+      },
+      excludeIds: [],
+    });
+  });
+
+  it("sends a chat unmarked after the escalation as an exclusion", async () => {
+    const user = userEvent.setup();
+    const bodies: unknown[] = [];
+    server.use(
+      http.post("/api/chats/batch/trash", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ count: 3 });
+      })
+    );
+    render(<App />);
+
+    const list = screen.getByTestId("chat-list");
+    const bar = await markTwo();
+    await user.click(bar.getByRole("button", { name: /Select all 4/ }));
+    await screen.findByText("4 selected");
+
+    // Cmd+click under select-all-matching excludes rather than deselects.
+    fireEvent.click(
+      within(list).getByText("Refactor utils").closest("button")!,
+      { metaKey: true }
+    );
+    expect(await screen.findByText("3 selected")).toBeInTheDocument();
+
+    await user.click(
+      within(await screen.findByTestId("batch-bar")).getByRole("button", {
+        name: /Move to Trash/i,
+      })
+    );
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ excludeIds: ["chat-3"] });
+  });
+
+  it("optimistically drops every loaded row the escalation covers", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const list = screen.getByTestId("chat-list");
+    const bar = await markTwo();
+    await user.click(bar.getByRole("button", { name: /Select all 4/ }));
+    await screen.findByText("4 selected");
+    await user.click(
+      within(await screen.findByTestId("batch-bar")).getByRole("button", {
+        name: /Move to Trash/i,
+      })
+    );
+
+    // "Refactor utils" was never Cmd+clicked, but the escalation covers it.
+    await waitFor(() => {
+      expect(
+        within(list).queryByText("Refactor utils")
+      ).not.toBeInTheDocument();
+      expect(
+        within(list).queryByText("Build a login page")
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("leaves the mode via Clear", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const bar = await markTwo();
+    await user.click(bar.getByRole("button", { name: /Select all 4/ }));
+    await screen.findByTestId("select-all-banner");
+
+    await user.click(
+      within(await screen.findByTestId("batch-bar")).getByRole("button", {
+        name: /^Clear$/,
+      })
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("select-all-banner")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("batch-bar")).not.toBeInTheDocument();
+    });
+  });
+
+  it("derives batch tag tri-state from server-side filtered counts", async () => {
+    const user = userEvent.setup();
+    seedTags([
+      { id: "tag-bug", name: "bug", color: "red" },
+      { id: "tag-idea", name: "idea", color: "violet" },
+    ]);
+    // bug on every main-list chat → all; idea on one → some.
+    seedChatTags({
+      "chat-1": ["tag-bug"],
+      "chat-2": ["tag-bug"],
+      "chat-3": ["tag-bug", "tag-idea"],
+      "chat-missing": ["tag-bug"],
+    });
+    render(<App />);
+
+    const bar = await markTwo();
+    await user.click(bar.getByRole("button", { name: /Select all 4/ }));
+    await screen.findByText("4 selected");
+
+    await user.click(
+      within(await screen.findByTestId("batch-bar")).getByRole("button", {
+        name: /Add\/Remove Tag/i,
+      })
+    );
+
+    // The client holds no ids here — the state comes from filtered-tag-counts.
+    const dialog = await screen.findByTestId("tag-picker-dialog");
+    await waitFor(() => {
+      expect(
+        dialog
+          .querySelector('[data-tag-id="tag-bug"]')!
+          .querySelector('[role="checkbox"]')!
+          .getAttribute("aria-checked")
+      ).toBe("true");
+    });
+    expect(
+      dialog
+        .querySelector('[data-tag-id="tag-idea"]')!
+        .querySelector('[role="checkbox"]')!
+        .getAttribute("aria-checked")
+    ).toBe("mixed");
   });
 });

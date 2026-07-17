@@ -6,10 +6,18 @@ import {
   useState,
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowLeft, Pencil, RotateCcw, Trash2 } from "lucide-react";
-import type { Chat } from "@/types";
+import {
+  ArrowLeft,
+  Pencil,
+  RotateCcw,
+  Tag as TagIcon,
+  Trash2,
+} from "lucide-react";
+import type { Chat, Tag } from "@/types";
 import { EditableTitle } from "@/metadata/EditableTitle";
 import { TagChipList } from "@/tags/TagChipList";
+import { TagPickerDialog } from "@/tags/TagPickerDialog";
+import type { ColorToken } from "@/tags/palette";
 import { useCursorNavigation } from "@/chat/useCursorNavigation";
 import { ActionTooltip } from "@/shared/ActionTooltip";
 
@@ -52,6 +60,26 @@ interface ChatListProps {
    * batch bar appears once at least one Chat is marked.
    */
   selectedIds?: ReadonlySet<string>;
+  /**
+   * Whether a row renders as selected — the Selection's own predicate, so the
+   * list doesn't branch on select-all-matching (#164). Falls back to
+   * `selectedIds` membership when absent.
+   */
+  isSelected?: (id: string) => boolean;
+  /**
+   * The effective count of marked Chats: the plain Selection size, or the
+   * filtered total minus exclusions under select-all-matching (#164). Drives the
+   * batch bar's count and, with `filteredTotal`, the `Select all N` link.
+   */
+  selectedCount?: number;
+  /** True while select-all-matching is active (#164): the banner shows and the
+   * batch bar stays up even as exclusions shrink the visible Selection. */
+  allMatching?: boolean;
+  /** How many Chats match the current filter across the whole store (#131), for
+   * the `Select all N` escalation link and the banner total. */
+  filteredTotal?: number;
+  /** Enter select-all-matching — the batch bar's `Select all N` link (#164). */
+  onSelectAllMatching?: () => void;
   /** `Cmd`/`Ctrl`+click on a row: toggle that Chat's Selection membership. */
   onToggleSelect?: (id: string) => void;
   /**
@@ -64,6 +92,23 @@ interface ChatListProps {
   onClearSelection?: () => void;
   /** The batch bar's Move to Trash: trash every Chat in the Selection. */
   onBatchTrash?: () => void;
+  /** The batch bar's Tag control (#163) — a self-contained button + dialog the
+   * caller wires to the Selection. Rendered alongside Move to Trash. */
+  batchTagButton?: React.ReactNode;
+  /**
+   * Single-chat Tag controls for the row context menu's Add/Remove Tag (#215).
+   * The full set must be present for the menu item to appear; each handler
+   * mirrors the single-chat flow ConversationView already uses. Assignment is
+   * read off the row's own `chat.tags`, so no extra fetch is needed.
+   */
+  allTags?: Tag[];
+  onAssignTag?: (chatId: string, tagId: string) => void;
+  onRemoveTag?: (chatId: string, tagId: string) => void;
+  onCreateTag?: (
+    chatId: string,
+    name: string,
+    color: ColorToken
+  ) => Promise<Tag | null>;
 }
 
 // Trigger the next page once the rendered window reaches within this many rows
@@ -111,7 +156,7 @@ function MenuItem({
 }: {
   icon: React.ReactNode;
   label: string;
-  hint: string;
+  hint?: string;
   destructive?: boolean;
   onClick: () => void;
 }) {
@@ -128,7 +173,11 @@ function MenuItem({
         {icon}
         {label}
       </span>
-      <span className="text-xs tabular-nums text-muted-foreground">{hint}</span>
+      {hint && (
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {hint}
+        </span>
+      )}
     </button>
   );
 }
@@ -153,10 +202,20 @@ export function ChatList({
   hasPrevious = false,
   onLoadPrevious,
   selectedIds,
+  isSelected,
+  selectedCount,
+  allMatching = false,
+  filteredTotal,
+  onSelectAllMatching,
   onToggleSelect,
   onRangeSelect,
   onClearSelection,
   onBatchTrash,
+  batchTagButton,
+  allTags,
+  onAssignTag,
+  onRemoveTag,
+  onCreateTag,
 }: ChatListProps) {
   const [internalEditingId, setInternalEditingId] = useState<string | null>(
     null
@@ -169,6 +228,19 @@ export function ChatList({
   };
   const isTrash = mode === "trash";
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  // The chat whose Add/Remove Tag picker is open (#215), driven from the row
+  // context menu. Present only in the main list, where tag controls are wired.
+  const [tagTargetId, setTagTargetId] = useState<string | null>(null);
+  const tagControls =
+    allTags && onAssignTag && onRemoveTag && onCreateTag
+      ? { allTags, onAssignTag, onRemoveTag, onCreateTag }
+      : undefined;
+  const tagTargetChat = tagTargetId
+    ? (chats.find((chat) => chat.id === tagTargetId) ?? null)
+    : null;
+  const tagTargetAssigned = new Set(
+    (tagTargetChat?.tags ?? []).map((tag) => tag.id)
+  );
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const prevSortSignature = useRef(sortSignature);
 
@@ -323,6 +395,24 @@ export function ChatList({
   // #161); the Trash view's batch Restore is a later issue.
   const selectionEnabled = !!onToggleSelect && !isTrash;
   const selectionCount = selectedIds?.size ?? 0;
+  // A row renders as selected via the Selection's own predicate (so select-all-
+  // matching stays out of the list's logic), falling back to plain membership.
+  const rowSelected = (id: string) =>
+    isSelected ? isSelected(id) : (selectedIds?.has(id) ?? false);
+  // The count the batch bar shows and the escalation link compares against: the
+  // effective Selection size (filtered total minus exclusions under select-all).
+  const barCount = selectedCount ?? selectionCount;
+  // The batch bar is up for a real multi-selection or whenever select-all-
+  // matching is active (exclusions can shrink the visible set below two).
+  const batchBarVisible =
+    selectionEnabled && (allMatching || selectionCount >= 2);
+  // The `Select all N` escalation appears once a Selection exists and there are
+  // more matching Chats than are currently marked (#164).
+  const canSelectAll =
+    !allMatching &&
+    !!onSelectAllMatching &&
+    filteredTotal !== undefined &&
+    barCount < filteredTotal;
 
   // A plain row-body click opens the Chat (collapsing the Selection to it); a
   // modifier click is a Selection gesture instead. Shift takes precedence so
@@ -351,7 +441,7 @@ export function ChatList({
   // multi-selection (≥ 2) so a lone Open Chat's Esc still falls through to the
   // app-level handler (Trash → main).
   useEffect(() => {
-    if (selectionCount < 2 || !onClearSelection) return;
+    if ((selectionCount < 2 && !allMatching) || !onClearSelection) return;
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
@@ -361,7 +451,7 @@ export function ChatList({
     // Capture so the Selection clears before App's global Esc (view switch).
     window.addEventListener("keydown", onEsc, true);
     return () => window.removeEventListener("keydown", onEsc, true);
-  }, [selectionCount, onClearSelection]);
+  }, [selectionCount, allMatching, onClearSelection]);
 
   return (
     <div data-testid="chat-list" className="relative flex h-full flex-col">
@@ -371,7 +461,7 @@ export function ChatList({
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center gap-1 text-xs text-primary transition-colors hover:text-primary/80"
+              className="flex items-center gap-1 text-xs text-card-foreground transition-colors hover:text-foreground-bright"
             >
               <ArrowLeft size={14} aria-hidden="true" />
               Back
@@ -395,6 +485,25 @@ export function ChatList({
           </>
         )}
       </div>
+      {allMatching && (
+        <div
+          data-testid="select-all-banner"
+          className="flex shrink-0 items-center justify-center gap-2 border-b border-border bg-[#00222b] px-4 py-2 text-center text-xs text-muted-foreground"
+        >
+          <span>
+            {filteredTotal !== undefined && barCount < filteredTotal
+              ? `${barCount.toLocaleString()} chats are selected`
+              : `All ${barCount.toLocaleString()} chats are selected`}
+          </span>
+          <button
+            type="button"
+            onClick={() => onClearSelection?.()}
+            className="text-card-foreground transition-colors hover:text-foreground-bright"
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
       <div
         ref={scrollContainerRef}
         data-testid="chat-scroll"
@@ -440,7 +549,7 @@ export function ChatList({
             onClick={(e) => {
               if (
                 selectionEnabled &&
-                selectionCount >= 2 &&
+                (selectionCount >= 2 || allMatching) &&
                 e.target === e.currentTarget
               ) {
                 onClearSelection?.();
@@ -451,7 +560,7 @@ export function ChatList({
               const chat = chats[virtualItem.index];
               const isSelected = chat.id === selectedId;
               const isCursor = chat.id === cursorId;
-              const isInSelection = selectedIds?.has(chat.id) ?? false;
+              const isInSelection = rowSelected(chat.id);
               // Two-tier highlight: the primary (Open Chat, or the Cursor before
               // its debounced open lands) wears the strong accent — left primary
               // border + fill — exactly like a clicked row. A Selection member
@@ -530,8 +639,11 @@ export function ChatList({
                       {rowContent}
                     </button>
                   )}
-                  <div className="absolute top-2 right-2 flex items-center gap-1">
-                    {isTrash && onRestore ? (
+                  {/* Trash keeps its inline hover Restore. The main list has no
+                      inline row action — deleting a single chat lives in the
+                      right-click menu's Move to Trash (#215). */}
+                  {isTrash && onRestore && (
+                    <div className="absolute top-2 right-2 flex items-center gap-1">
                       <span className="group/action relative">
                         <button
                           type="button"
@@ -543,22 +655,8 @@ export function ChatList({
                         </button>
                         <ActionTooltip label="Restore" hint="⌫" />
                       </span>
-                    ) : (
-                      !isEditing && (
-                        <span className="group/action relative">
-                          <button
-                            type="button"
-                            aria-label={`Move to trash: ${chat.title}`}
-                            onClick={() => onDelete(chat.id)}
-                            className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground opacity-0 shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive group-hover:opacity-100 focus:opacity-100"
-                          >
-                            <Trash2 size={14} aria-hidden="true" />
-                          </button>
-                          <ActionTooltip label="Move to Trash" hint="⌫" />
-                        </span>
-                      )
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -582,6 +680,16 @@ export function ChatList({
               }}
             />
           )}
+          {!isTrash && tagControls && (
+            <MenuItem
+              icon={<TagIcon size={14} aria-hidden="true" />}
+              label="Add/Remove Tag"
+              onClick={() => {
+                setTagTargetId(contextMenu.chatId);
+                setContextMenu(null);
+              }}
+            />
+          )}
           {isTrash && onRestore ? (
             <MenuItem
               icon={<RotateCcw size={14} aria-hidden="true" />}
@@ -593,50 +701,110 @@ export function ChatList({
               }}
             />
           ) : (
-            <MenuItem
-              icon={<Trash2 size={14} aria-hidden="true" />}
-              label="Move to Trash"
-              hint="⌫"
-              destructive
-              onClick={() => {
-                onDelete(contextMenu.chatId);
-                setContextMenu(null);
-              }}
-            />
+            <>
+              {(onRenameTitle || tagControls) && (
+                <div
+                  role="separator"
+                  className="my-1 h-px bg-border"
+                  aria-hidden="true"
+                />
+              )}
+              <MenuItem
+                icon={<Trash2 size={14} aria-hidden="true" />}
+                label="Move to Trash"
+                hint="⌫"
+                destructive
+                onClick={() => {
+                  onDelete(contextMenu.chatId);
+                  setContextMenu(null);
+                }}
+              />
+            </>
           )}
         </div>
       )}
-      {selectionEnabled && selectionCount >= 2 && (
+      {/* The row context menu's Add/Remove Tag opens the shared picker in
+          single-chat mode (#215): checked = the chat holds that tag, a click
+          assigns or removes it at once. Fully controlled — no in-flow trigger. */}
+      {tagControls && tagTargetId && (
+        <TagPickerDialog
+          title="Add or remove tags"
+          tags={tagControls.allTags}
+          open
+          onOpenChange={(next) => {
+            if (!next) setTagTargetId(null);
+          }}
+          renderTrigger={false}
+          stateFor={(tagId) => (tagTargetAssigned.has(tagId) ? "all" : "none")}
+          onToggle={(tagId) =>
+            tagTargetAssigned.has(tagId)
+              ? tagControls.onRemoveTag(tagTargetId, tagId)
+              : tagControls.onAssignTag(tagTargetId, tagId)
+          }
+          onCreate={(name, color) =>
+            tagControls.onCreateTag(tagTargetId, name, color)
+          }
+        />
+      )}
+      {batchBarVisible && (
         <div
           data-testid="batch-bar"
           className="absolute inset-x-4 bottom-4 z-20 flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-lg"
         >
           <span className="flex items-center gap-3">
             <span className="font-medium tabular-nums text-accent-foreground">
-              {selectionCount} selected
+              {barCount.toLocaleString()} selected
             </span>
-            {/* Same affordance as a row's Move to Trash: bordered icon button
-                with the destructive hover tone and a hover tooltip. */}
-            <span className="group/action relative">
-              <button
-                type="button"
-                aria-label="Move to Trash"
-                onClick={() => onBatchTrash?.()}
-                className="rounded-md border border-border/60 bg-card p-1.5 text-muted-foreground shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive"
-              >
-                <Trash2 size={14} aria-hidden="true" />
-              </button>
-              <ActionTooltip label="Move to Trash" />
+            {/* Batch Tag (#163) and Move to Trash join into one segmented
+                control — recessed chips sharing a single divider (#215) — set
+                apart from the count. Tooltips grow upward so they clear the
+                sidebar at the panel's left edge. The hovered half lifts to
+                paint its colored border over the shared seam. */}
+            <span className="flex items-center">
+              {batchTagButton && (
+                <span className="group/action relative hover:z-10">
+                  {batchTagButton}
+                  <ActionTooltip label="Add/Remove Tag" placement="top" />
+                </span>
+              )}
+              {/* Same destructive hover tone as a row's Move to Trash; the
+                  right half of the pair, overlapping the shared seam. */}
+              <span className="group/action relative -ml-px hover:z-10">
+                <button
+                  type="button"
+                  aria-label="Move to Trash"
+                  onClick={() => onBatchTrash?.()}
+                  className="rounded-r-md border border-white/10 bg-background/60 p-1.5 text-muted-foreground shadow-sm transition-all hover:border-[#a13836] hover:bg-[#3a1d23] hover:text-destructive"
+                >
+                  <Trash2 size={14} aria-hidden="true" />
+                </button>
+                <ActionTooltip label="Move to Trash" placement="top" />
+              </span>
             </span>
           </span>
-          {/* Matches the filter panel's "Clear" — a plain primary text link. */}
-          <button
-            type="button"
-            onClick={() => onClearSelection?.()}
-            className="text-xs text-primary transition-colors hover:text-primary/80"
-          >
-            Clear
-          </button>
+          <span className="flex items-center gap-3">
+            {/* Escalate the Selection to every matching Chat (#164). Appears once
+                a Selection exists and more Chats match than are marked. */}
+            {canSelectAll && filteredTotal !== undefined && (
+              <button
+                type="button"
+                onClick={() => onSelectAllMatching?.()}
+                className="text-xs font-medium text-primary transition-colors hover:text-primary-hover"
+              >
+                Select all {filteredTotal.toLocaleString()}
+              </button>
+            )}
+            {/* Clear is the escape hatch (also on Esc), so it stays neutral and
+                lets the primary-toned escalation next to it carry the weight.
+                base1 over the card clears 4.5:1; muted-foreground would not. */}
+            <button
+              type="button"
+              onClick={() => onClearSelection?.()}
+              className="text-xs text-card-foreground transition-colors hover:text-foreground-bright"
+            >
+              Clear
+            </button>
+          </span>
         </div>
       )}
     </div>

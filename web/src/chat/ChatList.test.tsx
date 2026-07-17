@@ -8,8 +8,27 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
-import type { Chat } from "@/types";
+import type { Chat, Tag } from "@/types";
 import { ChatList } from "./ChatList";
+
+const RED: Tag = { id: "tag_red", name: "red", color: "red" };
+const BLUE: Tag = { id: "tag_blue", name: "blue", color: "blue" };
+
+// A chat carrying its assigned tags (rows are hydrated with `tags`, so the
+// single-chat picker reads assignment straight off the row — see ChatList).
+function makeTaggedChat(index: number, tags: Tag[]): Chat {
+  return { ...makeChat(index), tags };
+}
+
+// The four handlers App wires into ChatList for the context-menu tag picker.
+function tagControls() {
+  return {
+    allTags: [RED, BLUE],
+    onAssignTag: vi.fn(),
+    onRemoveTag: vi.fn(),
+    onCreateTag: vi.fn(async () => null),
+  };
+}
 
 function makeChat(index: number): Chat {
   return {
@@ -303,6 +322,93 @@ describe("ChatList selection", () => {
     });
 
     expect(onClearSelection).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ChatList context menu tagging", () => {
+  it("offers Add/Remove Tag on a main-list row's context menu", async () => {
+    render(
+      <ChatList
+        chats={[makeTaggedChat(0, [])]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onDelete={vi.fn()}
+        {...tagControls()}
+      />
+    );
+
+    const row = (await screen.findAllByTestId("chat-row"))[0];
+    fireEvent.contextMenu(row);
+
+    const menu = screen.getByRole("menu");
+    expect(
+      within(menu).getByRole("menuitem", { name: /Add\/Remove Tag/i })
+    ).toBeInTheDocument();
+  });
+
+  it("opens the picker for that chat, pre-checking its assigned tags", async () => {
+    const user = userEvent.setup();
+    render(
+      <ChatList
+        chats={[makeTaggedChat(0, [RED])]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onDelete={vi.fn()}
+        {...tagControls()}
+      />
+    );
+
+    const row = (await screen.findAllByTestId("chat-row"))[0];
+    fireEvent.contextMenu(row);
+    await user.click(
+      screen.getByRole("menuitem", { name: /Add\/Remove Tag/i })
+    );
+
+    const dialog = await screen.findByTestId("tag-picker-dialog");
+    const optionFor = (name: string) =>
+      within(dialog)
+        .getByText(name)
+        .closest('[data-testid="add-tag-option"]') as HTMLElement;
+
+    // The chat holds `red` → checked; `blue` → unchecked.
+    expect(within(optionFor("red")).getByRole("checkbox")).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+    expect(within(optionFor("blue")).getByRole("checkbox")).toHaveAttribute(
+      "aria-checked",
+      "false"
+    );
+  });
+
+  it("toggles a tag: assigns an unheld one and removes a held one for that chat", async () => {
+    const user = userEvent.setup();
+    const controls = tagControls();
+    render(
+      <ChatList
+        chats={[makeTaggedChat(3, [RED])]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onDelete={vi.fn()}
+        {...controls}
+      />
+    );
+
+    const row = (await screen.findAllByTestId("chat-row"))[0];
+    fireEvent.contextMenu(row);
+    await user.click(
+      screen.getByRole("menuitem", { name: /Add\/Remove Tag/i })
+    );
+    const dialog = await screen.findByTestId("tag-picker-dialog");
+
+    // `blue` is not on the chat → clicking it assigns.
+    await user.click(within(dialog).getByText("blue"));
+    expect(controls.onAssignTag).toHaveBeenCalledWith("clog_3", "tag_blue");
+    expect(controls.onRemoveTag).not.toHaveBeenCalled();
+
+    // `red` is on the chat → clicking it removes.
+    await user.click(within(dialog).getByText("red"));
+    expect(controls.onRemoveTag).toHaveBeenCalledWith("clog_3", "tag_red");
   });
 });
 

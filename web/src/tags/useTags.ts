@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Tag } from "@/types";
 import type { ColorToken } from "@/tags/palette";
+import type { BatchTarget } from "@/chat/batchTarget";
 
 interface UseTagsOptions {
   // Called after an assignment changes which tags a chat carries, so the chat
@@ -18,6 +19,15 @@ export interface UseTagsResult {
   deleteTag: (id: string) => Promise<void>;
   assignTag: (chatId: string, tagId: string) => Promise<void>;
   removeTag: (chatId: string, tagId: string) => Promise<void>;
+  /** Apply a staged add/remove Tag diff across a batch target in one call — the
+   * checked ids (#163) or the live filter minus exclusions (#164, ADR-0021). */
+  assignTagsBatch: (
+    target: BatchTarget,
+    diff: { add: string[]; remove: string[] }
+  ) => Promise<void>;
+  /** Tags grouped across a set of Chats in one query, keyed by chat id — feeds
+   * the batch dialog's tri-state derivation (#163). */
+  fetchTagsByChat: (chatIds: string[]) => Promise<Record<string, Tag[]>>;
 }
 
 async function fetchTags(): Promise<Tag[]> {
@@ -122,6 +132,38 @@ export function useTags({ onAssignmentChange }: UseTagsOptions): UseTagsResult {
     [onAssignmentChange]
   );
 
+  const assignTagsBatch = useCallback(
+    async (target: BatchTarget, diff: { add: string[]; remove: string[] }) => {
+      // POST only: the batch caller (App) orchestrates the follow-up itself —
+      // the drop-reconcile reload (#176), facet counts, and pruning the
+      // Selection by the exact ids that left the list — so it needs the reload's
+      // dropped-id result, which the shared onAssignmentChange discards. The
+      // target doubles as the request body (explicit ids or filter branch).
+      await fetch("/api/chats/batch/tags", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...target, add: diff.add, remove: diff.remove }),
+      });
+    },
+    []
+  );
+
+  const fetchTagsByChat = useCallback(
+    async (chatIds: string[]): Promise<Record<string, Tag[]>> => {
+      const res = await fetch("/api/chats/batch/tags-by-chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chatIds }),
+      });
+      if (!res.ok) return {};
+      const { byChat } = (await res.json()) as {
+        byChat: Record<string, Tag[]>;
+      };
+      return byChat;
+    },
+    []
+  );
+
   return {
     tags,
     createTag,
@@ -130,5 +172,7 @@ export function useTags({ onAssignmentChange }: UseTagsOptions): UseTagsResult {
     deleteTag,
     assignTag,
     removeTag,
+    assignTagsBatch,
+    fetchTagsByChat,
   };
 }

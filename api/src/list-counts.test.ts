@@ -565,3 +565,45 @@ describe("ChatCountsQuery.queryFilteredTotal — cross-type and view", () => {
     countsQuery.close();
   });
 });
+
+describe("ChatCountsQuery.queryFilteredTagCounts — per-tag counts within a filter (#164)", () => {
+  it("counts each tag only over the chats matching the active filter", () => {
+    const archive = createArchiveRepository({ dataDir });
+    createMetadataRepository({ dataDir });
+    const tags = createTagRepository({ dataDir });
+
+    const w1 = seedChat(archive, {
+      sourceId: "w1",
+      firstSeenAt: new Date(1),
+      project: "work",
+    });
+    const w2 = seedChat(archive, {
+      sourceId: "w2",
+      firstSeenAt: new Date(2),
+      project: "work",
+    });
+    const h1 = seedChat(archive, {
+      sourceId: "h1",
+      firstSeenAt: new Date(3),
+      project: "home",
+    });
+
+    const bug = tags.createTag("bug", "red");
+    const idea = tags.createTag("idea", "violet");
+    // In "work": w1 holds bug+idea, w2 holds bug. In "home": h1 holds bug.
+    tags.assignTag(w1, bug.id);
+    tags.assignTag(w1, idea.id);
+    tags.assignTag(w2, bug.id);
+    tags.assignTag(h1, bug.id);
+
+    const countsQuery = createChatCountsQuery({ dataDir });
+    const counts = countsQuery.queryFilteredTagCounts({ projects: ["work"] });
+
+    const byTag = new Map(counts.map((t) => [t.tagId, t.count]));
+    // Only the two "work" chats count: bug on both, idea on one. h1 excluded.
+    expect(byTag.get(bug.id)).toBe(2);
+    expect(byTag.get(idea.id)).toBe(1);
+
+    countsQuery.close();
+  });
+});

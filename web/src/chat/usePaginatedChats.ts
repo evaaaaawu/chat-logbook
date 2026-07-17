@@ -327,15 +327,27 @@ export function usePaginatedChats(
   // boundaries and their cursors are preserved, so scroll anchoring and the
   // bounded window survive a reconciling reload.
   const reconcileHead = useCallback(
-    async (drop: boolean) => {
+    async (drop: boolean): Promise<string[]> => {
       const current = pagesRef.current;
-      if (current.length === 0 || current[0].fromCursor !== null) return;
+      if (current.length === 0 || current[0].fromCursor !== null) return [];
       const windowLen = current.reduce((n, p) => n + p.chats.length, 0);
       const limit = Math.min(Math.max(windowLen, pageSize), MAX_PAGE_LIMIT);
       const data = await fetchPage(
         pageUrl(sort, direction, limit, filter, trashedOnly)
       );
-      if (!data) return;
+      if (!data) return [];
+      // On a dropping reload, the loaded ids the refetch no longer returns are
+      // the rows leaving the list (server-authoritative filter removal, #176) —
+      // reported so callers can reconcile derived state (e.g. prune a Selection)
+      // by exact id, never by re-deriving the filter. Grow-only passes drop
+      // nothing.
+      const incomingIds = new Set(data.chats.map((c) => c.id));
+      const dropped = drop
+        ? current
+            .flatMap((p) => p.chats)
+            .map((c) => c.id)
+            .filter((id) => !incomingIds.has(id))
+        : [];
       setPages((prev) => {
         if (prev.length === 0) return prev;
         const incomingById = new Map(data.chats.map((c) => [c.id, c]));
@@ -360,13 +372,17 @@ export function usePaginatedChats(
         const [head, ...rest] = updated;
         return [{ ...head, chats: [...added, ...head.chats] }, ...rest];
       });
+      return dropped;
     },
     [sort, direction, pageSize, filter, trashedOnly]
   );
 
   // Background reconcile: grow-only, so ingestion surfaces without ever dropping
-  // a row under the viewport. Exposed so the interval and tests drive it.
-  const refresh = useCallback(() => reconcileHead(false), [reconcileHead]);
+  // a row under the viewport (it never reports dropped ids). Exposed so the
+  // interval and tests drive it.
+  const refresh = useCallback(async (): Promise<void> => {
+    await reconcileHead(false);
+  }, [reconcileHead]);
 
   // Primary trigger: reconcile the window head on each server-pushed change, so
   // ingestion shows up the instant it settles instead of on a fixed poll
@@ -389,10 +405,12 @@ export function usePaginatedChats(
   }, [enabled, refresh]);
 
   // A user-initiated reload: reconcile the window with drop (rows the refetch no
-  // longer returns leave the list), then re-anchor the order (#176).
-  const reload = useCallback(async () => {
-    await reconcileHead(true);
+  // longer returns leave the list), then re-anchor the order (#176). Returns the
+  // ids that left the list so the caller can reconcile derived state by id.
+  const reload = useCallback(async (): Promise<string[]> => {
+    const dropped = await reconcileHead(true);
     bumpEpoch();
+    return dropped;
   }, [reconcileHead, bumpEpoch]);
 
   // Bridge the mutations' flat-list optimistic updates onto the page model.
