@@ -50,6 +50,13 @@ export type ApiContentBlock =
   | { type: "tool_result"; tool_use_id: string; content: unknown };
 
 export interface MessageResponse {
+  /**
+   * The Normalized `message_id`, unique within a Chat. Served as the Message's
+   * stable handle: the conversation pane anchors a Message's DOM node to it
+   * (#192) so Spotlight can scroll to an exact Message (#25) without depending
+   * on a positional index.
+   */
+  id: string;
   role: "user" | "assistant";
   content: ApiContentBlock[];
   timestamp: string;
@@ -367,6 +374,7 @@ export function createChatReader({
     const rows = archive.read.listMessagesByChat(row.agent, row.sourceId);
 
     return rows.map((m) => ({
+      id: m.messageId,
       role: m.role as "user" | "assistant",
       content: (m.blocks as StoredBlock[]).map(toApiBlock),
       timestamp: m.ts.toISOString(),

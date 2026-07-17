@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { MAX_PAGE_LIMIT } from "@contract";
+import type { Message } from "@/types";
 
 type FakeChat = {
   id: string;
@@ -203,14 +204,19 @@ function resolveBatchIds(body: unknown): string[] {
   return [];
 }
 
-export const fakeMessages = {
+// Typed against the wire shape so a change to the served Message contract (a
+// new required field, say) fails here rather than silently letting the double
+// drift from the real API.
+export const fakeMessages: Record<string, Message[]> = {
   "chat-1": [
     {
+      id: "chat-1-m1",
       role: "user",
       content: "Help me build a login page",
       timestamp: "2024-01-01T00:00:02Z",
     },
     {
+      id: "chat-1-m2",
       role: "assistant",
       content: [{ type: "text", text: "Sure, I'll create a login page." }],
       timestamp: "2024-01-01T00:00:03Z",
@@ -218,11 +224,13 @@ export const fakeMessages = {
   ],
   "chat-2": [
     {
+      id: "chat-2-m1",
       role: "user",
       content: "Show me a **bold** example with a [link](https://example.com)",
       timestamp: "2024-01-01T00:00:04Z",
     },
     {
+      id: "chat-2-m2",
       role: "assistant",
       content: [
         {
@@ -235,6 +243,7 @@ export const fakeMessages = {
   ],
   "chat-deleted-1": [
     {
+      id: "chat-deleted-1-m1",
       role: "user",
       content: "Quick prototype experiment",
       timestamp: "2024-01-01T00:00:08Z",
@@ -242,11 +251,13 @@ export const fakeMessages = {
   ],
   "chat-3": [
     {
+      id: "chat-3-m1",
       role: "user",
       content: "Refactor the utils module",
       timestamp: "2024-01-01T00:00:06Z",
     },
     {
+      id: "chat-3-m2",
       role: "assistant",
       content: [
         {

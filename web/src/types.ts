@@ -32,6 +32,8 @@ export type ContentBlock =
   | { type: "tool_result"; tool_use_id: string; content: unknown };
 
 export interface Message {
+  /** The Normalized `message_id`, unique within a Chat — the Message's stable handle. */
+  id: string;
   role: "user" | "assistant";
   content: string | ContentBlock[];
   timestamp: string;

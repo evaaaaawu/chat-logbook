@@ -16,7 +16,10 @@ export function CollapsibleToolCall({ block }: CollapsibleToolCallProps) {
       <button
         type="button"
         onClick={() => setIsExpanded((prev) => !prev)}
-        className="inline-block cursor-pointer rounded bg-card px-2 py-1 font-mono text-xs text-chart-3 hover:bg-card/80"
+        // text-left overrides the browser's default centring for buttons: a
+        // long command or path wraps to a second line, and centred code is
+        // unreadable.
+        className="inline-block cursor-pointer rounded bg-card px-2 py-1 text-left font-mono text-xs text-chart-3 hover:bg-card/80"
       >
         {generateToolSummary(block)}
       </button>
