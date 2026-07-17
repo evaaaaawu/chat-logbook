@@ -208,11 +208,60 @@ export function createApp({
     return c.json({ total });
   });
 
-  // Resolve a batch request body's `{ chatIds: [...] }` into the internal ids
-  // the metadata write flips (#161, ADR-0021 explicit-ids branch). Unknown or
-  // malformed ids are dropped rather than failing the batch, so an id already
-  // purged from the Archive can't 500 the whole action. Returns null when the
-  // body is not a `chatIds` string array at all.
+  // Per-Tag counts scoped to the active filter (#164), so the batch dialog's
+  // tri-state under select-all-matching is accurate even when a Project/Tag
+  // filter narrows the set. Same query parsing as `/list-total`; the client
+  // subtracts the excluded Chats' own Tags locally (ADR-0021). Registered before
+  // `/api/chats/:id` so the literal segment is not captured as an id.
+  app.get("/api/chats/filtered-tag-counts", (c) => {
+    if (!countsQuery) {
+      return c.json({ error: "Counts are not available" }, 501);
+    }
+    const includeTrashed = c.req.query("includeTrashed") === "true";
+    const projects = c.req.queries("project");
+    const tagsParam = c.req.query("tags");
+    const tags = tagsParam === undefined ? undefined : tagsParam.split(",");
+    const tagMode = c.req.query("tagMode") ?? "all";
+    if (tagMode !== "all" && tagMode !== "any") {
+      return c.json({ error: "Invalid tagMode" }, 400);
+    }
+    return c.json({
+      tags: countsQuery.queryFilteredTagCounts({
+        includeTrashed,
+        projects,
+        tags,
+        tagMode,
+      }),
+    });
+  });
+
+  // Map a list of wire ids to the internal ids the metadata write flips,
+  // dropping any that no longer resolve (e.g. purged from the Archive) so one
+  // stale id can't 500 the whole batch.
+  function toInternalIds(wireIds: unknown): string[] {
+    if (!Array.isArray(wireIds)) return [];
+    const internalIds: string[] = [];
+    for (const wireId of wireIds) {
+      if (typeof wireId !== "string") continue;
+      const row = reader.findChat(wireId);
+      if (row) internalIds.push(row.id);
+    }
+    return internalIds;
+  }
+
+  function toStringArray(v: unknown): string[] | undefined {
+    return Array.isArray(v)
+      ? v.filter((x): x is string => typeof x === "string")
+      : undefined;
+  }
+
+  // Resolve a batch request body to the internal ids the metadata write flips
+  // (ADR-0021). The body is one of two branches: `{ chatIds: [...] }` — the
+  // explicit set the user checked (#161) — or `{ filter, excludeIds }` —
+  // select-all-matching, every Chat matching the active filter minus a small
+  // exclusion set, resolved server-side through the same `buildFilterClauses`
+  // predicate the list uses so no id list is shipped over the wire (#164).
+  // Returns null when the body is neither branch.
   async function resolveBatchIds(c: {
     req: { json: () => Promise<unknown> };
   }): Promise<string[] | null> {
@@ -223,14 +272,27 @@ export function createApp({
       return null;
     }
     const chatIds = (body as { chatIds?: unknown })?.chatIds;
-    if (!Array.isArray(chatIds)) return null;
-    const internalIds: string[] = [];
-    for (const wireId of chatIds) {
-      if (typeof wireId !== "string") continue;
-      const row = reader.findChat(wireId);
-      if (row) internalIds.push(row.id);
+    if (Array.isArray(chatIds)) return toInternalIds(chatIds);
+
+    const filter = (body as { filter?: unknown })?.filter;
+    if (filter && typeof filter === "object" && countsQuery) {
+      const f = filter as {
+        projects?: unknown;
+        tags?: unknown;
+        tagMode?: unknown;
+        includeTrashed?: unknown;
+      };
+      return countsQuery.queryFilteredIds({
+        projects: toStringArray(f.projects),
+        tags: toStringArray(f.tags),
+        tagMode: f.tagMode === "any" ? "any" : "all",
+        includeTrashed: f.includeTrashed === true,
+        excludeIds: toInternalIds(
+          (body as { excludeIds?: unknown })?.excludeIds
+        ),
+      });
     }
-    return internalIds;
+    return null;
   }
 
   // Registered before `/api/chats/:id/restore` so the literal `batch` segment is

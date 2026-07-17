@@ -141,6 +141,68 @@ function tagsForChat(chatId: string): FakeTag[] {
     .filter((t): t is FakeTag => t !== undefined);
 }
 
+type FakeFilter = {
+  projects?: string[];
+  tags?: string[];
+  tagMode?: "all" | "any";
+  includeTrashed?: boolean;
+};
+
+/**
+ * Mirrors the server's `buildFilterClauses` (ADR-0021) so a filter-targeted
+ * batch resolves to the same set the list shows. Kept in one place because the
+ * batch write and the filtered tag counts must agree with each other.
+ */
+function chatsMatchingFilter(filter: FakeFilter): FakeChat[] {
+  const inView = filter.includeTrashed
+    ? fakeChats.filter((c) => c.isDeleted)
+    : fakeChats.filter((c) => !c.isDeleted);
+  return inView.filter((c) => {
+    const projects = filter.projects ?? [];
+    if (projects.length > 0 && !projects.includes(c.project)) return false;
+    const tags = filter.tags;
+    if (tags && tags.length > 0) {
+      const ids = new Set(fakeChatTags[c.id] ?? []);
+      const wantUntagged = tags.includes("");
+      const real = tags.filter((t) => t !== "");
+      if (filter.tagMode === "any") {
+        const hitsUntagged = wantUntagged && ids.size === 0;
+        if (!hitsUntagged && !real.some((t) => ids.has(t))) return false;
+      } else {
+        if (wantUntagged && ids.size > 0) return false;
+        if (!real.every((t) => ids.has(t))) return false;
+      }
+    }
+    return true;
+  });
+}
+
+/**
+ * The ids a batch targets: the explicit branch as sent (#161), or every Chat
+ * matching the filter minus the exclusions the user unchecked (#164).
+ */
+function resolveBatchIds(body: unknown): string[] {
+  const b = body as {
+    chatIds?: unknown;
+    filter?: FakeFilter;
+    excludeIds?: unknown;
+  };
+  if (Array.isArray(b?.chatIds)) {
+    return b.chatIds.filter((x): x is string => typeof x === "string");
+  }
+  if (b?.filter && typeof b.filter === "object") {
+    const excluded = new Set(
+      Array.isArray(b.excludeIds)
+        ? b.excludeIds.filter((x): x is string => typeof x === "string")
+        : []
+    );
+    return chatsMatchingFilter(b.filter)
+      .map((c) => c.id)
+      .filter((id) => !excluded.has(id));
+  }
+  return [];
+}
+
 export const fakeMessages = {
   "chat-1": [
     {
@@ -403,6 +465,27 @@ export const handlers = [
 
     return HttpResponse.json({ total });
   }),
+  // Per-Tag counts over the filtered set (#164), the tri-state source under
+  // select-all-matching where the client never holds the ids.
+  http.get("/api/chats/filtered-tag-counts", ({ request }) => {
+    const url = new URL(request.url);
+    const tagsParam = url.searchParams.get("tags");
+    const matching = chatsMatchingFilter({
+      includeTrashed: url.searchParams.get("includeTrashed") === "true",
+      projects: url.searchParams.getAll("project"),
+      tags: tagsParam === null ? undefined : tagsParam.split(","),
+      tagMode: url.searchParams.get("tagMode") === "any" ? "any" : "all",
+    });
+    const counts = new Map<string, number>();
+    for (const chat of matching) {
+      for (const tagId of fakeChatTags[chat.id] ?? []) {
+        counts.set(tagId, (counts.get(tagId) ?? 0) + 1);
+      }
+    }
+    return HttpResponse.json({
+      tags: [...counts].map(([tagId, count]) => ({ tagId, count })),
+    });
+  }),
   http.patch("/api/chats/:id/title", async ({ params, request }) => {
     const id = params.id as string;
     const chat = fakeChats.find((c) => c.id === id);
@@ -430,8 +513,7 @@ export const handlers = [
   }),
   // Registered before `/api/chats/:id` so `batch` is not captured as an id.
   http.post("/api/chats/batch/trash", async ({ request }) => {
-    const body = (await request.json()) as { chatIds?: unknown };
-    const chatIds = Array.isArray(body?.chatIds) ? body.chatIds : [];
+    const chatIds = resolveBatchIds(await request.json());
     let count = 0;
     for (const id of chatIds) {
       const chat = fakeChats.find((c) => c.id === id);
@@ -443,8 +525,7 @@ export const handlers = [
     return HttpResponse.json({ count });
   }),
   http.post("/api/chats/batch/restore", async ({ request }) => {
-    const body = (await request.json()) as { chatIds?: unknown };
-    const chatIds = Array.isArray(body?.chatIds) ? body.chatIds : [];
+    const chatIds = resolveBatchIds(await request.json());
     let count = 0;
     for (const id of chatIds) {
       const chat = fakeChats.find((c) => c.id === id);
@@ -462,11 +543,12 @@ export const handlers = [
   http.post("/api/chats/batch/tags", async ({ request }) => {
     const body = (await request.json()) as {
       chatIds?: unknown;
+      filter?: unknown;
       add?: unknown;
       remove?: unknown;
     };
-    if (!Array.isArray(body?.chatIds)) {
-      return HttpResponse.json({ error: "Invalid chatIds" }, { status: 400 });
+    if (!Array.isArray(body?.chatIds) && !body?.filter) {
+      return HttpResponse.json({ error: "Invalid target" }, { status: 400 });
     }
     const asIds = (v: unknown): string[] =>
       Array.isArray(v)
@@ -475,8 +557,7 @@ export const handlers = [
     const add = asIds(body.add);
     const remove = asIds(body.remove);
     let count = 0;
-    for (const id of body.chatIds) {
-      if (typeof id !== "string") continue;
+    for (const id of resolveBatchIds(body)) {
       if (!fakeChats.some((c) => c.id === id)) continue;
       count++;
       const removeSet = new Set(remove);

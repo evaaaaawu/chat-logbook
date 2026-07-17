@@ -2,8 +2,10 @@ import { useState } from "react";
 import { Tag as TagIcon } from "lucide-react";
 import type { Tag } from "@/types";
 import type { ColorToken } from "@/tags/palette";
+import type { BatchTarget } from "@/chat/batchTarget";
 import { TagPickerDialog, type TagState } from "@/tags/TagPickerDialog";
 import { deriveBatchTagStates } from "@/tags/batchTagState";
+import { selectAllTagStates } from "@/tags/selectAllTagState";
 import {
   batchTagDiff,
   displayStateFor,
@@ -16,8 +18,18 @@ interface BatchTagButtonProps {
   selectedIds: ReadonlySet<string>;
   allTags: Tag[];
   fetchTagsByChat: (chatIds: string[]) => Promise<Record<string, Tag[]>>;
+  // Select-all-matching (#164): when active, the tri-state is derived from
+  // server-computed filtered per-Tag counts minus the excluded Chats' Tags,
+  // and the batch applies over the filter branch rather than the checked ids.
+  allMatching: boolean;
+  selectedCount: number;
+  batchTarget: BatchTarget;
+  fetchFilteredTagCounts: () => Promise<
+    Array<{ tagId: string; count: number }>
+  >;
+  excludedChatTags: string[][];
   onApply: (
-    chatIds: string[],
+    target: BatchTarget,
     diff: { add: string[]; remove: string[] }
   ) => void;
   onCreate: (name: string, color: ColorToken) => Promise<Tag | null>;
@@ -33,6 +45,11 @@ export function BatchTagButton({
   selectedIds,
   allTags,
   fetchTagsByChat,
+  allMatching,
+  selectedCount,
+  batchTarget,
+  fetchFilteredTagCounts,
+  excludedChatTags,
   onApply,
   onCreate,
 }: BatchTagButtonProps) {
@@ -44,9 +61,25 @@ export function BatchTagButton({
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
     if (!next) return;
-    // Fresh staging each open; pull the tri-state from one grouped query.
+    // Fresh staging each open.
     setStaged(new Map());
     setInitialStates(EMPTY_STATES);
+    if (allMatching) {
+      // Under select-all the Selection can't be enumerated (ADR-0021); derive
+      // each Tag's tri-state from the filtered per-Tag counts, subtracting the
+      // excluded Chats' own Tags.
+      void fetchFilteredTagCounts().then((counts) => {
+        setInitialStates(
+          selectAllTagStates({
+            selectedCount,
+            tagCounts: new Map(counts.map((c) => [c.tagId, c.count])),
+            excludedTags: excludedChatTags,
+          })
+        );
+      });
+      return;
+    }
+    // Explicit ids: pull the tri-state from one grouped query.
     const ids = [...selectedIds];
     void fetchTagsByChat(ids).then((byChat) => {
       setInitialStates(deriveBatchTagStates(ids.length, byChat));
@@ -74,14 +107,19 @@ export function BatchTagButton({
   };
 
   // The dialog closes itself on `Done` (via its imperative `close()`); this
-  // onDone side effect only applies the staged diff in one batch call.
+  // onDone side effect only applies the staged diff in one batch call over the
+  // current target (explicit ids or the filter branch).
   const handleDone = () => {
-    onApply([...selectedIds], batchTagDiff(staged, initialStates));
+    onApply(batchTarget, batchTagDiff(staged, initialStates));
   };
 
   return (
     <TagPickerDialog
-      title="Tag selected chats"
+      title={
+        allMatching
+          ? `Tag ${selectedCount.toLocaleString()} chats`
+          : "Tag selected chats"
+      }
       tags={allTags}
       open={open}
       onOpenChange={handleOpenChange}

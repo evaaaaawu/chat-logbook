@@ -22,7 +22,7 @@ export function FilterSummary({ activeCount, onClear }: FilterSummaryProps) {
         type="button"
         data-testid="filters-clear"
         onClick={onClear}
-        className="text-primary transition-colors hover:text-primary/80"
+        className="text-card-foreground transition-colors hover:text-foreground-bright"
       >
         Clear
       </button>

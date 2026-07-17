@@ -2251,3 +2251,195 @@ describe("Chat list pagination", () => {
     );
   });
 });
+
+describe("Select all matching (#164)", () => {
+  // Mark two chats so the batch bar appears with a Selection smaller than the
+  // filtered total — the precondition for the `Select all N` escalation.
+  async function markTwo() {
+    const list = screen.getByTestId("chat-list");
+    await within(list).findByText("Fix database migration");
+    fireEvent.click(
+      within(list).getByText("Build a login page").closest("button")!,
+      { metaKey: true }
+    );
+    fireEvent.click(
+      within(list).getByText("Fix database migration").closest("button")!,
+      { metaKey: true }
+    );
+    return within(await screen.findByTestId("batch-bar"));
+  }
+
+  it("escalates the Selection to every matching chat and says so", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const bar = await markTwo();
+    expect(bar.getByText("2 selected")).toBeInTheDocument();
+
+    await user.click(bar.getByRole("button", { name: /Select all 4/ }));
+
+    // The count now stands for the filtered total, and a banner states the mode.
+    expect(await screen.findByText("4 selected")).toBeInTheDocument();
+    const banner = await screen.findByTestId("select-all-banner");
+    expect(banner).toHaveTextContent("All 4 chats are selected");
+    // Nothing left to escalate to, so the link retires.
+    expect(
+      screen.queryByRole("button", { name: /Select all/ })
+    ).not.toBeInTheDocument();
+  });
+
+  it("sends the live filter as the batch target, not the marked ids", async () => {
+    const user = userEvent.setup();
+    const bodies: unknown[] = [];
+    server.use(
+      http.post("/api/chats/batch/trash", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ count: 4 });
+      })
+    );
+    render(<App />);
+
+    const bar = await markTwo();
+    await user.click(bar.getByRole("button", { name: /Select all 4/ }));
+    await screen.findByText("4 selected");
+    await user.click(
+      within(await screen.findByTestId("batch-bar")).getByRole("button", {
+        name: /Move to Trash/i,
+      })
+    );
+
+    // The ids are never sent — the server re-resolves the filter, so the write
+    // cannot drift from what the list matched (ADR-0021).
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toEqual({
+      filter: {
+        projects: [],
+        tags: [],
+        tagMode: "all",
+        includeTrashed: false,
+      },
+      excludeIds: [],
+    });
+  });
+
+  it("sends a chat unmarked after the escalation as an exclusion", async () => {
+    const user = userEvent.setup();
+    const bodies: unknown[] = [];
+    server.use(
+      http.post("/api/chats/batch/trash", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ count: 3 });
+      })
+    );
+    render(<App />);
+
+    const list = screen.getByTestId("chat-list");
+    const bar = await markTwo();
+    await user.click(bar.getByRole("button", { name: /Select all 4/ }));
+    await screen.findByText("4 selected");
+
+    // Cmd+click under select-all-matching excludes rather than deselects.
+    fireEvent.click(
+      within(list).getByText("Refactor utils").closest("button")!,
+      { metaKey: true }
+    );
+    expect(await screen.findByText("3 selected")).toBeInTheDocument();
+
+    await user.click(
+      within(await screen.findByTestId("batch-bar")).getByRole("button", {
+        name: /Move to Trash/i,
+      })
+    );
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ excludeIds: ["chat-3"] });
+  });
+
+  it("optimistically drops every loaded row the escalation covers", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const list = screen.getByTestId("chat-list");
+    const bar = await markTwo();
+    await user.click(bar.getByRole("button", { name: /Select all 4/ }));
+    await screen.findByText("4 selected");
+    await user.click(
+      within(await screen.findByTestId("batch-bar")).getByRole("button", {
+        name: /Move to Trash/i,
+      })
+    );
+
+    // "Refactor utils" was never Cmd+clicked, but the escalation covers it.
+    await waitFor(() => {
+      expect(
+        within(list).queryByText("Refactor utils")
+      ).not.toBeInTheDocument();
+      expect(
+        within(list).queryByText("Build a login page")
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("leaves the mode via Clear", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const bar = await markTwo();
+    await user.click(bar.getByRole("button", { name: /Select all 4/ }));
+    await screen.findByTestId("select-all-banner");
+
+    await user.click(
+      within(await screen.findByTestId("batch-bar")).getByRole("button", {
+        name: /^Clear$/,
+      })
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("select-all-banner")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("batch-bar")).not.toBeInTheDocument();
+    });
+  });
+
+  it("derives batch tag tri-state from server-side filtered counts", async () => {
+    const user = userEvent.setup();
+    seedTags([
+      { id: "tag-bug", name: "bug", color: "red" },
+      { id: "tag-idea", name: "idea", color: "violet" },
+    ]);
+    // bug on every main-list chat → all; idea on one → some.
+    seedChatTags({
+      "chat-1": ["tag-bug"],
+      "chat-2": ["tag-bug"],
+      "chat-3": ["tag-bug", "tag-idea"],
+      "chat-missing": ["tag-bug"],
+    });
+    render(<App />);
+
+    const bar = await markTwo();
+    await user.click(bar.getByRole("button", { name: /Select all 4/ }));
+    await screen.findByText("4 selected");
+
+    await user.click(
+      within(await screen.findByTestId("batch-bar")).getByRole("button", {
+        name: /Add\/Remove Tag/i,
+      })
+    );
+
+    // The client holds no ids here — the state comes from filtered-tag-counts.
+    const dialog = await screen.findByTestId("tag-picker-dialog");
+    await waitFor(() => {
+      expect(
+        dialog
+          .querySelector('[data-tag-id="tag-bug"]')!
+          .querySelector('[role="checkbox"]')!
+          .getAttribute("aria-checked")
+      ).toBe("true");
+    });
+    expect(
+      dialog
+        .querySelector('[data-tag-id="tag-idea"]')!
+        .querySelector('[role="checkbox"]')!
+        .getAttribute("aria-checked")
+    ).toBe("mixed");
+  });
+});

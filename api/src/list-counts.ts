@@ -62,6 +62,34 @@ export interface ChatCountsQuery {
      */
     tagMode?: TagMode;
   }): number;
+  /**
+   * Resolve the filter branch of a batch action (#164, ADR-0021) to the set of
+   * internal Chat ids it targets: every Chat matching the active view + filter,
+   * minus `excludeIds` (the small set the user unchecked after selecting all).
+   * Reuses the same `buildFilterClauses` predicate as the list, so the batch
+   * write can never disagree with what the list showed as matching. `excludeIds`
+   * are internal Chat ids, resolved from the wire ids by the caller.
+   */
+  queryFilteredIds(opts: {
+    includeTrashed?: boolean;
+    projects?: string[];
+    tags?: string[];
+    tagMode?: TagMode;
+    excludeIds?: string[];
+  }): string[];
+  /**
+   * Per-Tag counts over the Chats matching the active view + filter (#164) —
+   * unlike `queryCounts`, which counts each Tag over the whole view, this scopes
+   * the count to the same `buildFilterClauses` set the filtered list shows. It
+   * feeds the batch dialog's tri-state under select-all-matching, so a narrowing
+   * Project/Tag filter stays accurate. Empty when there is no Metadata store.
+   */
+  queryFilteredTagCounts(opts: {
+    includeTrashed?: boolean;
+    projects?: string[];
+    tags?: string[];
+    tagMode?: TagMode;
+  }): TagCount[];
   close(): void;
 }
 
@@ -150,7 +178,13 @@ export function createChatCountsQuery({
     return { total, projects, tags, untagged };
   }
 
-  function queryFilteredTotal({
+  /**
+   * The view + Project/Tag filter WHERE shared by the filtered count and the
+   * filter-branch id resolution (#130, #164). Returns `null` when the view is
+   * provably empty without SQL (Trash with no Metadata store). The clauses live
+   * in `buildFilterClauses` so every filtered read path applies one predicate.
+   */
+  function buildViewAndFilter({
     includeTrashed = false,
     projects,
     tags,
@@ -160,7 +194,7 @@ export function createChatCountsQuery({
     projects?: string[];
     tags?: string[];
     tagMode?: TagMode;
-  }): number {
+  }): { clauses: string[]; params: (string | number)[] } | null {
     const clauses: string[] = [];
     const params: (string | number)[] = [];
 
@@ -173,7 +207,7 @@ export function createChatCountsQuery({
       );
     } else if (includeTrashed) {
       // No Metadata store: nothing is trashed, so the Trash view is empty.
-      return 0;
+      return null;
     }
 
     // The Project/Tag filter is the same predicate the keyset page applies
@@ -181,18 +215,86 @@ export function createChatCountsQuery({
     const filter = buildFilterClauses({ projects, tags, tagMode, hasMetadata });
     clauses.push(...filter.clauses);
     params.push(...filter.params);
+    return { clauses, params };
+  }
+
+  function queryFilteredTotal(opts: {
+    includeTrashed?: boolean;
+    projects?: string[];
+    tags?: string[];
+    tagMode?: TagMode;
+  }): number {
+    const built = buildViewAndFilter(opts);
+    if (built === null) return 0;
+    const where =
+      built.clauses.length > 0 ? `WHERE ${built.clauses.join(" AND ")}` : "";
+    return (
+      archive
+        .prepare(`SELECT count(*) AS n FROM chats c ${where}`)
+        .get(...built.params) as { n: number }
+    ).n;
+  }
+
+  function queryFilteredIds({
+    excludeIds,
+    ...filterOpts
+  }: {
+    includeTrashed?: boolean;
+    projects?: string[];
+    tags?: string[];
+    tagMode?: TagMode;
+    excludeIds?: string[];
+  }): string[] {
+    const built = buildViewAndFilter(filterOpts);
+    if (built === null) return [];
+    const { clauses, params } = built;
+
+    // The exclusions are the rows the user unchecked after selecting all — a
+    // small `NOT IN` (ADR-0021), bound, never interpolated.
+    if (excludeIds && excludeIds.length > 0) {
+      const placeholders = excludeIds.map(() => "?").join(", ");
+      clauses.push(`c.id NOT IN (${placeholders})`);
+      params.push(...excludeIds);
+    }
 
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
     return (
       archive
-        .prepare(`SELECT count(*) AS n FROM chats c ${where}`)
-        .get(...params) as { n: number }
-    ).n;
+        .prepare(`SELECT c.id AS id FROM chats c ${where}`)
+        .all(...params) as { id: string }[]
+    ).map((r) => r.id);
+  }
+
+  function queryFilteredTagCounts(opts: {
+    includeTrashed?: boolean;
+    projects?: string[];
+    tags?: string[];
+    tagMode?: TagMode;
+  }): TagCount[] {
+    // No Metadata store means no tags exist at all.
+    if (!hasMetadata) return [];
+    const built = buildViewAndFilter(opts);
+    if (built === null) return [];
+    const where =
+      built.clauses.length > 0 ? `WHERE ${built.clauses.join(" AND ")}` : "";
+    // Join the filter-matched chats to their tags and group — the same shape as
+    // the view-wide facet, but scoped to the filter instead of the whole view.
+    return archive
+      .prepare(
+        `SELECT ct.tag_id AS tagId, count(*) AS count
+         FROM meta.chat_tags ct
+         JOIN chats c ON c.id = ct.chat_id
+         ${where}
+         GROUP BY ct.tag_id`
+      )
+      .all(...built.params) as TagCount[];
   }
 
   return {
     queryCounts,
     queryFilteredTotal,
+    queryFilteredIds,
+    queryFilteredTagCounts,
     close() {
       archive.close();
     },

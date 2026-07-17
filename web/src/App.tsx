@@ -20,6 +20,7 @@ import { FilterPanel } from "@/chat/FilterPanel";
 import { ChatList } from "@/chat/ChatList";
 import { BatchTagButton } from "@/tags/BatchTagButton";
 import { useSelection } from "@/chat/useSelection";
+import type { BatchTarget } from "@/chat/batchTarget";
 import { SortControl } from "@/chat/sort/SortControl";
 import { ConversationView } from "@/conversation/ConversationView";
 import { Toast } from "@/shared/Toast";
@@ -213,10 +214,37 @@ function App() {
   // set). Range selection walks the visible order.
   const visibleIds = visibleChats.map((c) => c.id);
   const selectionResetKey = `${mode}:${[...selectedProjects].sort().join(",")}:${[...selectedTags].sort().join(",")}:${tagMode.mode}`;
+
+  // The "Chats N" header total: server-derived in both cases. Unfiltered, it is
+  // the view's facet total (#131 Phase A); filtered, it is the server's
+  // post-filter count (#131 Phase B) — accurate even when the paginated window
+  // holds only a page of the filtered set. Computed here (above the Selection) so
+  // select-all-matching can count the whole matching set, not the loaded window.
+  const filterActive = selectedProjects.size + selectedTags.size > 0;
+  const filteredTotal = useFilteredTotal(
+    mode,
+    [...selectedProjects],
+    [...selectedTags],
+    tagMode.mode
+  );
+  // While the first filtered total is still loading (filteredTotal undefined),
+  // hold the view's facet total rather than letting the header fall back to the
+  // paginated window count (the page size) — that would flash a wrong number
+  // for a frame before the real filtered total lands (#131).
+  const listTotal = filterActive
+    ? (filteredTotal ?? counts.counts.total)
+    : counts.counts.total;
+
+  // The Selection (batch Move to Trash, #161) with the Open Chat as its primary
+  // member. Keyed to filter + view so it re-seeds to the primary on a filter
+  // change or view switch but rides sort changes and background refreshes (an id
+  // set). Range selection walks the visible order. `filteredTotal` lets select-
+  // all-matching (#164) count every matching Chat, not just the loaded window.
   const selection = useSelection({
     orderedIds: visibleIds,
     primaryId: selectedId,
     resetKey: selectionResetKey,
+    filteredTotal: listTotal,
   });
 
   // Open a Chat: it becomes the Open Chat and the sole Selection (a plain click
@@ -273,30 +301,75 @@ function App() {
     else selection.clear();
   }, [selectedId, selection]);
 
+  // The batch target for the current Selection (ADR-0021): the live filter plus
+  // exclusions under select-all-matching (#164), else the explicit checked ids
+  // (#161). Its shape is the request body both batch endpoints accept.
+  const currentBatchTarget = useCallback((): BatchTarget => {
+    if (selection.allMatching) {
+      return {
+        filter: {
+          projects: [...selectedProjects],
+          tags: [...selectedTags],
+          tagMode: tagMode.mode,
+          includeTrashed: mode === "trash",
+        },
+        excludeIds: [...selection.excludeIds],
+      };
+    }
+    return { chatIds: [...selection.selectedIds] };
+  }, [selection, selectedProjects, selectedTags, tagMode.mode, mode]);
+
+  // The loaded rows to flip optimistically: under select-all only the visible,
+  // non-excluded window (the server still acts on the whole matching set); in
+  // explicit mode the checked ids themselves.
+  const selectionOptimisticIds = useCallback(
+    () =>
+      selection.allMatching
+        ? visibleIds.filter((id) => selection.isSelected(id))
+        : [...selection.selectedIds],
+    [selection, visibleIds]
+  );
+
+  // Per-Tag counts scoped to the active filter (#164), for the batch dialog's
+  // tri-state under select-all-matching — the client subtracts the excluded
+  // Chats' own Tags locally (ADR-0021). Mirrors useFilteredTotal's URL shape.
+  const fetchFilteredTagCounts = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (mode === "trash") params.set("includeTrashed", "true");
+    for (const p of selectedProjects) params.append("project", p);
+    if (selectedTags.size > 0) params.set("tags", [...selectedTags].join(","));
+    if (tagMode.mode === "any") params.set("tagMode", "any");
+    try {
+      const res = await fetch(
+        `/api/chats/filtered-tag-counts?${params.toString()}`
+      );
+      if (!res.ok) return [];
+      const { tags } = (await res.json()) as {
+        tags: Array<{ tagId: string; count: number }>;
+      };
+      return tags;
+    } catch {
+      return [];
+    }
+  }, [mode, selectedProjects, selectedTags, tagMode.mode]);
+
+  // The Tag ids held by each excluded, currently-loaded Chat — subtracted from
+  // the filtered per-Tag counts so the dialog's tri-state reflects the live
+  // Selection under select-all-matching (#164).
+  const excludedChatTags = useMemo(
+    () =>
+      visibleChats
+        .filter((c) => selection.excludeIds.has(c.id))
+        .map((c) => (c.tags ?? []).map((t) => t.id)),
+    [visibleChats, selection.excludeIds]
+  );
+
   // Tag and Untagged counts are server-derived per view (main vs Trash). They
   // state each group's size in this view, not the post-filter result, so
   // selecting a Tag never moves the numbers.
   const countForTag = counts.tagCount;
   const untaggedCount = counts.counts.untagged;
 
-  // The "Chats N" header total: server-derived in both cases. Unfiltered, it is
-  // the view's facet total (#131 Phase A); filtered, it is the server's
-  // post-filter count (#131 Phase B) — accurate even when the paginated window
-  // holds only a page of the filtered set.
-  const filterActive = selectedProjects.size + selectedTags.size > 0;
-  const filteredTotal = useFilteredTotal(
-    mode,
-    [...selectedProjects],
-    [...selectedTags],
-    tagMode.mode
-  );
-  // While the first filtered total is still loading (filteredTotal undefined),
-  // hold the view's facet total rather than letting the header fall back to the
-  // paginated window count (the page size) — that would flash a wrong number
-  // for a frame before the real filtered total lands (#131).
-  const listTotal = filterActive
-    ? (filteredTotal ?? counts.counts.total)
-    : counts.counts.total;
   // Create a Tag and immediately assign it to the chat the popover is on.
   const createTagForChat = useCallback(
     async (
@@ -353,17 +426,21 @@ function App() {
     });
   };
 
-  // Batch Move to Trash over the Selection (#161). One request flips the whole
-  // set (ADR-0021 explicit-ids branch); the client reloads its window and the
-  // facet counts rather than mutating rows in place, then raises an Undo toast
-  // whose inverse is a batch restore. Selection clears immediately so the bar
-  // dismisses without waiting on the round-trip.
+  // Batch Move to Trash over the Selection (#161, #164). One request flips the
+  // whole target — the checked ids or the live filter minus exclusions (ADR-
+  // 0021); the client optimistically drops the loaded window's rows, reloads the
+  // facet counts, and raises an Undo toast whose inverse is a batch restore.
+  // Selection clears immediately so the bar dismisses without waiting on the
+  // round-trip.
   const handleBatchTrash = () => {
-    const chatIds = [...selection.selectedIds];
-    if (chatIds.length === 0) return;
+    const n = selection.selectedCount;
+    if (n === 0) return;
+    const target = currentBatchTarget();
+    const optimisticIds = selectionOptimisticIds();
     // The batch trashes the primary too, so move the Open Chat to the first
-    // surviving row (or empty), then collapse the Selection.
-    const trashed = new Set(chatIds);
+    // surviving (visible, non-trashed) row (or empty), then collapse the
+    // Selection.
+    const trashed = new Set(optimisticIds);
     const nextOpen = visibleIds.find((x) => !trashed.has(x)) ?? null;
     setSelectedId(nextOpen);
     selection.clear();
@@ -371,29 +448,28 @@ function App() {
       void counts.reload();
       void trashCounts.reload();
     };
-    void softDeleteBatch(chatIds);
+    void softDeleteBatch(target, optimisticIds);
     refreshCounts();
-    const n = chatIds.length;
     showToast({
-      message: `${n} chat${n > 1 ? "s" : ""} moved to Trash.`,
+      message: `${n.toLocaleString()} chat${n > 1 ? "s" : ""} moved to Trash.`,
       actionLabel: "Undo",
       actionHint: modifierHint("Z"),
       onAction: () => {
-        void restoreBatch(chatIds);
+        void restoreBatch(target, optimisticIds);
         refreshCounts();
       },
     });
   };
 
-  // Apply the staged batch Tag diff over the Selection (#163). One request
-  // carries the add/remove diff (ADR-0021 explicit-ids branch), then the
-  // drop-reconcile reload (#176) drops any Chat the change moved out of an active
-  // filter. That reload reports which ids left the list, so the Selection prunes
-  // to exactly those — it never dangles on Chats you can no longer see, and a
-  // Chat merely scrolled out of the window (not a drop) is untouched.
+  // Apply the staged batch Tag diff over the Selection (#163, #164). One request
+  // carries the target + add/remove diff (ADR-0021), then the drop-reconcile
+  // reload (#176) drops any Chat the change moved out of an active filter. That
+  // reload reports which ids left the list, so the Selection prunes to exactly
+  // those — it never dangles on Chats you can no longer see, and a Chat merely
+  // scrolled out of the window (not a drop) is untouched.
   const applyBatchTag = useCallback(
-    async (chatIds: string[], diff: { add: string[]; remove: string[] }) => {
-      await assignTagsBatch(chatIds, diff);
+    async (target: BatchTarget, diff: { add: string[]; remove: string[] }) => {
+      await assignTagsBatch(target, diff);
       const dropped = await reload();
       void reloadCounts();
       if (dropped.length > 0) selection.deselect(dropped);
@@ -403,19 +479,18 @@ function App() {
 
   // The Undo toast replays the inverse diff (add↔remove) through the same path.
   const handleBatchTag = (
-    chatIds: string[],
+    target: BatchTarget,
     diff: { add: string[]; remove: string[] }
   ) => {
-    if (chatIds.length === 0) return;
     if (diff.add.length === 0 && diff.remove.length === 0) return;
-    void applyBatchTag(chatIds, diff);
-    const n = chatIds.length;
+    const n = selection.selectedCount;
+    void applyBatchTag(target, diff);
     showToast({
-      message: `Tags updated on ${n} chat${n > 1 ? "s" : ""}.`,
+      message: `Tags updated on ${n.toLocaleString()} chat${n > 1 ? "s" : ""}.`,
       actionLabel: "Undo",
       actionHint: modifierHint("Z"),
       onAction: () => {
-        void applyBatchTag(chatIds, { add: diff.remove, remove: diff.add });
+        void applyBatchTag(target, { add: diff.remove, remove: diff.add });
       },
     });
   };
@@ -473,6 +548,21 @@ function App() {
         e.preventDefault();
         toast.onAction();
         dismissToast();
+        return;
+      }
+
+      // Cmd/Ctrl+A selects every Chat matching the current filter (#164) — the
+      // keyboard entry into select-all-matching, alongside the batch bar's
+      // `Select all N` link. Only in the main list, where selection lives.
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        (e.key === "a" || e.key === "A") &&
+        mode === "main" &&
+        visibleIds.length > 0
+      ) {
+        e.preventDefault();
+        selection.selectAllMatching();
+        return;
       }
     };
     window.addEventListener("keydown", handler);
@@ -524,6 +614,11 @@ function App() {
             hasPrevious={source.hasPrevious}
             onLoadPrevious={source.loadPrevious}
             selectedIds={selection.selectedIds}
+            isSelected={selection.isSelected}
+            selectedCount={selection.selectedCount}
+            allMatching={selection.allMatching}
+            filteredTotal={listTotal}
+            onSelectAllMatching={selection.selectAllMatching}
             onToggleSelect={toggleSelect}
             onRangeSelect={rangeSelect}
             onClearSelection={clearSelection}
@@ -533,6 +628,11 @@ function App() {
                 selectedIds={selection.selectedIds}
                 allTags={tagCatalog}
                 fetchTagsByChat={fetchTagsByChat}
+                allMatching={selection.allMatching}
+                selectedCount={selection.selectedCount}
+                batchTarget={currentBatchTarget()}
+                fetchFilteredTagCounts={fetchFilteredTagCounts}
+                excludedChatTags={excludedChatTags}
                 onApply={handleBatchTag}
                 onCreate={createTag}
               />
