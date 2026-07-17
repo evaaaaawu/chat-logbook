@@ -492,8 +492,8 @@ export function ChatList({
         >
           <span>
             {filteredTotal !== undefined && barCount < filteredTotal
-              ? `${barCount.toLocaleString()} chats matching this filter are selected`
-              : `All ${barCount.toLocaleString()} chats matching this filter are selected`}
+              ? `${barCount.toLocaleString()} chats are selected`
+              : `All ${barCount.toLocaleString()} chats are selected`}
           </span>
           <button
             type="button"

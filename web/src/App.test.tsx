@@ -2281,9 +2281,7 @@ describe("Select all matching (#164)", () => {
     // The count now stands for the filtered total, and a banner states the mode.
     expect(await screen.findByText("4 selected")).toBeInTheDocument();
     const banner = await screen.findByTestId("select-all-banner");
-    expect(banner).toHaveTextContent(
-      "All 4 chats matching this filter are selected"
-    );
+    expect(banner).toHaveTextContent("All 4 chats are selected");
     // Nothing left to escalate to, so the link retires.
     expect(
       screen.queryByRole("button", { name: /Select all/ })
