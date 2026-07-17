@@ -130,28 +130,24 @@ export function useSelection({
     [exitAllMatching]
   );
 
-  const toggle = useCallback((id: string) => {
-    // Under select-all-matching a toggle records an exclusion (the deselect-one
-    // gesture over "all matching"); otherwise it flips plain membership.
-    setAllMatching((matching) => {
-      if (matching) {
-        setExcludeIds((prev) => {
-          const next = new Set(prev);
-          if (next.has(id)) next.delete(id);
-          else next.add(id);
-          return next;
-        });
-      } else {
-        setSelectedIds((prev) => {
-          const next = new Set(prev);
-          if (next.has(id)) next.delete(id);
-          else next.add(id);
-          return next;
-        });
-      }
-      return matching;
-    });
-  }, []);
+  const toggle = useCallback(
+    (id: string) => {
+      // Under select-all-matching a toggle records an exclusion (the
+      // deselect-one gesture over "all matching"); otherwise it flips plain
+      // membership. Read `allMatching` as a dependency rather than through a
+      // setter: an updater that writes other state runs twice under
+      // StrictMode, which flips the id and flips it straight back.
+      const flip = (prev: ReadonlySet<string>) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      };
+      if (allMatching) setExcludeIds(flip);
+      else setSelectedIds(flip);
+    },
+    [allMatching]
+  );
 
   const selectRange = useCallback(
     (anchorId: string | null, targetId: string, additive: boolean) => {

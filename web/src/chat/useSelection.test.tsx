@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { act, renderHook } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import { useSelection } from "@/chat/useSelection";
@@ -5,6 +6,23 @@ import { useSelection } from "@/chat/useSelection";
 const ORDER = ["a", "b", "c", "d", "e"];
 
 describe("useSelection", () => {
+  // The app mounts under StrictMode, which double-invokes state updaters to
+  // surface side effects hidden inside them. Every other test here renders
+  // bare, so a toggle that writes other state from inside an updater passes
+  // them and still does nothing in the real app (#164).
+  it("toggles under StrictMode, where updaters run twice", () => {
+    const { result } = renderHook(
+      () => useSelection({ orderedIds: ORDER, primaryId: null, resetKey: "k" }),
+      { wrapper: StrictMode }
+    );
+
+    act(() => result.current.toggle("b"));
+    expect([...result.current.selectedIds]).toEqual(["b"]);
+
+    act(() => result.current.toggle("b"));
+    expect([...result.current.selectedIds]).toEqual([]);
+  });
+
   it("collapses to a single id on selectOnly", () => {
     const { result } = renderHook(() =>
       useSelection({ orderedIds: ORDER, primaryId: null, resetKey: "k" })
