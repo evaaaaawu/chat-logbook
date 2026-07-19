@@ -1088,6 +1088,49 @@ describe("ChatReader.getMessages", () => {
       { type: "tool_result", tool_use_id: "tool-1", content: "result" },
     ]);
   });
+
+  it("serves a failed tool_result's error flag as is_error", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m-tool",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: "",
+      blocks: [
+        {
+          type: "tool_result",
+          toolUseId: "tool-1",
+          content: "command not found",
+          isError: true,
+        },
+      ],
+    });
+
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const messages = reader.getMessages(wireIdFor(archive, "session-1"), {
+      includeTrashed: false,
+    });
+    expect(messages![0].content).toEqual([
+      {
+        type: "tool_result",
+        tool_use_id: "tool-1",
+        content: "command not found",
+        is_error: true,
+      },
+    ]);
+  });
 });
 
 describe("ChatReader is agent-agnostic", () => {

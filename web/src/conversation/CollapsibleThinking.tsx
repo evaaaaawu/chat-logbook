@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { Brain } from "lucide-react";
+import { CollapsibleRow } from "@/conversation/CollapsibleRow";
 import { MarkdownText } from "@/conversation/MarkdownText";
 
 interface CollapsibleThinkingProps {
@@ -6,22 +7,11 @@ interface CollapsibleThinkingProps {
 }
 
 export function CollapsibleThinking({ thinking }: CollapsibleThinkingProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
   return (
-    <div className="my-1">
-      <button
-        type="button"
-        onClick={() => setIsExpanded((prev) => !prev)}
-        className="cursor-pointer text-xs italic text-muted-foreground hover:text-muted-foreground/80"
-      >
-        Thinking...
-      </button>
-      {isExpanded && (
-        <div className="mt-1 rounded bg-card p-2 text-xs italic text-muted-foreground">
-          <MarkdownText>{thinking}</MarkdownText>
-        </div>
-      )}
-    </div>
+    <CollapsibleRow icon={Brain} summary="Thinking...">
+      <div className="overflow-x-auto rounded bg-card p-2 text-xs italic text-muted-foreground">
+        <MarkdownText>{thinking}</MarkdownText>
+      </div>
+    </CollapsibleRow>
   );
 }
