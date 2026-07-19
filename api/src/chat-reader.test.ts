@@ -920,6 +920,47 @@ describe("ChatReader.getMessages", () => {
     expect(messages![1].role).toBe("assistant");
   });
 
+  it("exposes each message's Normalized message id", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m-user",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: "Build a login page",
+      blocks: [{ type: "text", text: "Build a login page" }],
+    });
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m-assistant",
+      role: "assistant",
+      ts: new Date(1700000200000),
+      text: "Sure",
+      blocks: [{ type: "text", text: "Sure" }],
+    });
+
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const messages = reader.getMessages(wireIdFor(archive, "session-1"), {
+      includeTrashed: false,
+    });
+
+    // The id travels from the Archive verbatim: it is the anchor the
+    // conversation pane keys a Message's DOM node by (#192), so it must be the
+    // Normalized message_id and never a positional index.
+    expect(messages!.map((m) => m.id)).toEqual(["m-user", "m-assistant"]);
+  });
+
   it("returns null for a trashed chat by default", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });
@@ -1045,6 +1086,49 @@ describe("ChatReader.getMessages", () => {
     });
     expect(messages![0].content).toEqual([
       { type: "tool_result", tool_use_id: "tool-1", content: "result" },
+    ]);
+  });
+
+  it("serves a failed tool_result's error flag as is_error", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m-tool",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: "",
+      blocks: [
+        {
+          type: "tool_result",
+          toolUseId: "tool-1",
+          content: "command not found",
+          isError: true,
+        },
+      ],
+    });
+
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const messages = reader.getMessages(wireIdFor(archive, "session-1"), {
+      includeTrashed: false,
+    });
+    expect(messages![0].content).toEqual([
+      {
+        type: "tool_result",
+        tool_use_id: "tool-1",
+        content: "command not found",
+        is_error: true,
+      },
     ]);
   });
 });

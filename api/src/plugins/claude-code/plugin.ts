@@ -154,6 +154,9 @@ function normalizeBlock(raw: unknown): NormalizedBlock | null {
         type: "tool_result",
         toolUseId: String(b.tool_use_id ?? ""),
         content: b.content,
+        // Only carried when the tool actually failed: a `false` on every
+        // successful result would grow the stored block for nothing.
+        ...(b.is_error === true ? { isError: true } : {}),
       };
     default:
       return null;

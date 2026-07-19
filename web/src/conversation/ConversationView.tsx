@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { RotateCcw } from "lucide-react";
 import type { Message, ContentBlock, Chat, Tag } from "@/types";
@@ -12,9 +12,20 @@ import {
   getScrollPillTarget,
   type ScrollPillTarget,
 } from "@/conversation/scrollPillVisibility";
+import { formatMessageTimestamp } from "@/conversation/formatMessageTimestamp";
+import { messageAnchorId } from "@/conversation/messageAnchor";
 import { deriveArrivalAction } from "@/conversation/liveArrival";
 import { deriveFirstUnseenIndex } from "@/conversation/firstUnseenIndex";
+import {
+  hasAuthorHeader,
+  hasRenderableContent,
+} from "@/conversation/messageVisibility";
+import {
+  collectToolResults,
+  type ToolResultBlock,
+} from "@/conversation/toolUnits";
 import { useScrollShortcuts } from "@/conversation/useScrollShortcuts";
+import { getAgentDisplayName } from "@/agent/agentDisplayName";
 import { ChatMetadataPopover } from "@/metadata/ChatMetadataPopover";
 import { EditableTitle } from "@/metadata/EditableTitle";
 import { TagStrip } from "@/tags/TagStrip";
@@ -134,7 +145,13 @@ function ConversationHeader({
   );
 }
 
-function renderContentBlock(block: ContentBlock, index: number) {
+type ToolResults = Map<string, ToolResultBlock>;
+
+function renderContentBlock(
+  block: ContentBlock,
+  index: number,
+  toolResults: ToolResults
+) {
   switch (block.type) {
     case "text":
       return <MarkdownText key={index}>{block.text}</MarkdownText>;
@@ -142,44 +159,70 @@ function renderContentBlock(block: ContentBlock, index: number) {
       if (!block.thinking) return null;
       return <CollapsibleThinking key={index} thinking={block.thinking} />;
     case "tool_use":
-      return <CollapsibleToolCall key={index} block={block} />;
+      return (
+        <CollapsibleToolCall
+          key={index}
+          block={block}
+          result={toolResults.get(block.id)}
+        />
+      );
     case "tool_result":
       return null;
   }
 }
 
-function renderContent(content: Message["content"]) {
+function renderContent(content: Message["content"], toolResults: ToolResults) {
   if (typeof content === "string") {
     return <MarkdownText>{content}</MarkdownText>;
   }
-  return content.map((block, i) => renderContentBlock(block, i));
+  return content.map((block, i) => renderContentBlock(block, i, toolResults));
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageItem({
+  message,
+  agentName,
+  toolResults,
+}: {
+  message: Message;
+  agentName: string;
+  toolResults: ToolResults;
+}) {
   return (
     <div
+      id={messageAnchorId(message.id)}
       data-role={message.role}
-      className={`max-w-[85%] rounded-lg px-4 py-3 text-sm leading-relaxed ${
+      // A note-style document flow: every turn spans the pane's column, and
+      // only the reader's own turns take a background block, as scanning
+      // anchors. Both roles keep the same horizontal padding so their text
+      // aligns down a single edge (#192).
+      className={`w-full px-4 py-3 text-sm leading-relaxed ${
         message.role === "user"
-          ? "self-end bg-card text-accent-foreground"
-          : "self-start bg-primary/10 text-foreground"
+          ? "rounded-md bg-card text-accent-foreground"
+          : "text-foreground"
       }`}
     >
-      <div
-        className={`mb-1 text-xs font-semibold uppercase tracking-wide ${
-          message.role === "user" ? "text-chart-2" : "text-primary"
-        }`}
-      >
-        {message.role === "user" ? "You" : "Assistant"}
-      </div>
-      {renderContent(message.content)}
+      {hasAuthorHeader(message) && (
+        // Set as a name, not a label: the old all-caps role tag belonged to the
+        // bubble layout, and an agent's display name is written "Claude Code".
+        <div
+          className={`mb-1 text-xs font-semibold ${
+            message.role === "user" ? "text-chart-2" : "text-primary"
+          }`}
+        >
+          {message.role === "user" ? "You" : agentName}
+          <span className="ml-2 font-normal text-muted-foreground">
+            {formatMessageTimestamp(message.timestamp)}
+          </span>
+        </div>
+      )}
+      {renderContent(message.content, toolResults)}
     </div>
   );
 }
 
 export function ConversationView({
   chat,
-  messages,
+  messages: allMessages,
   error,
   onRestore,
   onRenameTitle,
@@ -190,6 +233,20 @@ export function ConversationView({
   onRemoveTag,
   onCreateTag,
 }: ConversationViewProps) {
+  // Turns that render nothing are dropped once, here, so everything downstream
+  // — virtualizer indices, the unread divider, the live-arrival trackers —
+  // counts only Messages the reader can actually see. A turn with nothing to
+  // show is not something to be told is new (#192).
+  const messages = useMemo(
+    () => allMessages.filter(hasRenderableContent),
+    [allMessages]
+  );
+  // Collected from the unfiltered list, since the turn carrying a result is
+  // itself one of the turns dropped above (#193).
+  const toolResults = useMemo(
+    () => collectToolResults(allMessages),
+    [allMessages]
+  );
   const tagControls: TagControls | undefined =
     allTags && onAssignTag && onRemoveTag && onCreateTag
       ? { allTags, onAssignTag, onRemoveTag, onCreateTag }
@@ -202,6 +259,9 @@ export function ConversationView({
     onEditingTitleChange?.(next);
   };
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Assistant turns are authored by the Agent that recorded the Chat, so the
+  // header names it ("Claude Code") rather than the wire-form role.
+  const agentName = getAgentDisplayName(chat?.agent ?? "");
 
   // TanStack Virtual's useVirtualizer returns functions (e.g. measureElement)
   // that the React Compiler cannot memoize without risking stale UI, so the
@@ -396,7 +456,11 @@ export function ConversationView({
                       <UnreadDivider />
                     </div>
                   )}
-                  <MessageBubble message={messages[virtualItem.index]} />
+                  <MessageItem
+                    message={messages[virtualItem.index]}
+                    agentName={agentName}
+                    toolResults={toolResults}
+                  />
                 </div>
               ))}
             </div>
