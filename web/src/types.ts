@@ -29,7 +29,13 @@ export type ContentBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; thinking: string }
   | { type: "tool_use"; id: string; name: string; input: unknown }
-  | { type: "tool_result"; tool_use_id: string; content: unknown };
+  | {
+      type: "tool_result";
+      tool_use_id: string;
+      content: unknown;
+      /** Set when the tool reported a failure. Absent on success. */
+      is_error?: boolean;
+    };
 
 export interface Message {
   /** The Normalized `message_id`, unique within a Chat — the Message's stable handle. */

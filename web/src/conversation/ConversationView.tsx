@@ -20,6 +20,10 @@ import {
   hasAuthorHeader,
   hasRenderableContent,
 } from "@/conversation/messageVisibility";
+import {
+  collectToolResults,
+  type ToolResultBlock,
+} from "@/conversation/toolUnits";
 import { useScrollShortcuts } from "@/conversation/useScrollShortcuts";
 import { getAgentDisplayName } from "@/agent/agentDisplayName";
 import { ChatMetadataPopover } from "@/metadata/ChatMetadataPopover";
@@ -141,7 +145,13 @@ function ConversationHeader({
   );
 }
 
-function renderContentBlock(block: ContentBlock, index: number) {
+type ToolResults = Map<string, ToolResultBlock>;
+
+function renderContentBlock(
+  block: ContentBlock,
+  index: number,
+  toolResults: ToolResults
+) {
   switch (block.type) {
     case "text":
       return <MarkdownText key={index}>{block.text}</MarkdownText>;
@@ -149,25 +159,33 @@ function renderContentBlock(block: ContentBlock, index: number) {
       if (!block.thinking) return null;
       return <CollapsibleThinking key={index} thinking={block.thinking} />;
     case "tool_use":
-      return <CollapsibleToolCall key={index} block={block} />;
+      return (
+        <CollapsibleToolCall
+          key={index}
+          block={block}
+          result={toolResults.get(block.id)}
+        />
+      );
     case "tool_result":
       return null;
   }
 }
 
-function renderContent(content: Message["content"]) {
+function renderContent(content: Message["content"], toolResults: ToolResults) {
   if (typeof content === "string") {
     return <MarkdownText>{content}</MarkdownText>;
   }
-  return content.map((block, i) => renderContentBlock(block, i));
+  return content.map((block, i) => renderContentBlock(block, i, toolResults));
 }
 
 function MessageItem({
   message,
   agentName,
+  toolResults,
 }: {
   message: Message;
   agentName: string;
+  toolResults: ToolResults;
 }) {
   return (
     <div
@@ -197,7 +215,7 @@ function MessageItem({
           </span>
         </div>
       )}
-      {renderContent(message.content)}
+      {renderContent(message.content, toolResults)}
     </div>
   );
 }
@@ -221,6 +239,12 @@ export function ConversationView({
   // show is not something to be told is new (#192).
   const messages = useMemo(
     () => allMessages.filter(hasRenderableContent),
+    [allMessages]
+  );
+  // Collected from the unfiltered list, since the turn carrying a result is
+  // itself one of the turns dropped above (#193).
+  const toolResults = useMemo(
+    () => collectToolResults(allMessages),
     [allMessages]
   );
   const tagControls: TagControls | undefined =
@@ -435,6 +459,7 @@ export function ConversationView({
                   <MessageItem
                     message={messages[virtualItem.index]}
                     agentName={agentName}
+                    toolResults={toolResults}
                   />
                 </div>
               ))}

@@ -21,7 +21,16 @@ export type NormalizedBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; thinking: string }
   | { type: "tool_use"; id: string; name: string; input: unknown }
-  | { type: "tool_result"; toolUseId: string; content: unknown };
+  | {
+      type: "tool_result";
+      toolUseId: string;
+      content: unknown;
+      /**
+       * Set when the tool reported a failure. Omitted on success, so the flag
+       * only ever widens a stored block (ADR-0023).
+       */
+      isError?: boolean;
+    };
 
 export interface NormalizedMessage {
   messageId: string;

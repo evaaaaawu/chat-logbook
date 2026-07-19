@@ -293,6 +293,38 @@ describe("ClaudeCodePlugin.normalize", () => {
     ]);
   });
 
+  it("carries a tool_result's error flag through as isError", () => {
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content: "command not found",
+              is_error: true,
+            },
+          ],
+        },
+        isMeta: false,
+        isSidechain: false,
+        uuid: "msg-8",
+        timestamp: "2024-01-01T00:00:08Z",
+      })
+    );
+
+    expect(result?.blocks).toEqual([
+      {
+        type: "tool_result",
+        toolUseId: "tool-1",
+        content: "command not found",
+        isError: true,
+      },
+    ]);
+  });
+
   it("normalizes a user text message", () => {
     const result = plugin.normalize(
       rawRecord({

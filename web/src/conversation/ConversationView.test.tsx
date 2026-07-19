@@ -352,6 +352,256 @@ describe("Conversation collapsed units", () => {
   });
 });
 
+describe("Conversation tool units", () => {
+  it("shows the tool's result when the unit is expanded", async () => {
+    // A call and its result are one unit: the reader asks "what did Read
+    // return?", not "which turn was the result recorded under" (#193).
+    const user = userEvent.setup();
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-tool",
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "Read",
+                input: { file_path: "/tmp/a.ts" },
+              },
+              {
+                type: "tool_result",
+                tool_use_id: "t1",
+                content: "export const answer = 42;",
+              },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    await user.click(await screen.findByText("Read: /tmp/a.ts"));
+
+    expect(await screen.findByText(/export const answer = 42;/)).not.toBeNull();
+  });
+
+  it("pairs a call with a result recorded in the next turn", async () => {
+    // The common shape in a real log: the Agent calls a tool, and the harness
+    // records the result as a user turn of its own. That turn renders nothing
+    // and is dropped before layout (#192), so pairing must read the unfiltered
+    // list — otherwise the result vanishes with the turn that carried it.
+    const user = userEvent.setup();
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-call",
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "Bash",
+                input: { command: "pnpm test" },
+              },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+          {
+            id: "m-result",
+            role: "user",
+            content: [
+              { type: "tool_result", tool_use_id: "t1", content: "17 passed" },
+            ],
+            timestamp: "2024-01-01T00:01:00Z",
+          },
+        ]}
+      />
+    );
+
+    await user.click(await screen.findByText("Bash: pnpm test"));
+
+    expect(await screen.findByText(/17 passed/)).not.toBeNull();
+  });
+
+  it("shows input and output under one left rule marking the unit's extent", async () => {
+    // The rule is what makes an expanded unit read as a nested aside rather
+    // than more prose: it marks where the unit's detail starts and ends (#193).
+    const user = userEvent.setup();
+    const { container } = render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-tool",
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "Bash",
+                input: { command: "pnpm test" },
+              },
+              { type: "tool_result", tool_use_id: "t1", content: "17 passed" },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    await user.click(await screen.findByText("Bash: pnpm test"));
+
+    const detail = container.querySelector('[data-testid="unit-detail"]')!;
+    expect(detail).not.toBeNull();
+    expect(detail.className).toContain("border-l");
+    // Both halves of the unit live inside that extent.
+    expect(detail.textContent).toContain("pnpm test");
+    expect(detail.textContent).toContain("17 passed");
+  });
+
+  it("makes the collapsed row obviously toggleable", async () => {
+    // A row that toggles must look like it toggles: a leading chevron, a
+    // pointer cursor, and a hover background. Without them the reader has no
+    // reason to try clicking, and the result stays hidden (#193).
+    const user = userEvent.setup();
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-tool",
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "Read",
+                input: { file_path: "/tmp/a.ts" },
+              },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    const row = await screen.findByRole("button", {
+      name: /Read: \/tmp\/a\.ts/,
+    });
+    expect(row).toHaveAttribute("aria-expanded", "false");
+    expect(row.querySelector('[data-testid="row-chevron"]')).not.toBeNull();
+    expect(row.className).toContain("cursor-pointer");
+    expect(row.className).toContain("hover:bg-");
+
+    await user.click(row);
+
+    expect(row).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("renders thinking with the same collapsible row as tool units", async () => {
+    // Thinking and tool units are the same kind of thing to a reader — skimmed
+    // past by default, opened on demand — so they share one row rather than
+    // each inventing their own affordance (#193).
+    const user = userEvent.setup();
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-thinking",
+            role: "assistant",
+            content: [{ type: "thinking", thinking: "weighing the options" }],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    const row = await screen.findByRole("button", { name: /Thinking/ });
+    expect(row).toHaveAttribute("aria-expanded", "false");
+    expect(row.querySelector('[data-testid="row-chevron"]')).not.toBeNull();
+    expect(row.className).toContain("cursor-pointer");
+
+    await user.click(row);
+
+    expect(row).toHaveAttribute("aria-expanded", "true");
+    expect(await screen.findByText("weighing the options")).not.toBeNull();
+  });
+
+  it("marks a failed result on the collapsed row", async () => {
+    // A failure is the thing a reader scans a session for. It has to show
+    // without expanding, or every row must be opened to find it (#193).
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-call",
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "Bash",
+                input: { command: "pnpm test" },
+              },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+          {
+            id: "m-result",
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "t1",
+                content: "1 failed",
+                is_error: true,
+              },
+            ],
+            timestamp: "2024-01-01T00:01:00Z",
+          },
+        ]}
+      />
+    );
+
+    const row = await screen.findByRole("button", { name: /Bash: pnpm test/ });
+    expect(row.querySelector('[data-testid="row-error"]')).not.toBeNull();
+  });
+
+  it("leaves a successful result unmarked", async () => {
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-tool",
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "Bash",
+                input: { command: "pnpm test" },
+              },
+              { type: "tool_result", tool_use_id: "t1", content: "17 passed" },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    const row = await screen.findByRole("button", { name: /Bash: pnpm test/ });
+    expect(row.querySelector('[data-testid="row-error"]')).toBeNull();
+  });
+});
+
 describe("Conversation markdown typography", () => {
   it("renders markdown links that open in a new tab", async () => {
     renderMessages([assistant("See the [docs](https://example.com) page.")]);
