@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.22.0] - 2026-07-19
+
+The conversation pane now reads like a document instead of a chat feed. Each turn is labelled with who spoke and when, empty turns no longer clutter the view, and every tool call folds into a single tidy row you can expand when you want the detail.
+
+### Changed
+
+- The conversation now flows as a note-style document rather than left/right chat bubbles. Turns span the full column, and only your own turns carry a background block so you can scan for where you spoke.
+- Each turn shows a one-line header naming who spoke — `You`, or the assistant's display name — alongside the absolute date and time, so an archive read weeks later still tells you when each message happened.
+- A tool call and its result are now paired into one collapsible row: a chevron, an icon, and a one-line summary. Expand it to see the full input and output, which scroll sideways instead of stretching the pane. Failed tool calls show a red dot, and only widen when you open them.
+
+### Fixed
+
+- Turns that would render nothing — tool-result-only turns, or assistant turns with empty thinking — are no longer shown as blank blocks.
+
 ## [0.21.0] - 2026-07-17
 
 Tags now work on a whole set of chats, not one at a time. Pick a few chats — or every chat matching your current filter — and add or remove tags across all of them in one go.
