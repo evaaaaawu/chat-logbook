@@ -12,6 +12,7 @@ import { createChatPageQuery } from "./list-pagination.js";
 import { createChatCountsQuery } from "./list-counts.js";
 import { reconcileTitleSortKeys } from "./metadata/reconcile-title-sort-keys.js";
 import { MAX_PAGE_LIMIT } from "./list-contract.js";
+import { ClaudeCodePlugin } from "./plugins/claude-code/plugin.js";
 
 interface ChatResponse {
   id: string;
@@ -64,15 +65,22 @@ function seedMessage(
     ts: Date;
     text: string;
     blocks: unknown[];
+    /**
+     * The Raw payload to archive alongside. Defaults to a stub: only the paths
+     * that read back through Raw (image serving) need a faithful one.
+     */
+    payload?: unknown;
+    /** The Source file the row came from. Defaults to an existing dummy path. */
+    sourcePath?: string;
   }
 ): void {
   archive.ensureChat(DEFAULT_AGENT, opts.sourceId, opts.ts);
   const raw = archive.insertRawMessage({
     agent: DEFAULT_AGENT,
     sourceId: opts.sourceId,
-    sourcePath: "/dev/null",
+    sourcePath: opts.sourcePath ?? "/dev/null",
     sourceLocator: `${opts.messageId}:0`,
-    payload: { id: opts.messageId },
+    payload: opts.payload ?? { id: opts.messageId },
     ingestedAt: opts.ts,
   });
   archive.upsertNormalizedMessage({
@@ -1984,5 +1992,154 @@ describe("Batch filter branch — select-all-matching (#164, ADR-0021)", () => {
     // Only the two "work" chats count: bug on both, idea on one.
     expect(byTag.get(bug.id)).toBe(2);
     expect(byTag.get(idea.id)).toBe(1);
+  });
+});
+
+// A 1x1 PNG, the smallest thing that is genuinely image bytes.
+const PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+/**
+ * Seed a chat holding one pasted image, archived the way ingestion would: the
+ * Agent's own payload in Raw, the plugin's own normalize output in Normalized.
+ * Going through the real plugin is the point — it ties the `ref` the pane will
+ * request to the `ref` the endpoint has to resolve.
+ */
+function seedImageChat(
+  archive: ReturnType<typeof createArchiveRepository>,
+  opts: {
+    sourceId: string;
+    messageId: string;
+    base64?: string;
+    sourcePath?: string;
+  }
+): { ref: string } {
+  const payload = {
+    type: "user",
+    message: {
+      role: "user",
+      content: [
+        { type: "text", text: "Look at this" },
+        {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: "image/png",
+            data: opts.base64 ?? PNG_BASE64,
+          },
+        },
+      ],
+    },
+    uuid: opts.messageId,
+    timestamp: "2024-01-01T00:00:00Z",
+    sessionId: opts.sourceId,
+  };
+  const normalized = new ClaudeCodePlugin().normalize({
+    sourceId: opts.sourceId,
+    sourcePath: "/dev/null",
+    sourceLocator: "L1",
+    payload,
+  })!;
+  seedMessage(archive, {
+    sourceId: opts.sourceId,
+    messageId: opts.messageId,
+    role: "user",
+    ts: new Date(1_000),
+    text: normalized.text,
+    blocks: normalized.blocks,
+    payload,
+    ...(opts.sourcePath === undefined ? {} : { sourcePath: opts.sourcePath }),
+  });
+  const image = normalized.blocks.find((b) => b.type === "image");
+  if (!image || image.type !== "image") throw new Error("no image block");
+  return { ref: image.ref };
+}
+
+describe("GET /api/chats/:id/images/:ref", () => {
+  it("serves the bytes out of Raw, typed and cached forever", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const { ref } = seedImageChat(archive, {
+      sourceId: "img1",
+      messageId: "m-img",
+    });
+    const app = createApp({
+      archive,
+      metadata: createMetadataRepository({ dataDir }),
+      tags: createTagRepository({ dataDir }),
+    });
+
+    const res = await app.request(
+      `/api/chats/${wireIdFor(archive, "img1")}/images/${ref}`
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    // Archived bytes never change, so the browser may keep them forever.
+    expect(res.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable"
+    );
+    const body = Buffer.from(await res.arrayBuffer());
+    expect(body.equals(Buffer.from(PNG_BASE64, "base64"))).toBe(true);
+  });
+
+  it("404s on a ref that names nothing, and on an unknown chat", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    seedImageChat(archive, { sourceId: "img2", messageId: "m-img" });
+    const app = createApp({
+      archive,
+      metadata: createMetadataRepository({ dataDir }),
+      tags: createTagRepository({ dataDir }),
+    });
+    const wireId = wireIdFor(archive, "img2");
+
+    // Index 0 of that message is the text block, not an image.
+    const notAnImage = await app.request(`/api/chats/${wireId}/images/m-img.0`);
+    expect(notAnImage.status).toBe(404);
+
+    // A message that does not exist in this chat.
+    const noSuchMessage = await app.request(
+      `/api/chats/${wireId}/images/m-nope.1`
+    );
+    expect(noSuchMessage.status).toBe(404);
+
+    // A ref that is not a ref at all.
+    const malformed = await app.request(`/api/chats/${wireId}/images/garbage`);
+    expect(malformed.status).toBe(404);
+
+    // A well-formed ref against a chat id that resolves to nothing.
+    const noSuchChat = await app.request(
+      "/api/chats/clog_0000000000000000/images/m-img.1"
+    );
+    expect(noSuchChat.status).toBe(404);
+  });
+});
+
+describe("GET /api/chats/:id/images/:ref — independent of the Source file", () => {
+  it("still serves the bytes after the screenshot is deleted from disk", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const deleted = path.join(dataDir, "gone.jsonl");
+    fs.writeFileSync(deleted, "");
+    const { ref } = seedImageChat(archive, {
+      sourceId: "img3",
+      messageId: "m-img",
+      sourcePath: deleted,
+    });
+    // The Archive copy is its own thing: the reader may have cleaned out the
+    // original log long ago.
+    fs.rmSync(deleted);
+
+    const app = createApp({
+      archive,
+      metadata: createMetadataRepository({ dataDir }),
+      tags: createTagRepository({ dataDir }),
+    });
+
+    const res = await app.request(
+      `/api/chats/${wireIdFor(archive, "img3")}/images/${ref}`
+    );
+
+    expect(res.status).toBe(200);
+    const body = Buffer.from(await res.arrayBuffer());
+    expect(body.equals(Buffer.from(PNG_BASE64, "base64"))).toBe(true);
   });
 });

@@ -121,10 +121,10 @@ export class ClaudeCodePlugin implements AgentPlugin {
 
     if (Array.isArray(message.content)) {
       const blocks: NormalizedBlock[] = [];
-      for (const block of message.content) {
-        const normalized = normalizeBlock(block);
+      message.content.forEach((block, index) => {
+        const normalized = normalizeBlock(block, messageId, index);
         if (normalized) blocks.push(normalized);
-      }
+      });
       const text = blocks
         .filter((b): b is { type: "text"; text: string } => b.type === "text")
         .map((b) => b.text)
@@ -133,6 +133,36 @@ export class ClaudeCodePlugin implements AgentPlugin {
     }
 
     return null;
+  }
+
+  resolveImage(
+    ref: string,
+    loadPayload: (messageId: string) => unknown | null
+  ): { mediaType: string; bytes: Buffer } | null {
+    const address = parseImageRef(ref);
+    if (!address) return null;
+
+    const record = loadPayload(address.messageId) as Record<
+      string,
+      unknown
+    > | null;
+    if (!record || typeof record !== "object") return null;
+
+    const message = record.message as { content?: unknown } | undefined;
+    if (!message || !Array.isArray(message.content)) return null;
+
+    const block = message.content[address.index] as
+      | Record<string, unknown>
+      | undefined;
+    if (!block || block.type !== "image") return null;
+
+    const source = block.source as Record<string, unknown> | undefined;
+    if (!source || source.type !== "base64") return null;
+    const mediaType = String(source.media_type ?? "");
+    const data = source.data;
+    if (!mediaType || typeof data !== "string") return null;
+
+    return { mediaType, bytes: Buffer.from(data, "base64") };
   }
 }
 
@@ -232,10 +262,45 @@ function parseSystemNoise(
   return null;
 }
 
-function normalizeBlock(raw: unknown): NormalizedBlock | null {
+// An image's address inside its own message: the message id plus the block's
+// position in the Agent's content array. Opaque to everyone but this plugin —
+// the endpoint hands it back untouched and the plugin resolves it.
+function imageRef(messageId: string, index: number): string {
+  return `${messageId}.${index}`;
+}
+
+// The inverse of `imageRef`. Splits on the last dot so a message id containing
+// dots still round-trips.
+function parseImageRef(
+  ref: string
+): { messageId: string; index: number } | null {
+  const dot = ref.lastIndexOf(".");
+  if (dot <= 0) return null;
+  const index = Number(ref.slice(dot + 1));
+  if (!Number.isInteger(index) || index < 0) return null;
+  return { messageId: ref.slice(0, dot), index };
+}
+
+// `index` is the block's position in the Agent's own content array, not in the
+// normalized output: unrecognized blocks get dropped, so only the raw position
+// survives as a stable address back into the Raw row (see `imageRef`).
+function normalizeBlock(
+  raw: unknown,
+  messageId: string,
+  index: number
+): NormalizedBlock | null {
   if (!raw || typeof raw !== "object") return null;
   const b = raw as Record<string, unknown>;
   switch (b.type) {
+    case "image": {
+      const source = b.source as Record<string, unknown> | undefined;
+      // Claude Code only writes inline base64 today. A source shape we don't
+      // recognize is dropped rather than served as a broken image.
+      if (!source || source.type !== "base64") return null;
+      const mediaType = String(source.media_type ?? "");
+      if (!mediaType) return null;
+      return { type: "image", mediaType, ref: imageRef(messageId, index) };
+    }
     case "text":
       return { type: "text", text: String(b.text ?? "") };
     case "thinking":

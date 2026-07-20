@@ -38,7 +38,13 @@ export type NormalizedBlock =
   // task notifications, local command echoes. `kind` is an open string so a new
   // noise type widens the data, not the type union (ADR-0023). `summary` is the
   // collapsed one-liner; `detail` is the original content, kept for expansion.
-  | { type: "system"; kind: string; summary: string; detail: string };
+  | { type: "system"; kind: string; summary: string; detail: string }
+  // An inline image, metadata only (ADR-0023). The bytes stay in the Raw layer
+  // where the Agent already wrote them verbatim; `ref` is an opaque token the
+  // image endpoint resolves back to their location in the message's Raw row.
+  // Never inline base64 here: it would double the Archive's image storage and
+  // force the messages API to ship every image up front.
+  | { type: "image"; mediaType: string; ref: string };
 
 export interface NormalizedMessage {
   messageId: string;
@@ -61,4 +67,17 @@ export interface AgentPlugin {
   discover(env: PluginEnv): AsyncIterable<ChatRef>;
   extractRaw(ref: ChatRef): AsyncIterable<RawRecord>;
   normalize(raw: RawRecord): NormalizedMessage | null;
+  /**
+   * Resolve an `image` block's `ref` back to the bytes the Agent wrote into Raw.
+   * The ref is the plugin's own token — only the plugin that minted it knows
+   * which message it addresses — so the endpoint hands it back untouched along
+   * with `loadPayload`, which fetches one message's Raw payload by message id.
+   * Keeping the lookup behind a callback keeps ref parsing wholly in the plugin
+   * and store access wholly in the endpoint. Returns null when the ref names
+   * nothing. Optional: an Agent whose logs carry no images never implements it.
+   */
+  resolveImage?(
+    ref: string,
+    loadPayload: (messageId: string) => unknown | null
+  ): { mediaType: string; bytes: Buffer } | null;
 }

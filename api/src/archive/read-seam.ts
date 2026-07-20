@@ -66,6 +66,17 @@ export interface ArchiveReadSeam {
   /** Messages for one `(agent, source_id)` chat, ordered by ascending ts. */
   listMessagesByChat(agent: string, sourceId: string): MessageRow[];
   /**
+   * The Raw payload one normalized message was parsed from, as stored JSON text.
+   * The image endpoint reads bytes back out of it at request time (ADR-0023), so
+   * an archived image survives its Source file being deleted. Null when the
+   * message does not exist.
+   */
+  findRawPayloadForMessage(
+    agent: string,
+    sourceId: string,
+    messageId: string
+  ): string | null;
+  /**
    * One grouped row per `(agent, source_id)` with the min/max message ts.
    * A single grouped query — constant query count regardless of chat count.
    * With `sourceIds`, scopes the scan to those chats so page hydration does not
@@ -133,6 +144,21 @@ export function createArchiveReadSeam(db: ArchiveDb): ArchiveReadSeam {
         .where(and(eq(messages.agent, agent), eq(messages.sourceId, sourceId)))
         .orderBy(asc(messages.ts))
         .all();
+    },
+    findRawPayloadForMessage(agent, sourceId, messageId) {
+      const row = db
+        .select({ rawPayload: rawMessages.rawPayload })
+        .from(messages)
+        .innerJoin(rawMessages, eq(messages.rawId, rawMessages.id))
+        .where(
+          and(
+            eq(messages.agent, agent),
+            eq(messages.sourceId, sourceId),
+            eq(messages.messageId, messageId)
+          )
+        )
+        .get();
+      return row?.rawPayload ?? null;
     },
     listChatTsRanges(opts) {
       const scope =
