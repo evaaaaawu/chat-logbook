@@ -11,6 +11,7 @@ import { createCheckpointRepository } from "./checkpoint/repository.js";
 import { createMetadataRepository } from "./metadata/repository.js";
 import { createTagRepository } from "./metadata/tags.js";
 import { startIngestionInBackground } from "./ingestion/background.js";
+import { runRenormalizeIfStale } from "./ingestion/renormalize.js";
 import { startWatcher } from "./ingestion/watcher.js";
 import { plugins } from "./plugins/registry.js";
 import { parseCliArgs } from "./cli/argv.js";
@@ -54,6 +55,16 @@ const webDistDir = path.join(__dirname, "../../web/dist");
 const port = action.port;
 
 const archive = createArchiveRepository({ dataDir });
+// Rebuild the Normalized layer from Raw when the archive is behind the current
+// normalize-output version, so a new block kind reaches already-archived,
+// dormant chats without re-reading Source (ADR-0023). Runs once per bump; an
+// up-to-date archive is a no-op. A failure here must not stop the server — the
+// existing normalized rows still serve.
+try {
+  runRenormalizeIfStale({ plugins, archive });
+} catch (err) {
+  console.error("[renormalize] startup pass failed:", err);
+}
 const checkpoint = createCheckpointRepository({ dataDir });
 const metadata = createMetadataRepository({ dataDir });
 const tags = createTagRepository({ dataDir });

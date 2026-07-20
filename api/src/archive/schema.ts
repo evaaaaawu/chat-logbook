@@ -10,6 +10,11 @@ export const archiveMeta = sqliteTable("archive_meta", {
   id: integer("id").primaryKey(),
   archiveUuid: text("archive_uuid").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  // The normalize-output version this archive's Normalized layer was last built
+  // at. Startup compares it to the code's NORMALIZE_VERSION and re-normalizes
+  // from Raw once per bump, so a new block kind reaches dormant chats without
+  // re-reading Source (ADR-0023). Additive, default 0 for existing archives.
+  normalizeVersion: integer("normalize_version").notNull().default(0),
 });
 
 export const schemaVersion = sqliteTable("schema_version", {

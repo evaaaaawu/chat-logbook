@@ -17,6 +17,9 @@ function rendersSomething(block: ContentBlock): boolean {
       // Never rendered on its own: a result belongs to the tool call that
       // produced it, not to the turn the Agent happened to record it under.
       return false;
+    case "command":
+      // The reader's own slash-command action, shown as a chip.
+      return true;
   }
 }
 
@@ -37,14 +40,16 @@ export function hasRenderableContent(message: Message): boolean {
  * Whether a Message is authored prose, and so earns a `You` / agent-name
  * header.
  *
- * Only text counts. Tool calls and thinking are collapsed units: the Agent logs
- * them as turns of their own, but the reader sees them as part of the moment
- * that prompted them, so they nest under the preceding header instead of
+ * Text and a slash-command invocation count: both are things the reader wrote,
+ * so they earn a `You` header. Tool calls and thinking are collapsed units: the
+ * Agent logs them as turns of their own, but the reader sees them as part of the
+ * moment that prompted them, so they nest under the preceding header instead of
  * repeating it (#192).
  */
 export function hasAuthorHeader(message: Message): boolean {
   if (typeof message.content === "string") return hasText(message.content);
   return message.content.some(
-    (block) => block.type === "text" && hasText(block.text)
+    (block) =>
+      (block.type === "text" && hasText(block.text)) || block.type === "command"
   );
 }

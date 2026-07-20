@@ -78,6 +78,13 @@
       "when": 1779500000000,
       "tag": "0010_add_chats_created_at",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1779600000000,
+      "tag": "0011_add_normalize_version",
+      "breakpoints": true
     }
   ]
 }

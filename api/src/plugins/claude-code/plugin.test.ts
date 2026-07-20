@@ -347,3 +347,97 @@ describe("ClaudeCodePlugin.normalize", () => {
     });
   });
 });
+
+describe("ClaudeCodePlugin.normalize → slash commands", () => {
+  it("translates command markup into a single command block", () => {
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: {
+          role: "user",
+          content:
+            "<command-message>tdd</command-message>\n<command-name>/tdd</command-name>\n<command-args>issue 191</command-args>",
+        },
+        uuid: "msg-cmd",
+        timestamp: "2024-01-01T00:00:03Z",
+        sessionId: "session-1",
+      })
+    );
+
+    expect(result?.blocks).toEqual([
+      { type: "command", name: "/tdd", args: "issue 191" },
+    ]);
+  });
+
+  it("gives an empty args string when the invocation carries no arguments", () => {
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: {
+          role: "user",
+          content:
+            "<command-message>commit</command-message>\n<command-name>/commit</command-name>",
+        },
+        uuid: "msg-cmd-2",
+        timestamp: "2024-01-01T00:00:04Z",
+        sessionId: "session-1",
+      })
+    );
+
+    expect(result?.blocks).toEqual([
+      { type: "command", name: "/commit", args: "" },
+    ]);
+  });
+
+  it("preserves multi-line arguments verbatim", () => {
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: {
+          role: "user",
+          content:
+            "<command-message>grill-me</command-message>\n<command-name>/grill-me</command-name>\n<command-args>first line\nsecond line</command-args>",
+        },
+        uuid: "msg-cmd-3",
+        timestamp: "2024-01-01T00:00:05Z",
+        sessionId: "session-1",
+      })
+    );
+
+    expect(result?.blocks).toEqual([
+      { type: "command", name: "/grill-me", args: "first line\nsecond line" },
+    ]);
+  });
+
+  it("sets the searchable text to the command line so titles read `/tdd issue 191`", () => {
+    const withArgs = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: {
+          role: "user",
+          content:
+            "<command-message>tdd</command-message>\n<command-name>/tdd</command-name>\n<command-args>issue 191</command-args>",
+        },
+        uuid: "msg-cmd-4",
+        timestamp: "2024-01-01T00:00:06Z",
+        sessionId: "session-1",
+      })
+    );
+    expect(withArgs?.text).toBe("/tdd issue 191");
+
+    const noArgs = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: {
+          role: "user",
+          content:
+            "<command-message>commit</command-message>\n<command-name>/commit</command-name>",
+        },
+        uuid: "msg-cmd-5",
+        timestamp: "2024-01-01T00:00:07Z",
+        sessionId: "session-1",
+      })
+    );
+    expect(noArgs?.text).toBe("/commit");
+  });
+});

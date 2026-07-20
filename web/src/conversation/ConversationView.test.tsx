@@ -318,6 +318,65 @@ describe("Conversation empty-turn suppression", () => {
   });
 });
 
+describe("Conversation command lines", () => {
+  const commandTurn: Message = {
+    id: "m-cmd",
+    role: "user",
+    content: [{ type: "command", name: "/tdd", args: "issue 191" }],
+    timestamp: "2024-01-01T00:00:00Z",
+  };
+
+  it("renders a command invocation as a command line, with no raw markup", async () => {
+    const { container } = render(
+      <ConversationView chat={chat} messages={[commandTurn]} />
+    );
+
+    const line = await screen.findByTestId("command-line");
+    expect(line.textContent).toContain("/tdd issue 191");
+    // The Agent's private markup must never reach the screen (ADR-0023).
+    expect(container.textContent).not.toContain("<command-name>");
+  });
+
+  it("shows multi-line args in full, without truncating", async () => {
+    // A slash command can carry a whole prompt as its args, including blank
+    // lines. It reads like the reader's own message, so every line stays.
+    const { container } = render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-cmd-multiline",
+            role: "user",
+            content: [
+              {
+                type: "command",
+                name: "/tdd",
+                args: "issue 191\n\np.s. see PR #225.",
+              },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    const line = await screen.findByTestId("command-line");
+    // The blank line between the args and the p.s. survives to the DOM — the
+    // component neither collapses nor truncates it (the CSS then renders it).
+    expect(line.textContent).toContain("issue 191\n\np.s. see PR #225.");
+    expect(container.textContent).not.toContain("<command-args>");
+  });
+
+  it("keeps the reader's authored turn: a You header and a background block", async () => {
+    const { container } = render(
+      <ConversationView chat={chat} messages={[commandTurn]} />
+    );
+
+    expect(await screen.findByText("You")).not.toBeNull();
+    expect(container.querySelector('[data-role="user"]')).not.toBeNull();
+  });
+});
+
 describe("Conversation collapsed units", () => {
   it("gives a tool-only turn its collapsed row but no header of its own", async () => {
     // Tool calls nest under the message that prompted them (#192). The Agent

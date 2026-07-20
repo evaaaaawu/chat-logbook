@@ -30,7 +30,10 @@ export type NormalizedBlock =
        * only ever widens a stored block (ADR-0023).
        */
       isError?: boolean;
-    };
+    }
+  // A slash-command invocation, translated from the Agent's private markup at
+  // normalize time so the frontend never parses it (ADR-0023). Renders as a chip.
+  | { type: "command"; name: string; args: string };
 
 export interface NormalizedMessage {
   messageId: string;

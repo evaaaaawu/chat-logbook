@@ -53,7 +53,10 @@ export type ApiContentBlock =
       content: unknown;
       /** Set when the tool reported a failure. Absent on success. */
       is_error?: boolean;
-    };
+    }
+  // A slash-command invocation, served as-is from Normalized (ADR-0023). No
+  // field remap: the frontend renders it as a chip.
+  | { type: "command"; name: string; args: string };
 
 export interface MessageResponse {
   /**

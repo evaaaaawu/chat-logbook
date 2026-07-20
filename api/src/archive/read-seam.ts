@@ -36,6 +36,15 @@ export interface FirstUserText {
   text: string;
 }
 
+/** A raw message row, the input the re-normalize pass rebuilds Normalized from. */
+export interface RawMessageRow {
+  id: number;
+  agent: string;
+  sourceId: string;
+  sourcePath: string;
+  rawPayload: string;
+}
+
 export interface ArchiveReadSeam {
   /**
    * Chat rows in insertion order. With `projects`, filters server-side to rows
@@ -79,6 +88,12 @@ export interface ArchiveReadSeam {
   listFirstUserTexts(opts?: { sourceIds?: string[] }): FirstUserText[];
   /** Every ingestion-event audit row, in insertion order. */
   listIngestionEvents(): IngestionEventRow[];
+  /**
+   * Every raw message row, in insertion (id) order. The re-normalize pass reads
+   * these to rebuild the Normalized layer without touching Source (ADR-0004);
+   * `rawPayload` is the verbatim per-agent JSON the plugin re-parses.
+   */
+  listRawMessages(): RawMessageRow[];
 }
 
 export function createArchiveReadSeam(db: ArchiveDb): ArchiveReadSeam {
@@ -195,6 +210,19 @@ export function createArchiveReadSeam(db: ArchiveDb): ArchiveReadSeam {
     },
     listIngestionEvents() {
       return db.select().from(ingestionEvents).all();
+    },
+    listRawMessages() {
+      return db
+        .select({
+          id: rawMessages.id,
+          agent: rawMessages.agent,
+          sourceId: rawMessages.sourceId,
+          sourcePath: rawMessages.sourcePath,
+          rawPayload: rawMessages.rawPayload,
+        })
+        .from(rawMessages)
+        .orderBy(asc(rawMessages.id))
+        .all();
     },
   };
 }

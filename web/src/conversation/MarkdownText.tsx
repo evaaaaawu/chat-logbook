@@ -1,5 +1,6 @@
 import Markdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
 const markdownComponents: Components = {
@@ -37,7 +38,12 @@ export function MarkdownText({ children }: { children: string }) {
   return (
     <div className={PROSE_CLASS}>
       <Markdown
-        remarkPlugins={[remarkGfm]}
+        // remark-breaks renders a single newline as a line break. A logged turn
+        // is something a person typed with Enter, not an article written to
+        // markdown's blank-line paragraph rule — folding those newlines into
+        // spaces silently reflows what they actually wrote. Structure (lists,
+        // tables, code) still parses normally.
+        remarkPlugins={[remarkGfm, remarkBreaks]}
         rehypePlugins={[rehypeHighlight]}
         components={markdownComponents}
       >
