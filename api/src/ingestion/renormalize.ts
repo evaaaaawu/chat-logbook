@@ -67,9 +67,10 @@ export function renormalizeFromRaw({
  * The current normalize-output version. Bump this whenever a plugin's normalize
  * output changes (a new block kind, a translated markup) so startup re-normalizes
  * archived chats up to the new shape. #191 introduces the `command` block, so the
- * first version that needs a re-normalize pass is 1.
+ * first version that needs a re-normalize pass is 1. #194 adds the `system`
+ * block, turning archived harness noise into collapsed rows: version 2.
  */
-export const NORMALIZE_VERSION = 1;
+export const NORMALIZE_VERSION = 2;
 
 export interface RunRenormalizeIfStaleOptions {
   plugins: readonly AgentPlugin[];

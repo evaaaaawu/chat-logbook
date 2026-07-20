@@ -20,6 +20,9 @@ function rendersSomething(block: ContentBlock): boolean {
     case "command":
       // The reader's own slash-command action, shown as a chip.
       return true;
+    case "system":
+      // Harness noise, shown as a collapsed row the reader skims past.
+      return true;
   }
 }
 

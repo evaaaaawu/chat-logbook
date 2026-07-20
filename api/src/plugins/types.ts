@@ -33,7 +33,12 @@ export type NormalizedBlock =
     }
   // A slash-command invocation, translated from the Agent's private markup at
   // normalize time so the frontend never parses it (ADR-0023). Renders as a chip.
-  | { type: "command"; name: string; args: string };
+  | { type: "command"; name: string; args: string }
+  // Harness noise addressed to the Agent rather than written by the reader —
+  // task notifications, local command echoes. `kind` is an open string so a new
+  // noise type widens the data, not the type union (ADR-0023). `summary` is the
+  // collapsed one-liner; `detail` is the original content, kept for expansion.
+  | { type: "system"; kind: string; summary: string; detail: string };
 
 export interface NormalizedMessage {
   messageId: string;

@@ -441,3 +441,114 @@ describe("ClaudeCodePlugin.normalize → slash commands", () => {
     expect(noArgs?.text).toBe("/commit");
   });
 });
+
+const TASK_NOTIFICATION = [
+  "<task-notification>",
+  "<task-id>a09d714025def2e83</task-id>",
+  "<tool-use-id>toolu_01SCVdD2uM7eki7WUj6siHyS</tool-use-id>",
+  "<status>completed</status>",
+  '<summary>Agent "Run App test (batch trash)" finished</summary>',
+  "<result>Total tests: 85. Passed: 83. Failed: 2.</result>",
+  "</task-notification>",
+].join("\n");
+
+describe("ClaudeCodePlugin.normalize → system rows", () => {
+  it("translates a task-notification into a single system block", () => {
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: { role: "user", content: TASK_NOTIFICATION },
+        uuid: "msg-sys-1",
+        timestamp: "2024-01-01T00:00:08Z",
+        sessionId: "session-1",
+      })
+    );
+
+    expect(result?.blocks).toEqual([
+      {
+        type: "system",
+        kind: "task-notification",
+        summary: 'Agent "Run App test (batch trash)" finished',
+        detail: TASK_NOTIFICATION,
+      },
+    ]);
+  });
+
+  it("falls back to a generic summary when the notification carries none", () => {
+    const noSummary =
+      "<task-notification>\n<task-id>abc</task-id>\n<status>stopped</status>\n</task-notification>";
+
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: { role: "user", content: noSummary },
+        uuid: "msg-sys-2",
+        timestamp: "2024-01-01T00:00:09Z",
+        sessionId: "session-1",
+      })
+    );
+
+    // Still a system row, never a text block: the point is that no raw markup
+    // reaches the reader, summary or not.
+    expect(result?.blocks).toEqual([
+      {
+        type: "system",
+        kind: "task-notification",
+        summary: "Task notification",
+        detail: noSummary,
+      },
+    ]);
+  });
+
+  it("translates a local command echo into its own system kind", () => {
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: {
+          role: "user",
+          content:
+            "<local-command-stdout>Set model to claude-opus-4-8</local-command-stdout>",
+        },
+        uuid: "msg-sys-3",
+        timestamp: "2024-01-01T00:00:10Z",
+        sessionId: "session-1",
+      })
+    );
+
+    // The echo is already one line, so it is wholly the summary — there is no
+    // detail worth expanding into.
+    expect(result?.blocks).toEqual([
+      {
+        type: "system",
+        kind: "local-command-stdout",
+        summary: "Set model to claude-opus-4-8",
+        detail: "",
+      },
+    ]);
+  });
+
+  it("strips terminal styling codes out of a local command echo", () => {
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: {
+          role: "user",
+          content:
+            "<local-command-stdout>Set model to \u001b[1mOpus 4.6\u001b[22m with \u001b[1mhigh\u001b[22m effort</local-command-stdout>",
+        },
+        uuid: "msg-sys-4",
+        timestamp: "2024-01-01T00:00:11Z",
+        sessionId: "session-1",
+      })
+    );
+
+    expect(result?.blocks).toEqual([
+      {
+        type: "system",
+        kind: "local-command-stdout",
+        summary: "Set model to Opus 4.6 with high effort",
+        detail: "",
+      },
+    ]);
+  });
+});
