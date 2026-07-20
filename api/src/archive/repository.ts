@@ -42,6 +42,8 @@ export interface NormalizedMessageInput {
   ts: string;
   text: string;
   blocks: unknown;
+  /** The model id the Agent recorded, when it recorded one (ADR-0023). */
+  model?: string;
 }
 
 export interface UpsertNormalizedMessageInput {
@@ -324,6 +326,7 @@ export function createArchiveRepository({
             ts,
             text: message.text,
             blocks: message.blocks,
+            model: message.model ?? null,
             rawId,
           })
           .run();
@@ -337,6 +340,7 @@ export function createArchiveRepository({
             ts,
             text: message.text,
             blocks: message.blocks,
+            model: message.model ?? null,
             rawId,
           })
           .where(eq(messages.id, existing.id))
