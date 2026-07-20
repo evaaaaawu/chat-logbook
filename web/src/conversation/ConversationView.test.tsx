@@ -207,6 +207,35 @@ describe("Conversation note-style headers", () => {
 
     expect(await screen.findByText("You")).not.toBeNull();
   });
+
+  it("names the model beside the agent, per message, so a mid-chat switch shows", async () => {
+    render(
+      <ConversationView
+        chat={{ ...chat, agent: "claude-code" }}
+        messages={[
+          { ...assistant("Sure, here goes."), model: "claude-opus-4-8" },
+          { ...assistant("Switched."), model: "claude-haiku-4-5-20251001" },
+          // An id of no readable shape still names itself, never blank.
+          { ...assistant("And again."), model: "some-other-model" },
+        ]}
+      />
+    );
+
+    expect(await screen.findByText("Claude Code · Opus 4.8")).not.toBeNull();
+    expect(screen.getByText("Claude Code · Haiku 4.5")).not.toBeNull();
+    expect(screen.getByText("Claude Code · some-other-model")).not.toBeNull();
+  });
+
+  it("names the agent alone when a message records no model", async () => {
+    render(
+      <ConversationView
+        chat={{ ...chat, agent: "claude-code" }}
+        messages={[assistant("No model recorded.")]}
+      />
+    );
+
+    expect(await screen.findByText("Claude Code")).not.toBeNull();
+  });
 });
 
 describe("Conversation note-style layout", () => {

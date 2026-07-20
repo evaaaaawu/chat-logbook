@@ -66,13 +66,19 @@ export class ClaudeCodePlugin implements AgentPlugin {
     if (payload.isSidechain === true) return null;
 
     const message = payload.message as
-      | { role: string; content: unknown }
+      | { role: string; content: unknown; model?: unknown }
       | undefined;
     if (!message) return null;
 
     const role = message.role === "assistant" ? "assistant" : "user";
     const messageId = String(payload.uuid ?? "");
     const ts = String(payload.timestamp ?? "");
+    // Claude Code records the model on each assistant message; reader turns
+    // carry none. Spread so the field is absent rather than undefined (ADR-0023).
+    const model =
+      typeof message.model === "string" && message.model !== ""
+        ? { model: message.model }
+        : {};
 
     if (typeof message.content === "string") {
       const command = parseCommandMarkup(message.content);
@@ -109,6 +115,7 @@ export class ClaudeCodePlugin implements AgentPlugin {
         ts,
         text,
         blocks: [{ type: "text", text }],
+        ...model,
       };
     }
 
@@ -122,7 +129,7 @@ export class ClaudeCodePlugin implements AgentPlugin {
         .filter((b): b is { type: "text"; text: string } => b.type === "text")
         .map((b) => b.text)
         .join("\n");
-      return { messageId, role, ts, text, blocks };
+      return { messageId, role, ts, text, blocks, ...model };
     }
 
     return null;

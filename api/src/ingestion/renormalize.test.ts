@@ -4,7 +4,11 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createArchiveRepository } from "../archive/repository.js";
 import { ClaudeCodePlugin } from "../plugins/claude-code/plugin.js";
-import { renormalizeFromRaw, runRenormalizeIfStale } from "./renormalize.js";
+import {
+  NORMALIZE_VERSION,
+  renormalizeFromRaw,
+  runRenormalizeIfStale,
+} from "./renormalize.js";
 
 let dataDir: string;
 
@@ -200,5 +204,62 @@ describe("runRenormalizeIfStale", () => {
     expect(archive.getNormalizeVersion()).toBe(1);
 
     archive.close();
+  });
+});
+
+describe("renormalizeFromRaw → model backfill", () => {
+  it("backfills the model on a row normalized before the field existed", () => {
+    const archive = createArchiveRepository({ dataDir });
+    archive.ensureChat("claude-code", "session-1", new Date(1700000000000));
+    const { id: rawId } = archive.insertRawMessage({
+      agent: "claude-code",
+      sourceId: "session-1",
+      sourcePath: "/fake/session-1.jsonl",
+      sourceLocator: "L1",
+      payload: {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          model: "claude-opus-4-8",
+          content: [{ type: "text", text: "Done." }],
+        },
+        uuid: "m-model",
+        timestamp: "2024-01-01T00:00:00Z",
+        sessionId: "session-1",
+      },
+      ingestedAt: new Date(1700000000000),
+    });
+    // The pre-#195 normalized row: same content, no model.
+    archive.upsertNormalizedMessage({
+      agent: "claude-code",
+      sourceId: "session-1",
+      rawId,
+      message: {
+        messageId: "m-model",
+        role: "assistant",
+        ts: "2024-01-01T00:00:00Z",
+        text: "Done.",
+        blocks: [{ type: "text", text: "Done." }],
+      },
+    });
+
+    renormalizeFromRaw({ plugins: [new ClaudeCodePlugin()], archive });
+
+    const messages = archive.read.listMessagesByChat(
+      "claude-code",
+      "session-1"
+    );
+    expect(messages[0].model).toBe("claude-opus-4-8");
+
+    archive.close();
+  });
+});
+
+describe("NORMALIZE_VERSION", () => {
+  it("is ahead of the version that shipped the system block, so #195 re-normalizes", () => {
+    // The backfill only reaches dormant chats when the archive reads as behind.
+    // Version 2 shipped the `system` block (#194); capturing the model (#195)
+    // is the next normalize-output change.
+    expect(NORMALIZE_VERSION).toBeGreaterThanOrEqual(3);
   });
 });

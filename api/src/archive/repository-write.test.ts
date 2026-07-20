@@ -289,3 +289,46 @@ describe("ArchiveRepository write seam", () => {
     repo.close();
   });
 });
+
+describe("ArchiveRepository model persistence", () => {
+  it("round-trips the message's model id, and reads back null when none was recorded", () => {
+    const repo = createArchiveRepository({ dataDir });
+    const raw = repo.insertRawMessage({
+      agent: "claude-code",
+      sourceId: "session-1",
+      sourcePath: "/src/session-1.jsonl",
+      sourceLocator: "line:1",
+      payload: { role: "assistant", content: "hi" },
+      ingestedAt: new Date(),
+    });
+
+    const base = { agent: "claude-code", sourceId: "session-1", rawId: raw.id };
+
+    repo.upsertNormalizedMessage({
+      ...base,
+      message: {
+        messageId: "m1",
+        role: "assistant",
+        ts: "2024-01-01T00:00:00Z",
+        text: "hi",
+        blocks: [{ type: "text", text: "hi" }],
+        model: "claude-opus-4-8",
+      },
+    });
+    repo.upsertNormalizedMessage({
+      ...base,
+      message: {
+        messageId: "m2",
+        role: "user",
+        ts: "2024-01-01T00:00:01Z",
+        text: "ok",
+        blocks: [{ type: "text", text: "ok" }],
+      },
+    });
+
+    const rows = repo.read.listMessagesByChat("claude-code", "session-1");
+    expect(rows.map((r) => r.model)).toEqual(["claude-opus-4-8", null]);
+
+    repo.close();
+  });
+});

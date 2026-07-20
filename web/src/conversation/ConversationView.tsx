@@ -28,6 +28,7 @@ import {
 } from "@/conversation/toolUnits";
 import { useScrollShortcuts } from "@/conversation/useScrollShortcuts";
 import { getAgentDisplayName } from "@/agent/agentDisplayName";
+import { getModelDisplayName } from "@/agent/modelDisplayName";
 import { ChatMetadataPopover } from "@/metadata/ChatMetadataPopover";
 import { EditableTitle } from "@/metadata/EditableTitle";
 import { TagStrip } from "@/tags/TagStrip";
@@ -186,6 +187,14 @@ function renderContent(content: Message["content"], toolResults: ToolResults) {
   return content.map((block, i) => renderContentBlock(block, i, toolResults));
 }
 
+// The assistant's byline: the Agent, then the model that turn ran on. Read per
+// message, not per chat, so a chat that switched models mid-way shows where.
+// A message with no recorded model keeps the bare Agent name.
+function authorName(agentName: string, message: Message): string {
+  if (!message.model) return agentName;
+  return `${agentName} · ${getModelDisplayName(message.model)}`;
+}
+
 function MessageItem({
   message,
   agentName,
@@ -217,7 +226,7 @@ function MessageItem({
             message.role === "user" ? "text-chart-2" : "text-primary"
           }`}
         >
-          {message.role === "user" ? "You" : agentName}
+          {message.role === "user" ? "You" : authorName(agentName, message)}
           <span className="ml-2 font-normal text-muted-foreground">
             {formatMessageTimestamp(message.timestamp)}
           </span>

@@ -552,3 +552,37 @@ describe("ClaudeCodePlugin.normalize → system rows", () => {
     ]);
   });
 });
+
+describe("ClaudeCodePlugin.normalize → model capture", () => {
+  it("captures the model id the Agent recorded on an assistant message", () => {
+    const result = plugin.normalize(
+      rawRecord({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          model: "claude-opus-4-8",
+          content: [{ type: "text", text: "Done." }],
+        },
+        uuid: "msg-model-1",
+        timestamp: "2024-01-01T00:00:20Z",
+        sessionId: "session-1",
+      })
+    );
+
+    expect(result?.model).toBe("claude-opus-4-8");
+  });
+
+  it("leaves model absent on a reader turn, which records none", () => {
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: { role: "user", content: "What changed?" },
+        uuid: "msg-model-2",
+        timestamp: "2024-01-01T00:00:21Z",
+        sessionId: "session-1",
+      })
+    );
+
+    expect(result).not.toHaveProperty("model");
+  });
+});

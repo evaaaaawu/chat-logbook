@@ -74,6 +74,7 @@ function seedMessage(
     text: string;
     blocks: unknown[];
     agent?: string;
+    model?: string;
   }
 ): void {
   const agent = opts.agent ?? DEFAULT_AGENT;
@@ -96,6 +97,7 @@ function seedMessage(
       ts: opts.ts.toISOString(),
       text: opts.text,
       blocks: opts.blocks,
+      ...(opts.model === undefined ? {} : { model: opts.model }),
     },
   });
 }
@@ -918,6 +920,60 @@ describe("ChatReader.getMessages", () => {
     ]);
     expect(messages![0].timestamp).toBe("2023-11-14T22:15:00.000Z");
     expect(messages![1].role).toBe("assistant");
+  });
+
+  it("serves each message's own model, and omits it where none was recorded", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m-user",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: "Build a login page",
+      blocks: [{ type: "text", text: "Build a login page" }],
+    });
+    // A chat that switches models mid-way: each turn keeps the model it ran on.
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m-opus",
+      role: "assistant",
+      ts: new Date(1700000200000),
+      text: "Sure",
+      blocks: [{ type: "text", text: "Sure" }],
+      model: "claude-opus-4-8",
+    });
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m-haiku",
+      role: "assistant",
+      ts: new Date(1700000300000),
+      text: "Done",
+      blocks: [{ type: "text", text: "Done" }],
+      model: "claude-haiku-4-5-20251001",
+    });
+
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const messages = reader.getMessages(wireIdFor(archive, "session-1"), {
+      includeTrashed: false,
+    });
+
+    expect(messages!.map((m) => m.model)).toEqual([
+      undefined,
+      "claude-opus-4-8",
+      "claude-haiku-4-5-20251001",
+    ]);
+    expect(messages![0]).not.toHaveProperty("model");
   });
 
   it("exposes each message's Normalized message id", () => {

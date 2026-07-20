@@ -85,6 +85,13 @@
       "when": 1779600000000,
       "tag": "0011_add_normalize_version",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1779700000000,
+      "tag": "0012_add_message_model",
+      "breakpoints": true
     }
   ]
 }

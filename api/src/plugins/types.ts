@@ -46,6 +46,13 @@ export interface NormalizedMessage {
   ts: string;
   text: string;
   blocks: NormalizedBlock[];
+  /**
+   * The model id the Agent recorded on this message (e.g. `claude-opus-4-8`),
+   * per ADR-0023. Absent when the Agent doesn't record one — reader turns never
+   * carry one, and a chat that switches models mid-way records the switch
+   * message by message.
+   */
+  model?: string;
 }
 
 export interface AgentPlugin {

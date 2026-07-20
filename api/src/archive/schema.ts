@@ -87,6 +87,10 @@ export const messages = sqliteTable(
     ts: integer("ts", { mode: "timestamp_ms" }).notNull(),
     text: text("text").notNull(),
     blocks: text("blocks", { mode: "json" }).notNull(),
+    // The model id the Agent recorded on this message (ADR-0023). Nullable:
+    // reader turns record none, and neither do rows normalized before #195 —
+    // those get backfilled by the next re-normalize pass.
+    model: text("model"),
     rawId: integer("raw_id")
       .notNull()
       .references(() => rawMessages.id),

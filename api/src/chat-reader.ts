@@ -72,6 +72,12 @@ export interface MessageResponse {
   role: "user" | "assistant";
   content: ApiContentBlock[];
   timestamp: string;
+  /**
+   * The model id the Agent recorded on this message (ADR-0023), served raw so
+   * the frontend owns the id→display-name mapping and an unrecognized id still
+   * renders. Absent when no model was recorded.
+   */
+  model?: string;
 }
 
 interface StoredBlock {
@@ -391,6 +397,7 @@ export function createChatReader({
       role: m.role as "user" | "assistant",
       content: (m.blocks as StoredBlock[]).map(toApiBlock),
       timestamp: m.ts.toISOString(),
+      ...(m.model === null ? {} : { model: m.model }),
     }));
   }
 
