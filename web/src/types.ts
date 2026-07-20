@@ -38,7 +38,10 @@ export type ContentBlock =
     }
   // A slash-command invocation the plugin translated from the Agent's private
   // markup (ADR-0023). Renders as a chip; the frontend never parses markup.
-  | { type: "command"; name: string; args: string };
+  | { type: "command"; name: string; args: string }
+  // Harness noise the plugin classified at normalize time (ADR-0023). Renders as
+  // a collapsed system row; `detail` is empty when the summary is the whole of it.
+  | { type: "system"; kind: string; summary: string; detail: string };
 
 export interface Message {
   /** The Normalized `message_id`, unique within a Chat — the Message's stable handle. */

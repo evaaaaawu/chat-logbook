@@ -318,6 +318,91 @@ describe("Conversation empty-turn suppression", () => {
   });
 });
 
+describe("Conversation system rows", () => {
+  const NOTIFICATION_DETAIL =
+    "<task-notification><status>completed</status></task-notification>";
+  const notificationTurn: Message = {
+    id: "m-sys",
+    role: "user",
+    content: [
+      {
+        type: "system",
+        kind: "task-notification",
+        summary: 'Agent "Run App test" finished',
+        detail: NOTIFICATION_DETAIL,
+      },
+    ],
+    timestamp: "2024-01-01T00:00:00Z",
+  };
+
+  it("renders harness noise as a collapsed row showing only its summary", async () => {
+    const { container } = render(
+      <ConversationView chat={chat} messages={[notificationTurn]} />
+    );
+
+    await screen.findByText('Agent "Run App test" finished');
+    // Collapsed by default: the detail is what the reader opts into.
+    expect(screen.queryByTestId("unit-detail")).toBeNull();
+    // The harness markup must never reach the screen unbidden (ADR-0023).
+    expect(container.textContent).not.toContain("<task-notification>");
+  });
+
+  it("reveals the full notification when the row is expanded", async () => {
+    render(<ConversationView chat={chat} messages={[notificationTurn]} />);
+
+    const row = await screen.findByRole("button", {
+      name: /Run App test/,
+    });
+    await userEvent.click(row);
+
+    const detail = await screen.findByTestId("unit-detail");
+    expect(detail.textContent).toContain(NOTIFICATION_DETAIL);
+  });
+
+  it("offers no expand affordance when the summary is the whole of it", async () => {
+    // A local command echo is one line. Opening it would reveal nothing, so the
+    // row stays a plain line rather than a control that does nothing.
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-echo",
+            role: "user",
+            content: [
+              {
+                type: "system",
+                kind: "local-command-stdout",
+                summary: "Set model to claude-opus-4-8",
+                detail: "",
+              },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    await screen.findByText("Set model to claude-opus-4-8");
+    expect(screen.queryByRole("button", { name: /Set model/ })).toBeNull();
+    expect(screen.queryByTestId("row-chevron")).toBeNull();
+  });
+
+  it("gives a system row no You header, since nobody wrote it", async () => {
+    // The Agent logs harness noise as a user turn, but it is machinery talking
+    // to the Agent — attributing it to the reader is the bug (ADR-0023).
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[assistant("Kicking that off."), notificationTurn]}
+      />
+    );
+
+    await screen.findByText('Agent "Run App test" finished');
+    expect(screen.queryByText("You")).toBeNull();
+  });
+});
+
 describe("Conversation command lines", () => {
   const commandTurn: Message = {
     id: "m-cmd",
