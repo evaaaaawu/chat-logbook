@@ -49,4 +49,10 @@ export interface Message {
   role: "user" | "assistant";
   content: string | ContentBlock[];
   timestamp: string;
+  /**
+   * The model id the Agent recorded on this message, served raw by the API.
+   * Per message, not per chat: a chat that switches models mid-way shows the
+   * switch. Absent when the Agent recorded none.
+   */
+  model?: string;
 }
