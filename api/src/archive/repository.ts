@@ -74,6 +74,14 @@ export interface ArchiveRepository {
    */
   readonly read: ArchiveReadSeam;
   getArchiveUuid(): string;
+  /**
+   * The normalize-output version the Normalized layer was last rebuilt at. 0 on
+   * a fresh or pre-#191 archive. Startup uses it to run re-normalize once per
+   * NORMALIZE_VERSION bump (ADR-0023).
+   */
+  getNormalizeVersion(): number;
+  /** Stamp the archive as rebuilt at `version` after a re-normalize pass. */
+  setNormalizeVersion(version: number): void;
   getAppliedMigrations(): AppliedMigration[];
   generateChatId(): string;
   /**
@@ -176,6 +184,19 @@ export function createArchiveRepository({
         throw new Error("archive_meta row missing after initialization");
       }
       return row.archiveUuid;
+    },
+    getNormalizeVersion() {
+      const row = db.select().from(archiveMeta).get();
+      if (!row) {
+        throw new Error("archive_meta row missing after initialization");
+      }
+      return row.normalizeVersion;
+    },
+    setNormalizeVersion(version) {
+      db.update(archiveMeta)
+        .set({ normalizeVersion: version })
+        .where(eq(archiveMeta.id, 1))
+        .run();
     },
     getAppliedMigrations() {
       return db
