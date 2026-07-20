@@ -5,6 +5,7 @@ import type { Message, ContentBlock, Chat, Tag } from "@/types";
 import { MarkdownText } from "@/conversation/MarkdownText";
 import { CollapsibleThinking } from "@/conversation/CollapsibleThinking";
 import { CollapsibleToolCall } from "@/conversation/CollapsibleToolCall";
+import { CommandLine } from "@/conversation/CommandLine";
 import { ScrollPill } from "@/conversation/ScrollPill";
 import { NewMessagesPill } from "@/conversation/NewMessagesPill";
 import { UnreadDivider } from "@/conversation/UnreadDivider";
@@ -168,6 +169,8 @@ function renderContentBlock(
       );
     case "tool_result":
       return null;
+    case "command":
+      return <CommandLine key={index} name={block.name} args={block.args} />;
   }
 }
 
