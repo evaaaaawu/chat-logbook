@@ -75,6 +75,20 @@ export class ClaudeCodePlugin implements AgentPlugin {
     const ts = String(payload.timestamp ?? "");
 
     if (typeof message.content === "string") {
+      const command = parseCommandMarkup(message.content);
+      if (command) {
+        // The searchable text is the command line (`/tdd issue 191`), so FTS
+        // finds it and a chat whose first turn is a slash command derives that
+        // as its title instead of the raw markup.
+        const commandLine = `${command.name} ${command.args}`.trim();
+        return {
+          messageId,
+          role,
+          ts,
+          text: commandLine,
+          blocks: [{ type: "command", name: command.name, args: command.args }],
+        };
+      }
       const text = message.content;
       return {
         messageId,
@@ -132,6 +146,24 @@ async function readCwdFromJsonl(
     // Ignore I/O errors; fall back to undefined project.
   }
   return undefined;
+}
+
+// Claude Code records a slash-command invocation as a user message whose text
+// is `<command-message>…</command-message>\n<command-name>/tdd</command-name>`
+// with an optional `<command-args>…</command-args>`. Translate it here so the
+// frontend renders a chip and never sees the markup (ADR-0023).
+const COMMAND_NAME_RE = /<command-name>([\s\S]*?)<\/command-name>/;
+const COMMAND_ARGS_RE = /<command-args>([\s\S]*?)<\/command-args>/;
+
+function parseCommandMarkup(
+  content: string
+): { name: string; args: string } | null {
+  const nameMatch = COMMAND_NAME_RE.exec(content);
+  if (!nameMatch) return null;
+  const name = nameMatch[1].trim();
+  const argsMatch = COMMAND_ARGS_RE.exec(content);
+  const args = argsMatch ? argsMatch[1].trim() : "";
+  return { name, args };
 }
 
 function normalizeBlock(raw: unknown): NormalizedBlock | null {

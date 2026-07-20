@@ -1131,6 +1131,37 @@ describe("ChatReader.getMessages", () => {
       },
     ]);
   });
+
+  it("serves a command block unchanged", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m-cmd",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: "/tdd issue 191",
+      blocks: [{ type: "command", name: "/tdd", args: "issue 191" }],
+    });
+
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const messages = reader.getMessages(wireIdFor(archive, "session-1"), {
+      includeTrashed: false,
+    });
+    expect(messages![0].content).toEqual([
+      { type: "command", name: "/tdd", args: "issue 191" },
+    ]);
+  });
 });
 
 describe("ChatReader is agent-agnostic", () => {
