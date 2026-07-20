@@ -1162,6 +1162,41 @@ describe("ChatReader.getMessages", () => {
       { type: "command", name: "/tdd", args: "issue 191" },
     ]);
   });
+
+  it("serves a system block unchanged", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    const systemBlock = {
+      type: "system",
+      kind: "task-notification",
+      summary: 'Agent "Run tests" finished',
+      detail: "<task-notification>…</task-notification>",
+    };
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m-sys",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: 'Agent "Run tests" finished',
+      blocks: [systemBlock],
+    });
+
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const messages = reader.getMessages(wireIdFor(archive, "session-1"), {
+      includeTrashed: false,
+    });
+    expect(messages![0].content).toEqual([systemBlock]);
+  });
 });
 
 describe("ChatReader is agent-agnostic", () => {

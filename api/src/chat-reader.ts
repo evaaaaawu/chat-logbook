@@ -56,7 +56,10 @@ export type ApiContentBlock =
     }
   // A slash-command invocation, served as-is from Normalized (ADR-0023). No
   // field remap: the frontend renders it as a chip.
-  | { type: "command"; name: string; args: string };
+  | { type: "command"; name: string; args: string }
+  // Harness noise, served as-is from Normalized (ADR-0023). No field remap: the
+  // frontend renders a collapsed system row and needs no per-agent knowledge.
+  | { type: "system"; kind: string; summary: string; detail: string };
 
 export interface MessageResponse {
   /**

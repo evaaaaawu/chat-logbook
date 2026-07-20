@@ -89,6 +89,19 @@ export class ClaudeCodePlugin implements AgentPlugin {
           blocks: [{ type: "command", name: command.name, args: command.args }],
         };
       }
+      const system = parseSystemNoise(message.content);
+      if (system) {
+        // The searchable text is the summary, not the markup: harness noise
+        // should stay findable without a wall of XML becoming a chat's title.
+        return {
+          messageId,
+          role,
+          ts,
+          text: system.summary,
+          blocks: [system],
+        };
+      }
+
       const text = message.content;
       return {
         messageId,
@@ -164,6 +177,52 @@ function parseCommandMarkup(
   const argsMatch = COMMAND_ARGS_RE.exec(content);
   const args = argsMatch ? argsMatch[1].trim() : "";
   return { name, args };
+}
+
+// Claude Code injects harness noise as fake user turns. Most of it is flagged
+// `isMeta` and already dropped above; what survives is translated here so the
+// frontend renders a system row and never sees the markup (ADR-0023).
+const TASK_NOTIFICATION_RE = /<task-notification>[\s\S]*<\/task-notification>/;
+const TASK_SUMMARY_RE = /<summary>([\s\S]*?)<\/summary>/;
+const LOCAL_COMMAND_STDOUT_RE =
+  /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/;
+
+// The echo is captured off a terminal, so it still carries SGR styling codes.
+// They would render as mojibake in a browser.
+// eslint-disable-next-line no-control-regex
+const ANSI_SGR_RE = /\u001b\[[0-9;]*m/g;
+
+function stripAnsi(text: string): string {
+  return text.replace(ANSI_SGR_RE, "");
+}
+
+function parseSystemNoise(
+  content: string
+): { type: "system"; kind: string; summary: string; detail: string } | null {
+  const notification = TASK_NOTIFICATION_RE.exec(content);
+  if (notification) {
+    const summaryMatch = TASK_SUMMARY_RE.exec(notification[0]);
+    return {
+      type: "system",
+      kind: "task-notification",
+      summary: summaryMatch?.[1].trim() || "Task notification",
+      detail: notification[0],
+    };
+  }
+
+  const stdout = LOCAL_COMMAND_STDOUT_RE.exec(content);
+  if (stdout) {
+    // A local command echo is already one line, so it is wholly the summary and
+    // there is nothing left to expand into.
+    return {
+      type: "system",
+      kind: "local-command-stdout",
+      summary: stripAnsi(stdout[1]).trim(),
+      detail: "",
+    };
+  }
+
+  return null;
 }
 
 function normalizeBlock(raw: unknown): NormalizedBlock | null {
