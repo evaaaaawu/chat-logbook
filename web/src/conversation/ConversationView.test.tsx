@@ -828,3 +828,83 @@ describe("Conversation markdown typography", () => {
     expect(prose?.className).toContain("[overflow-wrap:anywhere]");
   });
 });
+
+describe("ConversationView — inline images", () => {
+  it("renders an image block as a lazy thumbnail served from its chat", async () => {
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-img",
+            role: "user",
+            content: [
+              { type: "text", text: "Look at this" },
+              { type: "image", mediaType: "image/png", ref: "m-img.1" },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    const img = await screen.findByRole("img");
+    // Bytes come from the endpoint, never from the messages payload.
+    expect(img.getAttribute("src")).toBe("/api/chats/c1/images/m-img.1");
+    // Only images scrolled into view are fetched.
+    expect(img.getAttribute("loading")).toBe("lazy");
+  });
+
+  it("opens the full-size image in a lightbox, and closes on Escape", async () => {
+    const user = userEvent.setup();
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-img",
+            role: "user",
+            content: [
+              { type: "image", mediaType: "image/png", ref: "m-img.0" },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    await user.click(await screen.findByRole("img"));
+
+    const lightbox = await screen.findByRole("dialog");
+    // The same immutable URL the thumbnail used, so the bytes are already cached.
+    expect(lightbox.querySelector("img")?.getAttribute("src")).toBe(
+      "/api/chats/c1/images/m-img.0"
+    );
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("gives a turn holding only an image the author byline and timestamp", async () => {
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-img",
+            role: "user",
+            content: [
+              { type: "image", mediaType: "image/png", ref: "m-img.0" },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    // Pasting a screenshot is the reader's own act, so it is attributed like
+    // anything else they wrote — and a screenshot's timestamp is the whole
+    // point of it ("was this before or after the fix?").
+    expect(await screen.findByText("You")).toBeTruthy();
+  });
+});

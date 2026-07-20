@@ -23,6 +23,9 @@ function rendersSomething(block: ContentBlock): boolean {
     case "system":
       // Harness noise, shown as a collapsed row the reader skims past.
       return true;
+    case "image":
+      // A thumbnail; a turn holding only a pasted screenshot still shows it.
+      return true;
   }
 }
 
@@ -40,19 +43,23 @@ export function hasRenderableContent(message: Message): boolean {
 }
 
 /**
- * Whether a Message is authored prose, and so earns a `You` / agent-name
+ * Whether a Message is an authored act, and so earns a `You` / agent-name
  * header.
  *
- * Text and a slash-command invocation count: both are things the reader wrote,
- * so they earn a `You` header. Tool calls and thinking are collapsed units: the
- * Agent logs them as turns of their own, but the reader sees them as part of the
- * moment that prompted them, so they nest under the preceding header instead of
- * repeating it (#192).
+ * The line is who did it, not what shape it took: text, a slash-command
+ * invocation and a pasted image are all things someone deliberately put in the
+ * chat, so each earns a header — and with it the timestamp, which a screenshot
+ * needs more than prose does ("was this before or after the fix?"). Tool calls
+ * and thinking are collapsed units: the Agent logs them as turns of their own,
+ * but the reader sees them as part of the moment that prompted them, so they
+ * nest under the preceding header instead of repeating it (#192).
  */
 export function hasAuthorHeader(message: Message): boolean {
   if (typeof message.content === "string") return hasText(message.content);
   return message.content.some(
     (block) =>
-      (block.type === "text" && hasText(block.text)) || block.type === "command"
+      (block.type === "text" && hasText(block.text)) ||
+      block.type === "command" ||
+      block.type === "image"
   );
 }

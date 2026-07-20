@@ -263,3 +263,79 @@ describe("NORMALIZE_VERSION", () => {
     expect(NORMALIZE_VERSION).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe("renormalizeFromRaw → inline images", () => {
+  it("surfaces images in a chat archived before images were normalized", () => {
+    const archive = createArchiveRepository({ dataDir });
+    archive.ensureChat("claude-code", "session-1", new Date(1700000000000));
+    const { id: rawId } = archive.insertRawMessage({
+      agent: "claude-code",
+      sourceId: "session-1",
+      sourcePath: "/fake/session-1.jsonl",
+      sourceLocator: "L1",
+      payload: {
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            { type: "text", text: "Look at this" },
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: "image/png",
+                data: "iVBORw0KGgo=",
+              },
+            },
+          ],
+        },
+        uuid: "m-img",
+        timestamp: "2024-01-01T00:00:00Z",
+        sessionId: "session-1",
+      },
+      ingestedAt: new Date(1700000000000),
+    });
+    // The stale row a pre-image plugin produced: the image was simply dropped.
+    archive.upsertNormalizedMessage({
+      agent: "claude-code",
+      sourceId: "session-1",
+      rawId,
+      message: {
+        messageId: "m-img",
+        role: "user",
+        ts: "2024-01-01T00:00:00Z",
+        text: "Look at this",
+        blocks: [{ type: "text", text: "Look at this" }],
+      },
+    });
+
+    renormalizeFromRaw({ archive, plugins: [new ClaudeCodePlugin()] });
+
+    expect(
+      archive.read.listMessagesByChat("claude-code", "session-1")[0].blocks
+    ).toEqual([
+      { type: "text", text: "Look at this" },
+      { type: "image", mediaType: "image/png", ref: "m-img.1" },
+    ]);
+
+    archive.close();
+  });
+
+  it("re-normalizes an archive stamped at the pre-image version", () => {
+    const archive = createArchiveRepository({ dataDir });
+    seedStaleCommand(archive);
+    // Version 3 is where the archive sits before this change; a boot on it must
+    // still have a pass to run, which is what carries images to dormant chats.
+    archive.setNormalizeVersion(3);
+
+    const ran = runRenormalizeIfStale({
+      archive,
+      plugins: [new ClaudeCodePlugin()],
+    });
+
+    expect(ran).toBe(true);
+    expect(archive.getNormalizeVersion()).toBe(NORMALIZE_VERSION);
+
+    archive.close();
+  });
+});

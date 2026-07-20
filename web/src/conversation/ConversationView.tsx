@@ -7,6 +7,7 @@ import { CollapsibleThinking } from "@/conversation/CollapsibleThinking";
 import { CollapsibleToolCall } from "@/conversation/CollapsibleToolCall";
 import { CommandLine } from "@/conversation/CommandLine";
 import { SystemRow } from "@/conversation/SystemRow";
+import { InlineImage } from "@/conversation/InlineImage";
 import { ScrollPill } from "@/conversation/ScrollPill";
 import { NewMessagesPill } from "@/conversation/NewMessagesPill";
 import { UnreadDivider } from "@/conversation/UnreadDivider";
@@ -153,7 +154,8 @@ type ToolResults = Map<string, ToolResultBlock>;
 function renderContentBlock(
   block: ContentBlock,
   index: number,
-  toolResults: ToolResults
+  toolResults: ToolResults,
+  chatId: string
 ) {
   switch (block.type) {
     case "text":
@@ -177,14 +179,22 @@ function renderContentBlock(
       return (
         <SystemRow key={index} summary={block.summary} detail={block.detail} />
       );
+    case "image":
+      return <InlineImage key={index} chatId={chatId} imageRef={block.ref} />;
   }
 }
 
-function renderContent(content: Message["content"], toolResults: ToolResults) {
+function renderContent(
+  content: Message["content"],
+  toolResults: ToolResults,
+  chatId: string
+) {
   if (typeof content === "string") {
     return <MarkdownText>{content}</MarkdownText>;
   }
-  return content.map((block, i) => renderContentBlock(block, i, toolResults));
+  return content.map((block, i) =>
+    renderContentBlock(block, i, toolResults, chatId)
+  );
 }
 
 // The assistant's byline: the Agent, then the model that turn ran on. Read per
@@ -199,10 +209,13 @@ function MessageItem({
   message,
   agentName,
   toolResults,
+  chatId,
 }: {
   message: Message;
   agentName: string;
   toolResults: ToolResults;
+  /** Owning chat, so an image block can address its own bytes. */
+  chatId: string;
 }) {
   return (
     <div
@@ -232,7 +245,7 @@ function MessageItem({
           </span>
         </div>
       )}
-      {renderContent(message.content, toolResults)}
+      {renderContent(message.content, toolResults, chatId)}
     </div>
   );
 }
@@ -477,6 +490,7 @@ export function ConversationView({
                     message={messages[virtualItem.index]}
                     agentName={agentName}
                     toolResults={toolResults}
+                    chatId={chat?.id ?? ""}
                   />
                 </div>
               ))}

@@ -10,6 +10,7 @@ import type { ChatPageQuery } from "./list-pagination.js";
 import type { ChatCountsQuery } from "./list-counts.js";
 import type { ListEventHub } from "./list-events.js";
 import { MAX_PAGE_LIMIT } from "./list-contract.js";
+import { plugins } from "./plugins/registry.js";
 
 // Heartbeat cadence for the live-update SSE stream. A periodic comment keeps the
 // connection from idling out behind proxies and surfaces a dropped socket so the
@@ -419,6 +420,43 @@ export function createApp({
       return c.json({ error: "Chat not found" }, 404);
     }
     return c.json({ messages });
+  });
+
+  // Inline image bytes, extracted from the Raw payload at request time so the
+  // messages payload stays free of base64 and the archive stores each image once
+  // (ADR-0023). Nothing here reads the Source file, so an image outlives the
+  // screenshot being deleted from disk.
+  app.get("/api/chats/:id/images/:ref", (c) => {
+    const row = reader.findChat(c.req.param("id"));
+    if (!row) return c.json({ error: "Chat not found" }, 404);
+
+    const plugin = plugins.find((p) => p.id === row.agent);
+    if (!plugin?.resolveImage) {
+      return c.json({ error: "Image not found" }, 404);
+    }
+
+    const image = plugin.resolveImage(c.req.param("ref"), (messageId) => {
+      const payload = archive.read.findRawPayloadForMessage(
+        row.agent,
+        row.sourceId,
+        messageId
+      );
+      if (payload === null) return null;
+      try {
+        return JSON.parse(payload);
+      } catch {
+        return null;
+      }
+    });
+    if (!image) return c.json({ error: "Image not found" }, 404);
+
+    // Hono's body takes a plain Uint8Array; a Node Buffer's backing store is
+    // typed loosely enough that it does not satisfy that signature.
+    return c.body(new Uint8Array(image.bytes), 200, {
+      "Content-Type": image.mediaType,
+      // Archived bytes never change, so the browser can keep them forever.
+      "Cache-Control": "public, max-age=31536000, immutable",
+    });
   });
 
   app.get("/api/tags", (c) => {

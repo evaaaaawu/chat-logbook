@@ -586,3 +586,38 @@ describe("ClaudeCodePlugin.normalize → model capture", () => {
     expect(result).not.toHaveProperty("model");
   });
 });
+
+describe("ClaudeCodePlugin.normalize → inline images", () => {
+  it("emits an image block carrying media type and a ref, never the bytes", () => {
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            { type: "text", text: "Look at this" },
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: "image/png",
+                data: "iVBORw0KGgo=",
+              },
+            },
+          ],
+        },
+        uuid: "msg-img-1",
+        timestamp: "2024-01-01T00:00:30Z",
+        sessionId: "session-1",
+      })
+    );
+
+    expect(result?.blocks).toEqual([
+      { type: "text", text: "Look at this" },
+      { type: "image", mediaType: "image/png", ref: "msg-img-1.1" },
+    ]);
+    // The bytes stay in Raw; Normalized must not double the archive's image
+    // storage (ADR-0023).
+    expect(JSON.stringify(result)).not.toContain("iVBORw0KGgo=");
+  });
+});

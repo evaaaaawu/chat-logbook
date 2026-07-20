@@ -41,7 +41,11 @@ export type ContentBlock =
   | { type: "command"; name: string; args: string }
   // Harness noise the plugin classified at normalize time (ADR-0023). Renders as
   // a collapsed system row; `detail` is empty when the summary is the whole of it.
-  | { type: "system"; kind: string; summary: string; detail: string };
+  | { type: "system"; kind: string; summary: string; detail: string }
+  // An inline image the plugin recorded at normalize time (ADR-0023). Metadata
+  // only: `ref` addresses the bytes, which the image endpoint serves lazily so
+  // this payload stays light no matter how many screenshots a chat holds.
+  | { type: "image"; mediaType: string; ref: string };
 
 export interface Message {
   /** The Normalized `message_id`, unique within a Chat — the Message's stable handle. */
