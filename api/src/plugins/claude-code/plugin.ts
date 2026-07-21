@@ -9,6 +9,7 @@ import type {
   RawRecord,
   ChatRef,
 } from "../types.js";
+import { svgWidgetCode, themeWidgetSvg } from "../visualize-widget.js";
 
 export class ClaudeCodePlugin implements AgentPlugin {
   readonly id = "claude-code";
@@ -122,8 +123,7 @@ export class ClaudeCodePlugin implements AgentPlugin {
     if (Array.isArray(message.content)) {
       const blocks: NormalizedBlock[] = [];
       message.content.forEach((block, index) => {
-        const normalized = normalizeBlock(block, messageId, index);
-        if (normalized) blocks.push(normalized);
+        blocks.push(...normalizeBlock(block, messageId, index));
       });
       const text = blocks
         .filter((b): b is { type: "text"; text: string } => b.type === "text")
@@ -138,7 +138,7 @@ export class ClaudeCodePlugin implements AgentPlugin {
   resolveImage(
     ref: string,
     loadPayload: (messageId: string) => unknown | null
-  ): { mediaType: string; bytes: Buffer } | null {
+  ): { mediaType: string; bytes: Buffer; rendered?: boolean } | null {
     const address = parseImageRef(ref);
     if (!address) return null;
 
@@ -154,7 +154,20 @@ export class ClaudeCodePlugin implements AgentPlugin {
     const block = message.content[address.index] as
       | Record<string, unknown>
       | undefined;
-    if (!block || block.type !== "image") return null;
+    if (!block) return null;
+
+    // A visualize drawing: the "bytes" are the widget's own source, themed on
+    // the way out so its class-based colors resolve outside the harness.
+    const widget = svgWidgetCode(block);
+    if (widget) {
+      return {
+        mediaType: "image/svg+xml",
+        bytes: Buffer.from(themeWidgetSvg(widget), "utf8"),
+        rendered: true,
+      };
+    }
+
+    if (block.type !== "image") return null;
 
     const source = block.source as Record<string, unknown> | undefined;
     if (!source || source.type !== "base64") return null;
@@ -284,7 +297,31 @@ function parseImageRef(
 // `index` is the block's position in the Agent's own content array, not in the
 // normalized output: unrecognized blocks get dropped, so only the raw position
 // survives as a stable address back into the Raw row (see `imageRef`).
+// Usually one block in, one block out — but a visualize widget yields two: the
+// tool row plus the drawing it renders to, which is why this returns a list.
 function normalizeBlock(
+  raw: unknown,
+  messageId: string,
+  index: number
+): NormalizedBlock[] {
+  const one = normalizeOneBlock(raw, messageId, index);
+  if (!one) return [];
+  if (one.type === "tool_use" && svgWidgetCode(raw)) {
+    // The tool row stays alongside the image: the drawing is the point, but the
+    // reader can still expand the row to read the source that produced it.
+    return [
+      one,
+      {
+        type: "image",
+        mediaType: "image/svg+xml",
+        ref: imageRef(messageId, index),
+      },
+    ];
+  }
+  return [one];
+}
+
+function normalizeOneBlock(
   raw: unknown,
   messageId: string,
   index: number

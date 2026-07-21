@@ -180,7 +180,14 @@ function renderContentBlock(
         <SystemRow key={index} summary={block.summary} detail={block.detail} />
       );
     case "image":
-      return <InlineImage key={index} chatId={chatId} imageRef={block.ref} />;
+      return (
+        <InlineImage
+          key={index}
+          chatId={chatId}
+          imageRef={block.ref}
+          mediaType={block.mediaType}
+        />
+      );
   }
 }
 

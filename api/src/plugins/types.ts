@@ -79,5 +79,17 @@ export interface AgentPlugin {
   resolveImage?(
     ref: string,
     loadPayload: (messageId: string) => unknown | null
-  ): { mediaType: string; bytes: Buffer } | null;
+  ): {
+    mediaType: string;
+    bytes: Buffer;
+    /**
+     * True when the bytes were rendered here rather than copied out of Raw — a
+     * visualize widget, whose theme and sizing this code injects at request
+     * time. Those bytes are a function of the app's version, not the archive's
+     * content, so they must stay revalidatable: an upgrade that changes the
+     * rendering has to reach browsers that already hold the old one. Absent for
+     * verbatim bytes, which never change and are cached forever.
+     */
+    rendered?: boolean;
+  } | null;
 }

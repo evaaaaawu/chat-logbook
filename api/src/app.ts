@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -450,12 +451,41 @@ export function createApp({
     });
     if (!image) return c.json({ error: "Image not found" }, 404);
 
+    // Rendered bytes (a themed, sized widget) depend on this app's version, not
+    // on the archive, so they get an ETag and revalidate. Pinning them would
+    // leave an upgraded reader looking at the render their old version made.
+    // Revalidation costs one local 304 and no bytes.
+    if (image.rendered) {
+      const etag = `"${createHash("sha256")
+        .update(image.bytes)
+        .digest("base64url")
+        .slice(0, 27)}"`;
+      if (c.req.header("if-none-match") === etag) {
+        return c.body(null, 304, { ETag: etag, "Cache-Control": "no-cache" });
+      }
+      return c.body(new Uint8Array(image.bytes), 200, {
+        "Content-Type": image.mediaType,
+        "Cache-Control": "no-cache",
+        ETag: etag,
+        "Content-Security-Policy":
+          "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        "X-Content-Type-Options": "nosniff",
+      });
+    }
+
     // Hono's body takes a plain Uint8Array; a Node Buffer's backing store is
     // typed loosely enough that it does not satisfy that signature.
     return c.body(new Uint8Array(image.bytes), 200, {
       "Content-Type": image.mediaType,
-      // Archived bytes never change, so the browser can keep them forever.
+      // Verbatim archived bytes never change, so the browser keeps them forever.
       "Cache-Control": "public, max-age=31536000, immutable",
+      // Archived bytes are the Agent's, not ours — an SVG widget may carry a
+      // script. The pane renders these through `<img>`, which already refuses
+      // to run scripts or load external resources; saying it again in the
+      // headers keeps that true for anyone opening the URL on its own.
+      "Content-Security-Policy":
+        "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      "X-Content-Type-Options": "nosniff",
     });
   });
 

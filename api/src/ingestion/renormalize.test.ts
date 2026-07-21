@@ -264,6 +264,80 @@ describe("NORMALIZE_VERSION", () => {
   });
 });
 
+describe("renormalizeFromRaw → visualize widgets", () => {
+  const WIDGET_SVG =
+    '<svg viewBox="0 0 680 200"><text class="t">Hi</text></svg>';
+
+  it("surfaces a widget image in a chat archived before widgets were drawn", () => {
+    const archive = createArchiveRepository({ dataDir });
+    archive.ensureChat("claude-code", "session-1", new Date(1700000000000));
+    const toolUse = {
+      type: "tool_use",
+      id: "toolu_w1",
+      name: "mcp__visualize__show_widget",
+      input: { title: "diagram", widget_code: WIDGET_SVG },
+    };
+    const { id: rawId } = archive.insertRawMessage({
+      agent: "claude-code",
+      sourceId: "session-1",
+      sourcePath: "/fake/session-1.jsonl",
+      sourceLocator: "L1",
+      payload: {
+        type: "assistant",
+        message: { role: "assistant", content: [toolUse] },
+        uuid: "m-wid",
+        timestamp: "2024-01-01T00:00:00Z",
+        sessionId: "session-1",
+      },
+      ingestedAt: new Date(1700000000000),
+    });
+    // The stale row a pre-widget plugin produced: a bare tool row, the drawing
+    // invisible.
+    archive.upsertNormalizedMessage({
+      agent: "claude-code",
+      sourceId: "session-1",
+      rawId,
+      message: {
+        messageId: "m-wid",
+        role: "assistant",
+        ts: "2024-01-01T00:00:00Z",
+        text: "",
+        blocks: [
+          {
+            type: "tool_use",
+            id: "toolu_w1",
+            name: "mcp__visualize__show_widget",
+            input: { title: "diagram", widget_code: WIDGET_SVG },
+          },
+        ],
+      },
+    });
+
+    renormalizeFromRaw({ archive, plugins: [new ClaudeCodePlugin()] });
+
+    expect(
+      archive.read.listMessagesByChat("claude-code", "session-1")[0].blocks
+    ).toEqual([
+      {
+        type: "tool_use",
+        id: "toolu_w1",
+        name: "mcp__visualize__show_widget",
+        input: { title: "diagram", widget_code: WIDGET_SVG },
+      },
+      { type: "image", mediaType: "image/svg+xml", ref: "m-wid.0" },
+    ]);
+
+    archive.close();
+  });
+
+  it("is ahead of the version that shipped inline images, so #230 re-normalizes", () => {
+    // Version 4 shipped the `image` block for pasted screenshots (#196). Drawing
+    // archived widgets is the next normalize-output change, and only a bump
+    // reaches chats whose Source files are long gone.
+    expect(NORMALIZE_VERSION).toBeGreaterThanOrEqual(5);
+  });
+});
+
 describe("renormalizeFromRaw → inline images", () => {
   it("surfaces images in a chat archived before images were normalized", () => {
     const archive = createArchiveRepository({ dataDir });

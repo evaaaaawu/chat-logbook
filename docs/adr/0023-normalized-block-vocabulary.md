@@ -25,7 +25,11 @@ type NormalizedBlock =
 - **`system`** — harness noise addressed to the Agent, not written by the user (task-notifications, hook output, …). `kind` is an open string (e.g. `"task-notification"`), so new noise types widen the data, not the type union. `summary` is the one-line collapsed row; `detail` is the full original content, preserved for expansion. Renders as a collapsed system row.
 - **`image`** — metadata only. The bytes stay in the Raw layer (they are already there verbatim); `ref` is an opaque token the image endpoint resolves back to the bytes' location in the message's Raw row. Never inline base64 into Normalized: it would double the Archive's image storage and force the messages API to ship every image up front. Served by `GET /api/chats/:chatId/images/:ref` with immutable cache headers — archived bytes never change.
 
-Two adjacent rules ride on the same contract:
+Three adjacent rules ride on the same contract:
+
+- **Agent-drawn widgets.** A `visualize` MCP call whose `widget_code` is SVG emits an `image` block _in addition to_ its `tool_use` block — the only case where one raw block yields two normalized ones. The `ref` addresses the tool call itself, and the image endpoint serves the widget's SVG source with a theme stylesheet injected, since a visualize SVG carries no colors of its own (its `t`/`ts`/`th` and `c-{ramp}` classes are defined by the harness, not the document). Serving through `<img>` is the security boundary: browsers run no scripts and load no external resources for an SVG in image context. HTML widgets emit no image block — their value is interactivity, and rendering them would mean executing archived code.
+
+  This splits the endpoint's caching in two. Bytes copied verbatim out of Raw are pinned forever (`immutable`) because nothing can change them. Rendered bytes carry an `ETag` and `no-cache` instead: they are a function of the app's version rather than the archive's content, so an upgrade that changes the theme or the sizing has to reach browsers that already hold the old render. Revalidation is one local 304 and no bytes.
 
 - **Inline file mentions.** Agent-private file-mention syntax is translated at normalize time into a standard markdown link with a `file://` URL inside the `text` block. The renderer has exactly one generic rule — `file://` links render as a file chip — and never sees the Agent's syntax.
 - **`NormalizedMessage.model`** — an optional field capturing the model id the Agent recorded on the message (e.g. `claude-opus-4-8`). Absent when the Agent doesn't record one.
