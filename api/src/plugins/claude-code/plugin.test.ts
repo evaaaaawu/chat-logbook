@@ -621,3 +621,57 @@ describe("ClaudeCodePlugin.normalize → inline images", () => {
     expect(JSON.stringify(result)).not.toContain("iVBORw0KGgo=");
   });
 });
+
+describe("ClaudeCodePlugin.normalize → visualize widgets", () => {
+  function widgetCall(widgetCode: string) {
+    return rawRecord({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_w1",
+            name: "mcp__visualize__show_widget",
+            input: { title: "arch_diagram", widget_code: widgetCode },
+          },
+        ],
+      },
+      uuid: "msg-w-1",
+      timestamp: "2024-01-01T00:00:40Z",
+      sessionId: "session-1",
+    });
+  }
+
+  it("emits an image block beside the tool row when the widget is SVG", () => {
+    const svg = '<svg viewBox="0 0 680 200"><text class="t">Hi</text></svg>';
+    const result = plugin.normalize(widgetCall(svg));
+
+    // The tool row stays: the reader can still open the widget's source.
+    expect(result?.blocks).toEqual([
+      {
+        type: "tool_use",
+        id: "toolu_w1",
+        name: "mcp__visualize__show_widget",
+        input: { title: "arch_diagram", widget_code: svg },
+      },
+      { type: "image", mediaType: "image/svg+xml", ref: "msg-w-1.0" },
+    ]);
+  });
+
+  // HTML widgets earn their keep by being interactive, which serving them would
+  // mean executing archived code. They stay a tool row the reader can expand.
+  it("leaves an HTML widget as a bare tool row", () => {
+    const html = '<div style="padding:8px">Before and after</div>';
+    const result = plugin.normalize(widgetCall(html));
+
+    expect(result?.blocks).toEqual([
+      {
+        type: "tool_use",
+        id: "toolu_w1",
+        name: "mcp__visualize__show_widget",
+        input: { title: "arch_diagram", widget_code: html },
+      },
+    ]);
+  });
+});
