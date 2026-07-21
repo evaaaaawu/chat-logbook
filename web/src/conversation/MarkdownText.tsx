@@ -1,9 +1,13 @@
-import Markdown, { type Components } from "react-markdown";
+import Markdown, {
+  defaultUrlTransform,
+  type Components,
+} from "react-markdown";
 import type { Element, ElementContent } from "hast";
 import rehypeHighlight from "rehype-highlight";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { CopyButton } from "@/shared/CopyButton";
+import { FileChip } from "@/conversation/FileChip";
 
 // The code as written, read off the syntax tree rather than the rendered
 // output: highlighting has already wrapped keywords in spans by the time this
@@ -22,11 +26,20 @@ function codeSource(node: Element | undefined): string {
 }
 
 const markdownComponents: Components = {
-  a: ({ children, ...props }) => (
-    <a {...props} target="_blank" rel="noreferrer noopener">
-      {children}
-    </a>
-  ),
+  a: ({ children, ...props }) => {
+    // The frontend's one generic rule: a file link renders as a chip. The
+    // Agent's own mention syntax was already translated into this link at
+    // normalize time, so the renderer never learns any Agent's markup
+    // (ADR-0023).
+    if (props.href?.startsWith("file://")) {
+      return <FileChip href={props.href} />;
+    }
+    return (
+      <a {...props} target="_blank" rel="noreferrer noopener">
+        {children}
+      </a>
+    );
+  },
   table: ({ children, ...props }) => (
     <div className="overflow-x-auto">
       <table {...props}>{children}</table>
@@ -76,6 +89,12 @@ export function MarkdownText({ children }: { children: string }) {
         // tables, code) still parses normally.
         remarkPlugins={[remarkGfm, remarkBreaks]}
         rehypePlugins={[rehypeHighlight]}
+        // react-markdown drops `file:` URLs by default, as a defence against
+        // links a page might navigate to. These never navigate — the chip
+        // copies the path instead — so the URL has to survive to be read.
+        urlTransform={(url) =>
+          url.startsWith("file://") ? url : defaultUrlTransform(url)
+        }
         components={markdownComponents}
       >
         {children}
