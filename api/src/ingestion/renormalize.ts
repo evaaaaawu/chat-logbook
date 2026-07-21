@@ -71,9 +71,10 @@ export function renormalizeFromRaw({
  * block, turning archived harness noise into collapsed rows: version 2. #195
  * captures the per-message `model`, backfilling it onto archived rows: version 3.
  * #196 adds the `image` block, making pasted screenshots visible in chats that
- * dropped them at ingest: version 4.
+ * dropped them at ingest: version 4. #230 draws SVG visualize widgets as images
+ * too, so archived diagrams stop hiding behind a collapsed tool row: version 5.
  */
-export const NORMALIZE_VERSION = 4;
+export const NORMALIZE_VERSION = 5;
 
 export interface RunRenormalizeIfStaleOptions {
   plugins: readonly AgentPlugin[];
