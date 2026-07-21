@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MarkdownText } from "@/conversation/MarkdownText";
 
 describe("MarkdownText line breaks", () => {
@@ -35,5 +36,36 @@ describe("MarkdownText line breaks", () => {
     expect(container.querySelector("li br")).toBeNull();
     expect(screen.getByText("bold").tagName).toBe("STRONG");
     expect(screen.getByText("code").tagName).toBe("CODE");
+  });
+});
+
+describe("MarkdownText code block copying", () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+
+  beforeEach(() => {
+    writeText.mockClear();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+  });
+
+  it("copies a code block's source, without the highlighting markup", async () => {
+    // Highlighting wraps keywords in spans; what the reader takes away has to
+    // be the code they could paste back into a file.
+    render(
+      <MarkdownText>{"```ts\nconst x = 1;\nreturn x;\n```"}</MarkdownText>
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Copy code" }));
+
+    expect(writeText).toHaveBeenCalledWith("const x = 1;\nreturn x;");
+  });
+
+  it("offers no copy button for inline code", () => {
+    // Inline code is a word inside a sentence, not something to take away.
+    render(<MarkdownText>{"use the `id` field"}</MarkdownText>);
+
+    expect(screen.queryByRole("button", { name: "Copy code" })).toBeNull();
   });
 });
