@@ -81,6 +81,9 @@ export class ClaudeCodePlugin implements AgentPlugin {
         ? { model: message.model }
         : {};
 
+    // The directory the turn ran in, used to resolve relative file mentions.
+    const cwd = typeof payload.cwd === "string" ? payload.cwd : undefined;
+
     if (typeof message.content === "string") {
       const command = parseCommandMarkup(message.content);
       if (command) {
@@ -109,25 +112,33 @@ export class ClaudeCodePlugin implements AgentPlugin {
         };
       }
 
-      const text = message.content;
       return {
         messageId,
         role,
         ts,
-        text,
-        blocks: [{ type: "text", text }],
+        text: translateFileMentions(message.content, cwd, asPath),
+        blocks: [
+          {
+            type: "text",
+            text: translateFileMentions(message.content, cwd, asLink),
+          },
+        ],
         ...model,
       };
     }
 
     if (Array.isArray(message.content)) {
-      const blocks: NormalizedBlock[] = [];
-      message.content.forEach((block, index) => {
-        blocks.push(...normalizeBlock(block, messageId, index));
-      });
-      const text = blocks
+      const raw = message.content.flatMap((block, index) =>
+        normalizeBlock(block, messageId, index)
+      );
+      const blocks: NormalizedBlock[] = raw.map((block) =>
+        block.type === "text"
+          ? { ...block, text: translateFileMentions(block.text, cwd, asLink) }
+          : block
+      );
+      const text = raw
         .filter((b): b is { type: "text"; text: string } => b.type === "text")
-        .map((b) => b.text)
+        .map((b) => translateFileMentions(b.text, cwd, asPath))
         .join("\n");
       return { messageId, role, ts, text, blocks, ...model };
     }
@@ -273,6 +284,88 @@ function parseSystemNoise(
   }
 
   return null;
+}
+
+// Claude Code spells a file mention `@path` — agent-private markup carrying
+// only a path, never the file's content. Translate it into a standard markdown
+// link with a `file://` URL so the frontend has one generic rule (file links
+// render as a chip) and never sees the Agent's syntax (ADR-0023).
+// The quoted form is what Claude Code writes when the path contains spaces.
+const FILE_MENTION_RE = /(^|\s)@(?:"([^"\n]+)"|(\S+))/g;
+
+// Code is quoted, not addressed: an `@path` a reader typed inside a fence or an
+// inline span is being shown, not attached, so it stays verbatim.
+const CODE_SEGMENT_RE = /```[\s\S]*?```|`[^`\n]*`/g;
+
+// How a matched mention is written back out. A message carries two renderings
+// of the same sentence: `asLink` for the blocks the frontend draws chips from,
+// `asPath` for `text`, which is the FTS source and the fallback chat title —
+// markdown syntax there would leak into the chat list. The `command` block
+// splits the same way: a clean line in `text`, the markup in the block.
+type MentionWriter = (mentioned: string, cwd: string | undefined) => string;
+
+// The link text keeps the path as the reader wrote it; only the target is
+// resolved, so a relative mention still points somewhere on re-reading.
+const asLink: MentionWriter = (mentioned, cwd) =>
+  `[${mentioned}](${fileUrl(resolveAgainst(mentioned, cwd))})`;
+
+const asPath: MentionWriter = (mentioned) => mentioned;
+
+function translateFileMentions(
+  text: string,
+  cwd: string | undefined,
+  write: MentionWriter
+): string {
+  let out = "";
+  let last = 0;
+  for (const code of text.matchAll(CODE_SEGMENT_RE)) {
+    out += translateProse(text.slice(last, code.index), cwd, write) + code[0];
+    last = code.index + code[0].length;
+  }
+  return out + translateProse(text.slice(last), cwd, write);
+}
+
+function translateProse(
+  text: string,
+  cwd: string | undefined,
+  write: MentionWriter
+): string {
+  return text.replace(
+    FILE_MENTION_RE,
+    (match, lead: string, quoted: string | undefined, bare: string) => {
+      const mentioned = quoted ?? bare;
+      if (!looksLikeFilePath(mentioned)) return match;
+      return `${lead}${write(mentioned, cwd)}`;
+    }
+  );
+}
+
+// `~` stays as written: normalize runs without the session's home directory,
+// and guessing one would point the link at the wrong machine's user.
+function resolveAgainst(mentioned: string, cwd: string | undefined): string {
+  if (!cwd) return mentioned;
+  if (mentioned.startsWith("/") || mentioned.startsWith("~")) return mentioned;
+  return path.posix.join(cwd, mentioned);
+}
+
+// `@` is overwhelmingly not a file mention in a developer log — npm scopes
+// (`@tanstack/react-virtual`), import aliases (`@/types`), CSS at-rules
+// (`@apply`) and handles all share the sigil. A mention has to end in a file
+// extension, in a slash for a directory, or be a dotfile — named entirely by
+// its leading dot, like `.env`. Anything looser turns every mention of a
+// package into a chip.
+function looksLikeFilePath(mentioned: string): boolean {
+  if (mentioned.endsWith("/")) return true;
+  const basename = mentioned.slice(mentioned.lastIndexOf("/") + 1);
+  if (/^\.[A-Za-z0-9]/.test(basename)) return true;
+  return /^[^.].*\.[A-Za-z0-9]+$/.test(basename);
+}
+
+// A markdown link's target ends at the first space or unbalanced paren, so the
+// path has to be percent-encoded to survive as one link. The link *text* keeps
+// the path verbatim — it is what the reader searches for (FTS reads `text`).
+function fileUrl(filePath: string): string {
+  return `file://${encodeURI(filePath).replace(/[()]/g, encodeURIComponent)}`;
 }
 
 // An image's address inside its own message: the message id plus the block's

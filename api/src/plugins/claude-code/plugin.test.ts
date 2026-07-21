@@ -675,3 +675,213 @@ describe("ClaudeCodePlugin.normalize → visualize widgets", () => {
     ]);
   });
 });
+
+describe("ClaudeCodePlugin.normalize → file mentions", () => {
+  function userText(content: string, cwd?: string) {
+    return rawRecord({
+      type: "user",
+      message: { role: "user", content },
+      uuid: "msg-mention",
+      timestamp: "2024-01-01T00:00:06Z",
+      sessionId: "session-1",
+      ...(cwd ? { cwd } : {}),
+    });
+  }
+
+  it("translates a bare absolute mention into a file:// markdown link", () => {
+    const result = plugin.normalize(
+      userText("Read @/Users/eva/notes/plan.md before you start")
+    );
+
+    expect(result?.blocks).toEqual([
+      {
+        type: "text",
+        text:
+          "Read [/Users/eva/notes/plan.md](file:///Users/eva/notes/plan.md) " +
+          "before you start",
+      },
+    ]);
+  });
+
+  it("translates a quoted mention so a path with spaces stays one link", () => {
+    const result = plugin.normalize(
+      userText('Check @"/Users/eva/My Notes/plan a.md" first')
+    );
+
+    expect(result?.blocks).toEqual([
+      {
+        type: "text",
+        text:
+          "Check [/Users/eva/My Notes/plan a.md]" +
+          "(file:///Users/eva/My%20Notes/plan%20a.md) first",
+      },
+    ]);
+  });
+
+  // `@` is overwhelmingly not a file mention in a developer log: npm scopes,
+  // import aliases, CSS at-rules and handles all share the sigil. Requiring a
+  // file extension (or a trailing slash for a directory) is what separates them.
+  it.each([
+    ["an npm scope", "we depend on @tanstack/react-virtual here"],
+    ["an import alias", "import { Chat } from @/types"],
+    ["a CSS at-rule", "the @apply directive"],
+    ["an email address", "mail eva@example.com about it"],
+    ["a bare handle", "ask @evaaaaawu about it"],
+  ])("leaves %s untouched", (_label, content) => {
+    const result = plugin.normalize(userText(content));
+
+    expect(result?.blocks).toEqual([{ type: "text", text: content }]);
+  });
+
+  it("leaves a mention inside a fenced code block as written", () => {
+    const content = [
+      "run this:",
+      "```sh",
+      "grep @docs/PLAN.md",
+      "```",
+      "then @docs/PLAN.md",
+    ].join("\n");
+
+    const result = plugin.normalize(userText(content));
+
+    expect(result?.blocks).toEqual([
+      {
+        type: "text",
+        text: [
+          "run this:",
+          "```sh",
+          "grep @docs/PLAN.md",
+          "```",
+          "then [docs/PLAN.md](file://docs/PLAN.md)",
+        ].join("\n"),
+      },
+    ]);
+  });
+
+  it("leaves a mention inside inline code as written", () => {
+    const result = plugin.normalize(
+      userText("type `@docs/PLAN.md` to attach @docs/PLAN.md")
+    );
+
+    expect(result?.blocks).toEqual([
+      {
+        type: "text",
+        text:
+          "type `@docs/PLAN.md` to attach " +
+          "[docs/PLAN.md](file://docs/PLAN.md)",
+      },
+    ]);
+  });
+
+  it("resolves a relative mention against the message's cwd", () => {
+    const result = plugin.normalize(
+      userText("Read @docs/PLAN.md", "/Users/eva/proj")
+    );
+
+    expect(result?.blocks).toEqual([
+      {
+        type: "text",
+        text: "Read [docs/PLAN.md](file:///Users/eva/proj/docs/PLAN.md)",
+      },
+    ]);
+  });
+
+  // `~` is the reader's shorthand, not a path the plugin can expand — normalize
+  // runs without the session's home directory, and guessing one would point the
+  // link at the wrong machine's user.
+  it("leaves a ~ mention unexpanded", () => {
+    const result = plugin.normalize(
+      userText("Read @~/ai-config/MEMORY.md", "/Users/eva/proj")
+    );
+
+    expect(result?.blocks).toEqual([
+      {
+        type: "text",
+        text: "Read [~/ai-config/MEMORY.md](file://~/ai-config/MEMORY.md)",
+      },
+    ]);
+  });
+
+  it("translates mentions in a text block of an array-form message", () => {
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Read @docs/PLAN.md" }],
+        },
+        uuid: "msg-mention-array",
+        timestamp: "2024-01-01T00:00:07Z",
+        sessionId: "session-1",
+        cwd: "/Users/eva/proj",
+      })
+    );
+
+    expect(result?.blocks).toEqual([
+      {
+        type: "text",
+        text: "Read [docs/PLAN.md](file:///Users/eva/proj/docs/PLAN.md)",
+      },
+    ]);
+  });
+
+  // `text` is the FTS source and the fallback chat title (`deriveTitle`), so it
+  // holds the path as prose — never the markdown the blocks render from. The
+  // `command` block splits the same way: a clean line in `text`, markup in the
+  // block.
+  it("keeps the searchable text free of markdown syntax", () => {
+    const result = plugin.normalize(
+      userText("Read @docs/PLAN.md", "/Users/eva/proj")
+    );
+
+    expect(result?.text).toBe("Read docs/PLAN.md");
+  });
+
+  it("drops the quotes from a quoted mention in the searchable text", () => {
+    const result = plugin.normalize(
+      userText('Check @"/Users/eva/My Notes/plan a.md" first')
+    );
+
+    expect(result?.text).toBe("Check /Users/eva/My Notes/plan a.md first");
+  });
+
+  it("keeps the searchable text of an array-form message free of markdown", () => {
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Read @docs/PLAN.md" }],
+        },
+        uuid: "msg-mention-array-text",
+        timestamp: "2024-01-01T00:00:08Z",
+        sessionId: "session-1",
+        cwd: "/Users/eva/proj",
+      })
+    );
+
+    expect(result?.text).toBe("Read docs/PLAN.md");
+  });
+
+  // A dotfile is named entirely by its leading dot — `.env`, `.gitignore` — so
+  // the extension rule alone would drop the mentions people make most often
+  // when talking about config.
+  it.each([
+    ["a dotfile", "check @.env for the key", ".env"],
+    [
+      "a dot-directory file",
+      "see @.github/workflows/ci.yml",
+      ".github/workflows/ci.yml",
+    ],
+  ])("chips %s", (_label, content, mentioned) => {
+    const result = plugin.normalize(userText(content));
+
+    expect(result?.blocks[0]).toMatchObject({
+      type: "text",
+      text: content.replace(
+        `@${mentioned}`,
+        `[${mentioned}](file://${mentioned})`
+      ),
+    });
+  });
+});
