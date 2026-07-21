@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationView } from "@/conversation/ConversationView";
 import { messageAnchorId } from "@/conversation/messageAnchor";
 import type { Chat, Message } from "@/types";
@@ -942,5 +942,89 @@ describe("ConversationView — visualize widgets", () => {
     // The source stays reachable — the drawing is the point, but the reader can
     // still open the row that produced it.
     expect(screen.getByText(/show_widget/)).toBeTruthy();
+  });
+});
+
+describe("copying a whole message", () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+
+  beforeEach(() => {
+    writeText.mockClear();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+  });
+
+  it("copies the message's prose, leaving the tool traffic behind", async () => {
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-copy",
+            role: "assistant",
+            content: [
+              { type: "thinking", thinking: "considering" },
+              { type: "text", text: "Here is the answer." },
+              { type: "tool_use", id: "t1", name: "Read", input: {} },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Copy message" })
+    );
+
+    expect(writeText).toHaveBeenCalledWith("Here is the answer.");
+  });
+});
+
+describe("messages with nothing to take away", () => {
+  it("offers no copy button on a turn that is only a tool call", async () => {
+    // The turn renders — a collapsed tool row is worth seeing — but there is no
+    // prose in it, so a copy button could only ever hand back nothing.
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-tool-only",
+            role: "assistant",
+            content: [{ type: "tool_use", id: "t1", name: "Read", input: {} }],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    expect(await screen.findByText(/Read/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Copy message" })).toBeNull();
+  });
+
+  it("still offers it when prose sits alongside the tool call", async () => {
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-mixed",
+            role: "assistant",
+            content: [
+              { type: "text", text: "Reading the file." },
+              { type: "tool_use", id: "t2", name: "Read", input: {} },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Copy message" })
+    ).toBeTruthy();
   });
 });

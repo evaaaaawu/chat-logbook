@@ -1,7 +1,25 @@
 import Markdown, { type Components } from "react-markdown";
+import type { Element, ElementContent } from "hast";
 import rehypeHighlight from "rehype-highlight";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import { CopyButton } from "@/shared/CopyButton";
+
+// The code as written, read off the syntax tree rather than the rendered
+// output: highlighting has already wrapped keywords in spans by the time this
+// renders, and what the reader takes away has to paste back into a file.
+function nodeText(node: ElementContent): string {
+  if (node.type === "text") return node.value;
+  if (node.type === "element") return node.children.map(nodeText).join("");
+  return "";
+}
+
+// The closing fence leaves one trailing newline: markdown's punctuation, not
+// part of the code.
+function codeSource(node: Element | undefined): string {
+  if (!node) return "";
+  return node.children.map(nodeText).join("").replace(/\n$/, "");
+}
 
 const markdownComponents: Components = {
   a: ({ children, ...props }) => (
@@ -12,6 +30,19 @@ const markdownComponents: Components = {
   table: ({ children, ...props }) => (
     <div className="overflow-x-auto">
       <table {...props}>{children}</table>
+    </div>
+  ),
+  // Only fenced blocks get a copy button — inline code is a word inside a
+  // sentence, not something to take away. `group` scopes the hover reveal to
+  // this block, so one button appears at a time.
+  pre: ({ children, node, ...props }) => (
+    <div className="group relative">
+      <pre {...props}>{children}</pre>
+      <CopyButton
+        value={codeSource(node)}
+        label="Copy code"
+        className="absolute right-2 top-2 bg-[#002b36]/80"
+      />
     </div>
   ),
 };

@@ -17,6 +17,8 @@ import {
 } from "@/conversation/scrollPillVisibility";
 import { formatMessageTimestamp } from "@/conversation/formatMessageTimestamp";
 import { messageAnchorId } from "@/conversation/messageAnchor";
+import { messageToMarkdown } from "@/conversation/messageToMarkdown";
+import { CopyButton } from "@/shared/CopyButton";
 import { deriveArrivalAction } from "@/conversation/liveArrival";
 import { deriveFirstUnseenIndex } from "@/conversation/firstUnseenIndex";
 import {
@@ -224,6 +226,7 @@ function MessageItem({
   /** Owning chat, so an image block can address its own bytes. */
   chatId: string;
 }) {
+  const copyValue = messageToMarkdown(message);
   return (
     <div
       id={messageAnchorId(message.id)}
@@ -232,12 +235,24 @@ function MessageItem({
       // only the reader's own turns take a background block, as scanning
       // anchors. Both roles keep the same horizontal padding so their text
       // aligns down a single edge (#192).
-      className={`w-full px-4 py-3 text-sm leading-relaxed ${
+      className={`group relative w-full px-4 py-3 text-sm leading-relaxed ${
         message.role === "user"
           ? "rounded-md bg-card text-accent-foreground"
           : "text-foreground"
       }`}
     >
+      {/* Recall usually ends in taking the turn away with you (#198). A turn
+          worth showing is not always a turn worth copying: one that is only a
+          tool call, a thought or an image renders as something to look at, but
+          holds no prose, and a button that hands back nothing is worse than no
+          button at all. */}
+      {copyValue && (
+        <CopyButton
+          value={copyValue}
+          label="Copy message"
+          className="absolute right-2 top-2 z-10"
+        />
+      )}
       {hasAuthorHeader(message) && (
         // Set as a name, not a label: the old all-caps role tag belonged to the
         // bubble layout, and an agent's display name is written "Claude Code".
