@@ -73,8 +73,10 @@ export function renormalizeFromRaw({
  * #196 adds the `image` block, making pasted screenshots visible in chats that
  * dropped them at ingest: version 4. #230 draws SVG visualize widgets as images
  * too, so archived diagrams stop hiding behind a collapsed tool row: version 5.
+ * #197 translates `@` file mentions into `file://` links, turning them into
+ * chips in chats archived before the rule existed: version 6.
  */
-export const NORMALIZE_VERSION = 5;
+export const NORMALIZE_VERSION = 6;
 
 export interface RunRenormalizeIfStaleOptions {
   plugins: readonly AgentPlugin[];
