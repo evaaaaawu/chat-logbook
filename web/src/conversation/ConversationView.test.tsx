@@ -908,3 +908,39 @@ describe("ConversationView — inline images", () => {
     expect(await screen.findByText("You")).toBeTruthy();
   });
 });
+
+describe("ConversationView — visualize widgets", () => {
+  const widgetCall = {
+    type: "tool_use" as const,
+    id: "toolu_w1",
+    name: "mcp__visualize__show_widget",
+    input: { title: "arch_diagram", widget_code: "<svg />" },
+  };
+
+  it("draws the widget beside its tool row, named as a drawing not a screenshot", async () => {
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-wid",
+            role: "assistant",
+            content: [
+              widgetCall,
+              { type: "image", mediaType: "image/svg+xml", ref: "m-wid.0" },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    const img = await screen.findByRole("img");
+    expect(img.getAttribute("src")).toBe("/api/chats/c1/images/m-wid.0");
+    // "Pasted image" would be a lie: nobody pasted this, the agent drew it.
+    expect(img.getAttribute("alt")).toBe("Diagram");
+    // The source stays reachable — the drawing is the point, but the reader can
+    // still open the row that produced it.
+    expect(screen.getByText(/show_widget/)).toBeTruthy();
+  });
+});
