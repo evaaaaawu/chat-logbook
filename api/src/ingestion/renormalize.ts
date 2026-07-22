@@ -76,8 +76,10 @@ export function renormalizeFromRaw({
  * #197 translates `@` file mentions into `file://` links, turning them into
  * chips in chats archived before the rule existed: version 6. #234 captures the
  * per-message reasoning `effort`, backfilling it onto archived rows: version 7.
+ * #235 carries an edit's `filePath` and `patch` into the tool result, so
+ * archived edits can summarise as a diff: version 8.
  */
-export const NORMALIZE_VERSION = 7;
+export const NORMALIZE_VERSION = 8;
 
 export interface RunRenormalizeIfStaleOptions {
   plugins: readonly AgentPlugin[];

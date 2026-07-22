@@ -14,6 +14,9 @@ type NormalizedBlock =
       toolUseId: string;
       content: unknown;
       isError?: boolean;
+      // Only on a result that edited a file:
+      filePath?: string;
+      patch?: PatchHunk[];
     }
   // New kinds:
   | { type: "command"; name: string; args: string }
@@ -32,6 +35,7 @@ Three adjacent rules ride on the same contract:
   This splits the endpoint's caching in two. Bytes copied verbatim out of Raw are pinned forever (`immutable`) because nothing can change them. Rendered bytes carry an `ETag` and `no-cache` instead: they are a function of the app's version rather than the archive's content, so an upgrade that changes the theme or the sizing has to reach browsers that already hold the old render. Revalidation is one local 304 and no bytes.
 
 - **Inline file mentions.** Agent-private file-mention syntax is translated at normalize time into a standard markdown link with a `file://` URL inside the `text` block. The renderer has exactly one generic rule — `file://` links render as a file chip — and never sees the Agent's syntax.
+- **`tool_result.filePath` + `tool_result.patch`** — the file a file-editing tool applied to, and the unified-diff hunks it produced, carried together or not at all. Claude Code writes both beside the message rather than inside it, so the Plugin reads them off the record's top level, and it keys on the shape of what it finds rather than on a list of tool names — a new editing tool that records the same two things is carried without a code change. The hunks stay verbatim: their `oldStart`/`newStart` are real line numbers, and nothing in the call itself can recover them (deriving a diff in the browser from `old_string`/`new_string` was considered and rejected — it loses the line numbers, and Write has no old string at all). The counts a collapsed row shows (`Edited App.tsx +3 -1`) are derived at render from the `+`/`-` prefixes, not stored.
 - **`NormalizedMessage.model`** — an optional field capturing the model id the Agent recorded on the message (e.g. `claude-opus-4-8`). Absent when the Agent doesn't record one.
 - **`NormalizedMessage.effort`** — an optional field capturing the reasoning effort the Agent recorded for the message (e.g. `medium`). Per message, exactly like `model`, and absent when the Agent recorded none. Claude Code writes it beside the message rather than inside it, so the Plugin reads it off the record's top level. Stored in the Agent's own wording. Unlike a model id, an effort is already a readable word, so the frontend needs no id→name table for it — it capitalizes the first letter at render and shows the rest untouched.
 

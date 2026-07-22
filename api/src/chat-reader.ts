@@ -14,6 +14,7 @@ import {
 } from "./list-pagination.js";
 import type { ChatCountsQuery, ListCounts } from "./list-counts.js";
 import type { TagMode } from "./list-filter.js";
+import type { PatchHunk } from "./plugins/types.js";
 
 /**
  * The Chat read face. At read time it composes Archive + Metadata into the
@@ -53,6 +54,12 @@ export type ApiContentBlock =
       content: unknown;
       /** Set when the tool reported a failure. Absent on success. */
       is_error?: boolean;
+      /**
+       * The file a file-editing tool applied to, and the diff hunks it produced
+       * (ADR-0023). Served together or not at all; absent for every other tool.
+       */
+      file_path?: string;
+      patch?: PatchHunk[];
     }
   // A slash-command invocation, served as-is from Normalized (ADR-0023). No
   // field remap: the frontend renders it as a chip.
@@ -97,6 +104,9 @@ function toApiBlock(block: StoredBlock): ApiContentBlock {
       tool_use_id: String(block.toolUseId ?? ""),
       content: block.content,
       ...(block.isError === true ? { is_error: true } : {}),
+      ...(typeof block.filePath === "string" && Array.isArray(block.patch)
+        ? { file_path: block.filePath, patch: block.patch as PatchHunk[] }
+        : {}),
     };
   }
   return block as ApiContentBlock;
