@@ -9,6 +9,8 @@ type ToolUseBlock = Extract<ContentBlock, { type: "tool_use" }>;
 interface CollapsibleToolCallProps {
   block: ToolUseBlock;
   result?: ToolResultBlock;
+  isExpanded: boolean;
+  onToggle: () => void;
 }
 
 function formatResultContent(content: unknown): string {
@@ -25,12 +27,16 @@ function formatResultContent(content: unknown): string {
 export function CollapsibleToolCall({
   block,
   result,
+  isExpanded,
+  onToggle,
 }: CollapsibleToolCallProps) {
   return (
     <CollapsibleRow
       icon={Terminal}
       summary={generateToolSummary(block)}
       hasError={result?.is_error}
+      isExpanded={isExpanded}
+      onToggle={onToggle}
     >
       <pre className="overflow-x-auto rounded bg-card p-2 font-mono text-xs text-muted-foreground">
         {JSON.stringify(block.input, null, 2)}

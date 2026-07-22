@@ -1054,3 +1054,200 @@ describe("messages with nothing to take away", () => {
     ).toBeTruthy();
   });
 });
+
+describe("Run grouping", () => {
+  // A stretch of tool calls arrives as one turn per call, so without grouping
+  // it renders as a column of stranded one-line fragments. The Run is what
+  // pulls them back together (#236).
+  const skimRun: Message[] = [
+    {
+      id: "m-1",
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "weighing the options" },
+        { type: "tool_use", id: "t1", name: "Read", input: {} },
+      ],
+      timestamp: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: "m-2",
+      role: "assistant",
+      content: [{ type: "tool_use", id: "t2", name: "Bash", input: {} }],
+      timestamp: "2024-01-01T00:01:00Z",
+    },
+    {
+      id: "m-3",
+      role: "assistant",
+      content: [{ type: "text", text: "All green." }],
+      timestamp: "2024-01-01T00:02:00Z",
+    },
+  ];
+
+  function messageEl(container: HTMLElement, id: string): HTMLElement {
+    return container.querySelector<HTMLElement>(`#${messageAnchorId(id)}`)!;
+  }
+
+  it("gathers the skim-layer rows of a turn into one group", async () => {
+    const { container } = render(
+      <ConversationView chat={chat} messages={skimRun} />
+    );
+    await screen.findByText("All green.");
+
+    const groups = messageEl(container, "m-1").querySelectorAll(
+      '[data-testid="run"]'
+    );
+    expect(groups).toHaveLength(1);
+    // Thinking sits inside the Run: a stretch of thinking-then-tools is one
+    // continuous piece of work, not two islands.
+    expect(groups[0]!.querySelectorAll("button")).toHaveLength(2);
+  });
+
+  it("marks the seam where a Run carries on into the next turn", async () => {
+    const { container } = render(
+      <ConversationView chat={chat} messages={skimRun} />
+    );
+    await screen.findByText("All green.");
+
+    expect(messageEl(container, "m-1")).toHaveAttribute(
+      "data-run-continues-after",
+      "true"
+    );
+    expect(messageEl(container, "m-2")).toHaveAttribute(
+      "data-run-continues-before",
+      "true"
+    );
+  });
+
+  it("ends the Run at message text, which keeps its own breathing room", async () => {
+    const { container } = render(
+      <ConversationView chat={chat} messages={skimRun} />
+    );
+    await screen.findByText("All green.");
+
+    const prose = messageEl(container, "m-3");
+    expect(prose.querySelector('[data-testid="run"]')).toBeNull();
+    expect(prose).not.toHaveAttribute("data-run-continues-before");
+    expect(messageEl(container, "m-2")).not.toHaveAttribute(
+      "data-run-continues-after"
+    );
+  });
+});
+
+describe("Row expansion", () => {
+  function tool(id: string, path: string): Message {
+    return {
+      id,
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: `t-${id}`,
+          name: "Read",
+          input: { file_path: path },
+        },
+      ],
+      timestamp: "2024-01-01T00:00:00Z",
+    };
+  }
+
+  it("keeps a row open when the list shifts under the virtualizer", async () => {
+    // The virtualizer keys rows by list position, so a message arriving above
+    // hands a row's instance to a different Message. Expansion that lived in
+    // that instance would follow the position instead of the row (#236).
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <ConversationView
+        chat={chat}
+        messages={[tool("m-a", "/a.ts"), tool("m-b", "/b.ts")]}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: /Read: \/b\.ts/ })
+    );
+
+    rerender(
+      <ConversationView
+        chat={chat}
+        messages={[
+          tool("m-new", "/new.ts"),
+          tool("m-a", "/a.ts"),
+          tool("m-b", "/b.ts"),
+        ]}
+      />
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /Read: \/b\.ts/ })
+    ).toHaveAttribute("aria-expanded", "true");
+    // and no neighbour inherited it
+    expect(
+      screen.getByRole("button", { name: /Read: \/a\.ts/ })
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.getByRole("button", { name: /Read: \/new\.ts/ })
+    ).toHaveAttribute("aria-expanded", "false");
+  });
+  it("remembers each row of a turn separately", async () => {
+    const user = userEvent.setup();
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-pair",
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "Read",
+                input: { file_path: "/a.ts" },
+              },
+              {
+                type: "tool_use",
+                id: "t2",
+                name: "Read",
+                input: { file_path: "/b.ts" },
+              },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: /Read: \/b\.ts/ })
+    );
+
+    expect(
+      screen.getByRole("button", { name: /Read: \/b\.ts/ })
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByRole("button", { name: /Read: \/a\.ts/ })
+    ).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("opens a different chat with every row closed", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <ConversationView chat={chat} messages={[tool("m-a", "/a.ts")]} />
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: /Read: \/a\.ts/ })
+    );
+
+    rerender(
+      <ConversationView
+        chat={{ ...chat, id: "c2" }}
+        messages={[tool("m-a", "/a.ts")]}
+      />
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /Read: \/a\.ts/ })
+    ).toHaveAttribute("aria-expanded", "false");
+  });
+});
