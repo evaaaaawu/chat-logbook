@@ -95,6 +95,9 @@ test.describe("Run density", () => {
     page,
   }) => {
     await openRunChat(page);
+    // Three calls in a row arrive folded (#199); the density claim is about the
+    // rows themselves, so open them first.
+    await page.getByRole("button", { name: /Read 3 files/ }).click();
 
     const a = await rowTop(page, "/a\\.ts");
     const b = await rowTop(page, "/b\\.ts");
@@ -117,5 +120,26 @@ test.describe("Run density", () => {
       .boundingBox())!;
 
     expect(thinking.y - (prose.y + prose.height)).toBeGreaterThan(16);
+  });
+});
+
+test.describe("Folded Run", () => {
+  test("costs one row's height, with no stray air from the turns it swallows", async ({
+    page,
+  }) => {
+    await openRunChat(page);
+
+    const thinking = (await page
+      .getByRole("button", { name: /Thinking/ })
+      .boundingBox())!;
+    const summary = (await page
+      .getByRole("button", { name: /Read 3 files/ })
+      .boundingBox())!;
+
+    // The three turns behind the summary are skipped outright rather than left
+    // as empty blocks, which would stack up as padding under the fold — the
+    // kind of gap only a real browser can see (#199).
+    expect(summary.y - (thinking.y + thinking.height)).toBeLessThan(8);
+    expect(summary.height).toBeLessThan(32);
   });
 });

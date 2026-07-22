@@ -1183,6 +1183,82 @@ describe("Run grouping", () => {
   });
 });
 
+describe("Folding a long Run", () => {
+  function ran(id: string, command: string): Message {
+    return {
+      id,
+      role: "assistant",
+      content: [
+        { type: "tool_use", id: `t-${id}`, name: "Bash", input: { command } },
+      ],
+      timestamp: "2024-01-01T00:00:00Z",
+    };
+  }
+
+  const longRun: Message[] = [
+    ran("m-1", "pnpm test"),
+    ran("m-2", "git status"),
+    ran("m-3", "git diff"),
+  ];
+
+  it("shows a long stretch of tool calls as one row that names what happened", async () => {
+    render(<ConversationView chat={chat} messages={longRun} />);
+
+    expect(
+      await screen.findByRole("button", { name: /Ran 3 commands/ })
+    ).toBeTruthy();
+    // The wall is gone: the individual commands wait behind the summary.
+    expect(screen.queryByText(/pnpm test/)).toBeNull();
+  });
+
+  it("opens onto the individual units, each still expandable on its own", async () => {
+    const user = userEvent.setup();
+    render(<ConversationView chat={chat} messages={longRun} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /Ran 3 commands/ })
+    );
+
+    // Every unit arrives closed — including the first, which the fold is
+    // anchored at and once shared an open/closed key with (#199).
+    expect(screen.getByRole("button", { name: /pnpm test/ })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
+    const command = screen.getByRole("button", { name: /git diff/ });
+    expect(command).toHaveAttribute("aria-expanded", "false");
+    await user.click(command);
+    expect(screen.getByRole("button", { name: /git diff/ })).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+  });
+
+  it("never hides thinking behind the summary", async () => {
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-0",
+            role: "assistant",
+            content: [{ type: "thinking", thinking: "weighing the options" }],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+          ...longRun,
+        ]}
+      />
+    );
+
+    // A summary reading `Ran 3 commands` would be lying if a paragraph of
+    // reasoning sat behind it, so thinking keeps its own row (#199).
+    expect(
+      await screen.findByRole("button", { name: /Thinking/ })
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Ran 3 commands/ })).toBeTruthy();
+  });
+});
+
 describe("Row expansion", () => {
   function tool(id: string, path: string): Message {
     return {
@@ -1220,7 +1296,14 @@ describe("Row expansion", () => {
       <ConversationView
         chat={chat}
         messages={[
-          tool("m-new", "/new.ts"),
+          // Prose rather than a third tool call: three in a row would fold, and
+          // this is about the shift, not the fold (#199).
+          {
+            id: "m-new",
+            role: "assistant",
+            content: "Starting over.",
+            timestamp: "2024-01-01T00:00:00Z",
+          },
           tool("m-a", "/a.ts"),
           tool("m-b", "/b.ts"),
         ]}
@@ -1233,9 +1316,6 @@ describe("Row expansion", () => {
     // and no neighbour inherited it
     expect(
       screen.getByRole("button", { name: /Read: \/a\.ts/ })
-    ).toHaveAttribute("aria-expanded", "false");
-    expect(
-      screen.getByRole("button", { name: /Read: \/new\.ts/ })
     ).toHaveAttribute("aria-expanded", "false");
   });
   it("remembers each row of a turn separately", async () => {
