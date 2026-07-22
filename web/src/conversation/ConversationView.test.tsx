@@ -627,6 +627,56 @@ describe("Conversation tool units", () => {
     expect(await screen.findByText(/17 passed/)).not.toBeNull();
   });
 
+  it("collapses a file edit to the file it touched and how much it changed", async () => {
+    // The patch rides on the result, which an Agent commonly records in the
+    // next turn — so the row can only say this if the unit's two halves are
+    // joined before the summary is drawn (#235).
+    render(
+      <ConversationView
+        chat={chat}
+        messages={[
+          {
+            id: "m-call",
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "Edit",
+                input: { file_path: "/repo/web/src/App.tsx" },
+              },
+            ],
+            timestamp: "2024-01-01T00:00:00Z",
+          },
+          {
+            id: "m-result",
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "t1",
+                content: "The file /repo/web/src/App.tsx has been updated",
+                file_path: "/repo/web/src/App.tsx",
+                patch: [
+                  {
+                    oldStart: 10,
+                    oldLines: 3,
+                    newStart: 10,
+                    newLines: 5,
+                    lines: [" keep", "-gone", "+a", "+b", "+c"],
+                  },
+                ],
+              },
+            ],
+            timestamp: "2024-01-01T00:01:00Z",
+          },
+        ]}
+      />
+    );
+
+    expect(await screen.findByText("Edited App.tsx +3 -1")).not.toBeNull();
+  });
+
   it("shows input and output under one left rule marking the unit's extent", async () => {
     // The rule is what makes an expanded unit read as a nested aside rather
     // than more prose: it marks where the unit's detail starts and ends (#193).

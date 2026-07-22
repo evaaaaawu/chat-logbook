@@ -25,6 +25,16 @@ export interface Chat {
   tags?: Tag[];
 }
 
+/** One hunk of a unified diff, served as the Agent recorded it (ADR-0023). */
+export interface PatchHunk {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  /** The hunk's lines, each still carrying its `+`, `-` or space prefix. */
+  lines: string[];
+}
+
 export type ContentBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; thinking: string }
@@ -35,6 +45,14 @@ export type ContentBlock =
       content: unknown;
       /** Set when the tool reported a failure. Absent on success. */
       is_error?: boolean;
+      /**
+       * The file a file-editing tool applied to, and the diff hunks it produced
+       * (ADR-0023). Carried together or not at all — every other tool has
+       * neither. The line numbers are the Agent's own, which is why the diff
+       * comes from here rather than from the call's old/new strings.
+       */
+      file_path?: string;
+      patch?: PatchHunk[];
     }
   // A slash-command invocation the plugin translated from the Agent's private
   // markup (ADR-0023). Renders as a chip; the frontend never parses markup.

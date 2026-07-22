@@ -29,7 +29,7 @@ export function CollapsibleToolCall({
   return (
     <CollapsibleRow
       icon={Terminal}
-      summary={generateToolSummary(block)}
+      summary={generateToolSummary(block, result)}
       hasError={result?.is_error}
     >
       <pre className="overflow-x-auto rounded bg-card p-2 font-mono text-xs text-muted-foreground">
