@@ -325,6 +325,116 @@ describe("ClaudeCodePlugin.normalize", () => {
     ]);
   });
 
+  it("carries an Edit result's patch and file path into the tool_result", () => {
+    const hunk = {
+      oldStart: 3,
+      oldLines: 7,
+      newStart: 3,
+      newLines: 8,
+      lines: [" context", "-gone", "+added", "+added too"],
+    };
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content: "The file /repo/a.ts has been updated successfully.",
+            },
+          ],
+        },
+        // Claude Code writes the patch beside the message, not inside it.
+        toolUseResult: {
+          filePath: "/repo/a.ts",
+          oldString: "gone",
+          newString: "added\nadded too",
+          structuredPatch: [hunk],
+        },
+        isMeta: false,
+        isSidechain: false,
+        uuid: "msg-9",
+        timestamp: "2024-01-01T00:00:09Z",
+      })
+    );
+
+    expect(result?.blocks).toEqual([
+      {
+        type: "tool_result",
+        toolUseId: "tool-1",
+        content: "The file /repo/a.ts has been updated successfully.",
+        filePath: "/repo/a.ts",
+        patch: [hunk],
+      },
+    ]);
+  });
+
+  it("carries a Write result's patch, which records no old string at all", () => {
+    const hunk = {
+      oldStart: 1,
+      oldLines: 0,
+      newStart: 1,
+      newLines: 2,
+      lines: ["+one", "+two"],
+    };
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "tool-2", content: "ok" },
+          ],
+        },
+        toolUseResult: {
+          type: "create",
+          filePath: "/repo/new.ts",
+          content: "one\ntwo\n",
+          structuredPatch: [hunk],
+        },
+        isMeta: false,
+        isSidechain: false,
+        uuid: "msg-10",
+        timestamp: "2024-01-01T00:00:10Z",
+      })
+    );
+
+    expect(result?.blocks).toEqual([
+      {
+        type: "tool_result",
+        toolUseId: "tool-2",
+        content: "ok",
+        filePath: "/repo/new.ts",
+        patch: [hunk],
+      },
+    ]);
+  });
+
+  it("leaves both fields off a result that edited no file", () => {
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "tool-3", content: "hello\n" },
+          ],
+        },
+        toolUseResult: { stdout: "hello\n", stderr: "" },
+        isMeta: false,
+        isSidechain: false,
+        uuid: "msg-11",
+        timestamp: "2024-01-01T00:00:11Z",
+      })
+    );
+
+    expect(result?.blocks).toEqual([
+      { type: "tool_result", toolUseId: "tool-3", content: "hello\n" },
+    ]);
+  });
+
   it("normalizes a user text message", () => {
     const result = plugin.normalize(
       rawRecord({

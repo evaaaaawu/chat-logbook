@@ -17,6 +17,19 @@ export interface RawRecord {
   payload: unknown;
 }
 
+/**
+ * One hunk of a unified diff, in the shape every Agent's patch already speaks:
+ * where the hunk starts on each side, how many lines it covers, and the lines
+ * themselves with their `+`/`-`/` ` prefixes.
+ */
+export interface PatchHunk {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: string[];
+}
+
 export type NormalizedBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; thinking: string }
@@ -30,6 +43,15 @@ export type NormalizedBlock =
        * only ever widens a stored block (ADR-0023).
        */
       isError?: boolean;
+      /**
+       * The file a file-editing tool applied to, and the unified-diff hunks it
+       * produced (ADR-0023). Carried together or not at all: a result that
+       * edited no file has neither. Kept verbatim from the Agent's own patch —
+       * the real line numbers are what the diff view renders from, and nothing
+       * in the call itself can recover them.
+       */
+      filePath?: string;
+      patch?: PatchHunk[];
     }
   // A slash-command invocation, translated from the Agent's private markup at
   // normalize time so the frontend never parses it (ADR-0023). Renders as a chip.

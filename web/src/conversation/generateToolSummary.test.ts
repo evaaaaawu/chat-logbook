@@ -64,6 +64,111 @@ describe("generateToolSummary", () => {
     ).toBe("Write: README.md");
   });
 
+  it("summarizes an Edit that carries a patch as a diff line", () => {
+    expect(
+      generateToolSummary(
+        {
+          type: "tool_use",
+          id: "t4",
+          name: "Edit",
+          input: { file_path: "web/src/conversation/CollapsibleToolCall.tsx" },
+        },
+        {
+          type: "tool_result",
+          tool_use_id: "t4",
+          content: "updated",
+          file_path: "web/src/conversation/CollapsibleToolCall.tsx",
+          patch: [
+            {
+              oldStart: 3,
+              oldLines: 4,
+              newStart: 3,
+              newLines: 6,
+              lines: [" keep", "-gone", "+one", "+two", "+three"],
+            },
+          ],
+        }
+      )
+    ).toBe("Edited CollapsibleToolCall.tsx +3 -1");
+  });
+
+  it("summarizes a Write as written, counting a whole new file as added", () => {
+    expect(
+      generateToolSummary(
+        {
+          type: "tool_use",
+          id: "t5",
+          name: "Write",
+          input: { file_path: "/repo/docs/README.md", content: "a\nb\n" },
+        },
+        {
+          type: "tool_result",
+          tool_use_id: "t5",
+          content: "created",
+          file_path: "/repo/docs/README.md",
+          patch: [
+            {
+              oldStart: 1,
+              oldLines: 0,
+              newStart: 1,
+              newLines: 2,
+              lines: ["+a", "+b"],
+            },
+          ],
+        }
+      )
+    ).toBe("Wrote README.md +2 -0");
+  });
+
+  it("sums a MultiEdit's hunks into one pair of counts", () => {
+    expect(
+      generateToolSummary(
+        {
+          type: "tool_use",
+          id: "t6",
+          name: "MultiEdit",
+          input: { file_path: "/repo/src/app.ts" },
+        },
+        {
+          type: "tool_result",
+          tool_use_id: "t6",
+          content: "updated",
+          file_path: "/repo/src/app.ts",
+          patch: [
+            {
+              oldStart: 1,
+              oldLines: 2,
+              newStart: 1,
+              newLines: 2,
+              lines: ["-a", "+b"],
+            },
+            {
+              oldStart: 40,
+              oldLines: 3,
+              newStart: 40,
+              newLines: 4,
+              lines: [" keep", "-c", "+d", "+e"],
+            },
+          ],
+        }
+      )
+    ).toBe("Edited app.ts +3 -2");
+  });
+
+  it("keeps the plain summary for an edit whose result carries no patch", () => {
+    expect(
+      generateToolSummary(
+        {
+          type: "tool_use",
+          id: "t7",
+          name: "Edit",
+          input: { file_path: "src/app.ts" },
+        },
+        { type: "tool_result", tool_use_id: "t7", content: "updated" }
+      )
+    ).toBe("Edit: src/app.ts");
+  });
+
   it("summarizes Glob tool with pattern", () => {
     expect(
       generateToolSummary({

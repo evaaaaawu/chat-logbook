@@ -1233,6 +1233,60 @@ describe("ChatReader.getMessages", () => {
     ]);
   });
 
+  it("serves an edit result's patch and path as patch and file_path", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+    const patch = [
+      {
+        oldStart: 3,
+        oldLines: 7,
+        newStart: 3,
+        newLines: 8,
+        lines: [" context", "-gone", "+added"],
+      },
+    ];
+
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m-tool",
+      role: "user",
+      ts: new Date(1700000100000),
+      text: "",
+      blocks: [
+        {
+          type: "tool_result",
+          toolUseId: "tool-1",
+          content: "updated",
+          filePath: "/repo/a.ts",
+          patch,
+        },
+      ],
+    });
+
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const messages = reader.getMessages(wireIdFor(archive, "session-1"), {
+      includeTrashed: false,
+    });
+    expect(messages![0].content).toEqual([
+      {
+        type: "tool_result",
+        tool_use_id: "tool-1",
+        content: "updated",
+        file_path: "/repo/a.ts",
+        patch,
+      },
+    ]);
+  });
+
   it("serves a command block unchanged", () => {
     const archive = createArchiveRepository({ dataDir });
     const metadata = createMetadataRepository({ dataDir });

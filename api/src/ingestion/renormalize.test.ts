@@ -82,6 +82,74 @@ describe("renormalizeFromRaw", () => {
     archive.close();
   });
 
+  it("backfills an edit's patch onto a row normalized before #235", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const hunk = {
+      oldStart: 1,
+      oldLines: 1,
+      newStart: 1,
+      newLines: 1,
+      lines: ["-old", "+new"],
+    };
+    archive.ensureChat("claude-code", "session-1", new Date(1700000000000));
+    const { id: rawId } = archive.insertRawMessage({
+      agent: "claude-code",
+      sourceId: "session-1",
+      sourcePath: "/fake/session-1.jsonl",
+      sourceLocator: "L1",
+      payload: {
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "t1", content: "updated" },
+          ],
+        },
+        toolUseResult: { filePath: "/repo/a.ts", structuredPatch: [hunk] },
+        uuid: "m-edit",
+        timestamp: "2024-01-01T00:00:00Z",
+        sessionId: "session-1",
+      },
+      ingestedAt: new Date(1700000000000),
+    });
+    // The stale row a pre-#235 plugin wrote: the prose result, no patch.
+    archive.upsertNormalizedMessage({
+      agent: "claude-code",
+      sourceId: "session-1",
+      rawId,
+      message: {
+        messageId: "m-edit",
+        role: "user",
+        ts: "2024-01-01T00:00:00Z",
+        text: "",
+        blocks: [{ type: "tool_result", toolUseId: "t1", content: "updated" }],
+      },
+    });
+
+    renormalizeFromRaw({ plugins: [new ClaudeCodePlugin()], archive });
+
+    expect(
+      archive.read.listMessagesByChat("claude-code", "session-1")[0].blocks
+    ).toEqual([
+      {
+        type: "tool_result",
+        toolUseId: "t1",
+        content: "updated",
+        filePath: "/repo/a.ts",
+        patch: [hunk],
+      },
+    ]);
+
+    archive.close();
+  });
+
+  it("is ahead of the version that shipped widget drawings, so #235 re-normalizes", () => {
+    // Version 7 shipped the reasoning effort (#234). The edit patch is the next
+    // normalize-output change, and only a bump reaches chats whose Source files
+    // are long gone.
+    expect(NORMALIZE_VERSION).toBeGreaterThanOrEqual(8);
+  });
+
   it("leaves the Raw layer byte-identical", () => {
     const archive = createArchiveRepository({ dataDir });
     seedStaleCommand(archive);

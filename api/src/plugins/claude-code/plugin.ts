@@ -5,6 +5,7 @@ import type {
   AgentPlugin,
   NormalizedMessage,
   NormalizedBlock,
+  PatchHunk,
   PluginEnv,
   RawRecord,
   ChatRef,
@@ -136,7 +137,7 @@ export class ClaudeCodePlugin implements AgentPlugin {
 
     if (Array.isArray(message.content)) {
       const raw = message.content.flatMap((block, index) =>
-        normalizeBlock(block, messageId, index)
+        normalizeBlock(block, messageId, index, payload.toolUseResult)
       );
       const blocks: NormalizedBlock[] = raw.map((block) =>
         block.type === "text"
@@ -402,9 +403,10 @@ function parseImageRef(
 function normalizeBlock(
   raw: unknown,
   messageId: string,
-  index: number
+  index: number,
+  toolUseResult?: unknown
 ): NormalizedBlock[] {
-  const one = normalizeOneBlock(raw, messageId, index);
+  const one = normalizeOneBlock(raw, messageId, index, toolUseResult);
   if (!one) return [];
   if (one.type === "tool_use" && svgWidgetCode(raw)) {
     // The tool row stays alongside the image: the drawing is the point, but the
@@ -421,10 +423,40 @@ function normalizeBlock(
   return [one];
 }
 
+// Edit, Write and MultiEdit all record the same two things beside the message:
+// the file they touched and the unified-diff hunks they produced. Every other
+// tool records something else, so the shape itself is the test — no tool-name
+// table to keep in step with the Agent.
+function editedFile(
+  toolUseResult: unknown
+): { filePath: string; patch: PatchHunk[] } | Record<string, never> {
+  if (!toolUseResult || typeof toolUseResult !== "object") return {};
+  const r = toolUseResult as Record<string, unknown>;
+  if (typeof r.filePath !== "string" || !r.filePath) return {};
+  if (!Array.isArray(r.structuredPatch)) return {};
+  const patch = r.structuredPatch.filter(isPatchHunk);
+  if (patch.length === 0) return {};
+  return { filePath: r.filePath, patch };
+}
+
+function isPatchHunk(hunk: unknown): hunk is PatchHunk {
+  if (!hunk || typeof hunk !== "object") return false;
+  const h = hunk as Record<string, unknown>;
+  return (
+    typeof h.oldStart === "number" &&
+    typeof h.oldLines === "number" &&
+    typeof h.newStart === "number" &&
+    typeof h.newLines === "number" &&
+    Array.isArray(h.lines) &&
+    h.lines.every((line) => typeof line === "string")
+  );
+}
+
 function normalizeOneBlock(
   raw: unknown,
   messageId: string,
-  index: number
+  index: number,
+  toolUseResult?: unknown
 ): NormalizedBlock | null {
   if (!raw || typeof raw !== "object") return null;
   const b = raw as Record<string, unknown>;
@@ -457,6 +489,7 @@ function normalizeOneBlock(
         // Only carried when the tool actually failed: a `false` on every
         // successful result would grow the stored block for nothing.
         ...(b.is_error === true ? { isError: true } : {}),
+        ...editedFile(toolUseResult),
       };
     default:
       return null;
