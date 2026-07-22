@@ -78,6 +78,11 @@ export interface MessageResponse {
    * renders. Absent when no model was recorded.
    */
   model?: string;
+  /**
+   * The reasoning effort the Agent recorded for this message (ADR-0023), served
+   * raw in the Agent's own wording. Absent when no effort was recorded.
+   */
+  effort?: string;
 }
 
 interface StoredBlock {
@@ -398,6 +403,7 @@ export function createChatReader({
       content: (m.blocks as StoredBlock[]).map(toApiBlock),
       timestamp: m.ts.toISOString(),
       ...(m.model === null ? {} : { model: m.model }),
+      ...(m.effort === null ? {} : { effort: m.effort }),
     }));
   }
 

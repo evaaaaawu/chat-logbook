@@ -92,6 +92,13 @@
       "when": 1779700000000,
       "tag": "0012_add_message_model",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1779800000000,
+      "tag": "0013_add_message_effort",
+      "breakpoints": true
     }
   ]
 }

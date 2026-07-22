@@ -80,6 +80,12 @@ export class ClaudeCodePlugin implements AgentPlugin {
       typeof message.model === "string" && message.model !== ""
         ? { model: message.model }
         : {};
+    // Effort sits on the record, not inside `message` — Claude Code writes it
+    // beside the model rather than in the API payload it echoes back.
+    const effort =
+      typeof payload.effort === "string" && payload.effort !== ""
+        ? { effort: payload.effort }
+        : {};
 
     // The directory the turn ran in, used to resolve relative file mentions.
     const cwd = typeof payload.cwd === "string" ? payload.cwd : undefined;
@@ -124,6 +130,7 @@ export class ClaudeCodePlugin implements AgentPlugin {
           },
         ],
         ...model,
+        ...effort,
       };
     }
 
@@ -140,7 +147,7 @@ export class ClaudeCodePlugin implements AgentPlugin {
         .filter((b): b is { type: "text"; text: string } => b.type === "text")
         .map((b) => translateFileMentions(b.text, cwd, asPath))
         .join("\n");
-      return { messageId, role, ts, text, blocks, ...model };
+      return { messageId, role, ts, text, blocks, ...model, ...effort };
     }
 
     return null;

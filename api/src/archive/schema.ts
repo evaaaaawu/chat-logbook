@@ -91,6 +91,9 @@ export const messages = sqliteTable(
     // reader turns record none, and neither do rows normalized before #195 —
     // those get backfilled by the next re-normalize pass.
     model: text("model"),
+    // The reasoning effort the Agent recorded for this message (ADR-0023).
+    // Nullable on the same terms as `model`: many turns record none.
+    effort: text("effort"),
     rawId: integer("raw_id")
       .notNull()
       .references(() => rawMessages.id),
