@@ -59,4 +59,10 @@ export interface Message {
    * switch. Absent when the Agent recorded none.
    */
   model?: string;
+  /**
+   * The reasoning effort the Agent recorded for this message, served raw by the
+   * API in the Agent's own wording — capitalized at render, never mapped to a
+   * different label. Absent when the Agent recorded none.
+   */
+  effort?: string;
 }

@@ -236,6 +236,32 @@ describe("Conversation note-style headers", () => {
 
     expect(await screen.findByText("Claude Code")).not.toBeNull();
   });
+
+  it("names the reasoning effort after the model, capitalized to sit beside it", async () => {
+    render(
+      <ConversationView
+        chat={{ ...chat, agent: "claude-code" }}
+        messages={[
+          {
+            ...assistant("Thought about it."),
+            model: "claude-opus-4-8",
+            effort: "medium",
+          },
+          // An effort the Agent already capitalized is left alone, not shouted.
+          {
+            ...assistant("And again."),
+            model: "claude-opus-4-8",
+            effort: "High",
+          },
+        ]}
+      />
+    );
+
+    expect(
+      await screen.findByText("Claude Code · Opus 4.8 · Medium")
+    ).not.toBeNull();
+    expect(screen.getByText("Claude Code · Opus 4.8 · High")).not.toBeNull();
+  });
 });
 
 describe("Conversation note-style layout", () => {

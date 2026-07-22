@@ -206,12 +206,21 @@ function renderContent(
   );
 }
 
-// The assistant's byline: the Agent, then the model that turn ran on. Read per
-// message, not per chat, so a chat that switched models mid-way shows where.
-// A message with no recorded model keeps the bare Agent name.
+// An effort is already a readable word, so it needs no id→name table the way a
+// model id does — only a capital to sit level with the segments beside it.
+function formatEffort(effort: string): string {
+  return effort.charAt(0).toUpperCase() + effort.slice(1);
+}
+
+// The assistant's byline: the Agent, then the model that turn ran on, then the
+// reasoning effort it ran at. Read per message, not per chat, so a chat that
+// switched models mid-way shows where. Each segment drops out when the message
+// records none.
 function authorName(agentName: string, message: Message): string {
-  if (!message.model) return agentName;
-  return `${agentName} · ${getModelDisplayName(message.model)}`;
+  const segments = [agentName];
+  if (message.model) segments.push(getModelDisplayName(message.model));
+  if (message.effort) segments.push(formatEffort(message.effort));
+  return segments.join(" · ");
 }
 
 function MessageItem({
