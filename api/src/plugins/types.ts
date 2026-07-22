@@ -59,6 +59,12 @@ export interface NormalizedMessage {
    * message by message.
    */
   model?: string;
+  /**
+   * The reasoning effort the Agent recorded for this message (e.g. `medium`),
+   * per ADR-0023. Carried raw — the Agent's own wording, not a mapped label.
+   * Absent when the Agent recorded none.
+   */
+  effort?: string;
 }
 
 export interface AgentPlugin {

@@ -75,6 +75,7 @@ function seedMessage(
     blocks: unknown[];
     agent?: string;
     model?: string;
+    effort?: string;
   }
 ): void {
   const agent = opts.agent ?? DEFAULT_AGENT;
@@ -98,6 +99,7 @@ function seedMessage(
       text: opts.text,
       blocks: opts.blocks,
       ...(opts.model === undefined ? {} : { model: opts.model }),
+      ...(opts.effort === undefined ? {} : { effort: opts.effort }),
     },
   });
 }
@@ -974,6 +976,49 @@ describe("ChatReader.getMessages", () => {
       "claude-haiku-4-5-20251001",
     ]);
     expect(messages![0]).not.toHaveProperty("model");
+  });
+
+  it("serves each message's own reasoning effort, and omits it where none was recorded", () => {
+    const archive = createArchiveRepository({ dataDir });
+    const metadata = createMetadataRepository({ dataDir });
+
+    seedChat(archive, {
+      sourceId: "session-1",
+      firstSeenAt: new Date(1700000000000),
+    });
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m-medium",
+      role: "assistant",
+      ts: new Date(1700000100000),
+      text: "Sure",
+      blocks: [{ type: "text", text: "Sure" }],
+      model: "claude-opus-4-8",
+      effort: "medium",
+    });
+    // A turn archived before the Agent recorded effort keeps none.
+    seedMessage(archive, {
+      sourceId: "session-1",
+      messageId: "m-none",
+      role: "assistant",
+      ts: new Date(1700000200000),
+      text: "Done",
+      blocks: [{ type: "text", text: "Done" }],
+      model: "claude-opus-4-8",
+    });
+
+    const reader = createChatReader({
+      archive,
+      metadata,
+      tags: createTagRepository({ dataDir }),
+      pageQuery: createChatPageQuery({ dataDir }),
+    });
+    const messages = reader.getMessages(wireIdFor(archive, "session-1"), {
+      includeTrashed: false,
+    });
+
+    expect(messages!.map((m) => m.effort)).toEqual(["medium", undefined]);
+    expect(messages![1]).not.toHaveProperty("effort");
   });
 
   it("exposes each message's Normalized message id", () => {

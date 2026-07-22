@@ -587,6 +587,45 @@ describe("ClaudeCodePlugin.normalize → model capture", () => {
   });
 });
 
+describe("ClaudeCodePlugin.normalize → reasoning effort capture", () => {
+  it("captures the effort the Agent recorded beside the message, not inside it", () => {
+    const result = plugin.normalize(
+      rawRecord({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          model: "claude-opus-4-8",
+          content: [{ type: "text", text: "Done." }],
+        },
+        effort: "medium",
+        uuid: "msg-effort-1",
+        timestamp: "2024-01-01T00:00:22Z",
+        sessionId: "session-1",
+      })
+    );
+
+    expect(result?.effort).toBe("medium");
+  });
+
+  it("leaves effort absent on a turn that recorded none", () => {
+    const result = plugin.normalize(
+      rawRecord({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          model: "claude-opus-4-8",
+          content: [{ type: "text", text: "Done." }],
+        },
+        uuid: "msg-effort-2",
+        timestamp: "2024-01-01T00:00:23Z",
+        sessionId: "session-1",
+      })
+    );
+
+    expect(result).not.toHaveProperty("effort");
+  });
+});
+
 describe("ClaudeCodePlugin.normalize → inline images", () => {
   it("emits an image block carrying media type and a ref, never the bytes", () => {
     const result = plugin.normalize(

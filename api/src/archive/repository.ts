@@ -44,6 +44,8 @@ export interface NormalizedMessageInput {
   blocks: unknown;
   /** The model id the Agent recorded, when it recorded one (ADR-0023). */
   model?: string;
+  /** The reasoning effort the Agent recorded, when it recorded one (ADR-0023). */
+  effort?: string;
 }
 
 export interface UpsertNormalizedMessageInput {
@@ -327,6 +329,7 @@ export function createArchiveRepository({
             text: message.text,
             blocks: message.blocks,
             model: message.model ?? null,
+            effort: message.effort ?? null,
             rawId,
           })
           .run();
@@ -341,6 +344,7 @@ export function createArchiveRepository({
             text: message.text,
             blocks: message.blocks,
             model: message.model ?? null,
+            effort: message.effort ?? null,
             rawId,
           })
           .where(eq(messages.id, existing.id))

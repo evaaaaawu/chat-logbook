@@ -74,9 +74,10 @@ export function renormalizeFromRaw({
  * dropped them at ingest: version 4. #230 draws SVG visualize widgets as images
  * too, so archived diagrams stop hiding behind a collapsed tool row: version 5.
  * #197 translates `@` file mentions into `file://` links, turning them into
- * chips in chats archived before the rule existed: version 6.
+ * chips in chats archived before the rule existed: version 6. #234 captures the
+ * per-message reasoning `effort`, backfilling it onto archived rows: version 7.
  */
-export const NORMALIZE_VERSION = 6;
+export const NORMALIZE_VERSION = 7;
 
 export interface RunRenormalizeIfStaleOptions {
   plugins: readonly AgentPlugin[];

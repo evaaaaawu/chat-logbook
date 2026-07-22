@@ -33,6 +33,7 @@ Three adjacent rules ride on the same contract:
 
 - **Inline file mentions.** Agent-private file-mention syntax is translated at normalize time into a standard markdown link with a `file://` URL inside the `text` block. The renderer has exactly one generic rule — `file://` links render as a file chip — and never sees the Agent's syntax.
 - **`NormalizedMessage.model`** — an optional field capturing the model id the Agent recorded on the message (e.g. `claude-opus-4-8`). Absent when the Agent doesn't record one.
+- **`NormalizedMessage.effort`** — an optional field capturing the reasoning effort the Agent recorded for the message (e.g. `medium`). Per message, exactly like `model`, and absent when the Agent recorded none. Claude Code writes it beside the message rather than inside it, so the Plugin reads it off the record's top level. Stored in the Agent's own wording. Unlike a model id, an effort is already a readable word, so the frontend needs no id→name table for it — it capitalizes the first letter at render and shows the rest untouched.
 
 The API serves these shapes as-is (with `tool_result.toolUseId` mapped to wire-form `tool_use_id`, matching the existing convention).
 
