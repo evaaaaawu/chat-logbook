@@ -20,6 +20,12 @@ interface CollapsibleRowProps {
    * open onto nothing.
    */
   children?: ReactNode;
+  /**
+   * Forces the toggle on for a row whose detail is drawn outside it. A fold's
+   * units stay with the turns that recorded them, so the summary row opens onto
+   * siblings rather than children (#199).
+   */
+  isExpandable?: boolean;
 }
 
 /**
@@ -36,8 +42,9 @@ export function CollapsibleRow({
   isExpanded,
   onToggle,
   children,
+  isExpandable,
 }: CollapsibleRowProps) {
-  if (!children) {
+  if (!children && !isExpandable) {
     return (
       <div>
         <div className="flex w-full items-center gap-1.5 px-1.5 py-1 text-xs text-muted-foreground">
@@ -79,7 +86,7 @@ export function CollapsibleRow({
           />
         )}
       </button>
-      {isExpanded && (
+      {isExpanded && children && (
         <div
           data-testid="unit-detail"
           // The rule marks the detail's extent, so an expanded unit reads as a
