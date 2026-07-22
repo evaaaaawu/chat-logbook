@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { ChevronDown, type LucideIcon } from "lucide-react";
 
 interface CollapsibleRowProps {
@@ -8,6 +8,12 @@ interface CollapsibleRowProps {
   summary: string;
   /** Marks the row as reporting a failure. */
   hasError?: boolean;
+  /**
+   * Whether the row is open. Controlled from above, because the virtualizer
+   * recycles rows by position and state kept here would not survive it (#236).
+   */
+  isExpanded: boolean;
+  onToggle: () => void;
   /**
    * The detail revealed when expanded. Omit it when the summary is already the
    * whole row — it then renders as a plain line, with no control that would
@@ -27,13 +33,13 @@ export function CollapsibleRow({
   icon: Icon,
   summary,
   hasError,
+  isExpanded,
+  onToggle,
   children,
 }: CollapsibleRowProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
   if (!children) {
     return (
-      <div className="my-1">
+      <div>
         <div className="flex w-full items-center gap-1.5 px-1.5 py-1 text-xs text-muted-foreground">
           {/* Stands in for the chevron so this row's icon still lines up with
               the expandable rows around it. */}
@@ -46,10 +52,10 @@ export function CollapsibleRow({
   }
 
   return (
-    <div className="my-1">
+    <div>
       <button
         type="button"
-        onClick={() => setIsExpanded((prev) => !prev)}
+        onClick={onToggle}
         aria-expanded={isExpanded}
         // Muted and a size down from body text: these rows are the parts of a
         // session the reader scans past, not the prose they came to read.

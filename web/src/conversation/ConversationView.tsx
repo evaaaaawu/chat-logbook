@@ -29,6 +29,11 @@ import {
   collectToolResults,
   type ToolResultBlock,
 } from "@/conversation/toolUnits";
+import { planLayout, type MessageLayout } from "@/conversation/runs";
+import {
+  useRowExpansion,
+  type RowExpansion,
+} from "@/conversation/useRowExpansion";
 import { useScrollShortcuts } from "@/conversation/useScrollShortcuts";
 import { getAgentDisplayName } from "@/agent/agentDisplayName";
 import { getModelDisplayName } from "@/agent/modelDisplayName";
@@ -153,24 +158,44 @@ function ConversationHeader({
 
 type ToolResults = Map<string, ToolResultBlock>;
 
+/** What every block needs to render, gathered so it can be threaded as one. */
+interface RenderContext {
+  toolResults: ToolResults;
+  /** Owning chat, so an image block can address its own bytes. */
+  chatId: string;
+  /** Owning message, half of the key a collapsible row is remembered under. */
+  messageId: string;
+  expansion: RowExpansion;
+}
+
 function renderContentBlock(
   block: ContentBlock,
   index: number,
-  toolResults: ToolResults,
-  chatId: string
+  { toolResults, chatId, messageId, expansion }: RenderContext
 ) {
+  const isExpanded = expansion.isExpanded(messageId, index);
+  const onToggle = () => expansion.toggle(messageId, index);
   switch (block.type) {
     case "text":
       return <MarkdownText key={index}>{block.text}</MarkdownText>;
     case "thinking":
       if (!block.thinking) return null;
-      return <CollapsibleThinking key={index} thinking={block.thinking} />;
+      return (
+        <CollapsibleThinking
+          key={index}
+          thinking={block.thinking}
+          isExpanded={isExpanded}
+          onToggle={onToggle}
+        />
+      );
     case "tool_use":
       return (
         <CollapsibleToolCall
           key={index}
           block={block}
           result={toolResults.get(block.id)}
+          isExpanded={isExpanded}
+          onToggle={onToggle}
         />
       );
     case "tool_result":
@@ -179,7 +204,13 @@ function renderContentBlock(
       return <CommandLine key={index} name={block.name} args={block.args} />;
     case "system":
       return (
-        <SystemRow key={index} summary={block.summary} detail={block.detail} />
+        <SystemRow
+          key={index}
+          summary={block.summary}
+          detail={block.detail}
+          isExpanded={isExpanded}
+          onToggle={onToggle}
+        />
       );
     case "image":
       return (
@@ -195,15 +226,34 @@ function renderContentBlock(
 
 function renderContent(
   content: Message["content"],
-  toolResults: ToolResults,
-  chatId: string
+  layout: MessageLayout,
+  context: RenderContext
 ) {
   if (typeof content === "string") {
     return <MarkdownText>{content}</MarkdownText>;
   }
-  return content.map((block, i) =>
-    renderContentBlock(block, i, toolResults, chatId)
-  );
+  return layout.segments.map((segment) => {
+    if (segment.kind === "block") {
+      return renderContentBlock(
+        content[segment.blockIndex]!,
+        segment.blockIndex,
+        context
+      );
+    }
+    return (
+      // The Run's own container: its rows sit a few pixels apart, where prose
+      // around them keeps its breathing room. The contrast is the point (#236).
+      <div
+        key={`run-${segment.blockIndices[0]}`}
+        data-testid="run"
+        className="flex flex-col gap-0.5"
+      >
+        {segment.blockIndices.map((blockIndex) =>
+          renderContentBlock(content[blockIndex]!, blockIndex, context)
+        )}
+      </div>
+    );
+  });
 }
 
 // An effort is already a readable word, so it needs no id→name table the way a
@@ -225,26 +275,41 @@ function authorName(agentName: string, message: Message): string {
 
 function MessageItem({
   message,
+  layout,
   agentName,
   toolResults,
   chatId,
+  expansion,
 }: {
   message: Message;
+  layout: MessageLayout;
   agentName: string;
   toolResults: ToolResults;
   /** Owning chat, so an image block can address its own bytes. */
   chatId: string;
+  expansion: RowExpansion;
 }) {
   const copyValue = messageToMarkdown(message);
+  // A Run recorded as several turns gives up the padding at its seams, so the
+  // stretch reads as one group rather than a column of fragments (#236).
+  const seamClass = `${layout.runContinuesBefore ? "pt-0.5" : "pt-3"} ${
+    layout.runContinuesAfter ? "pb-0" : "pb-3"
+  }`;
   return (
     <div
       id={messageAnchorId(message.id)}
       data-role={message.role}
+      {...(layout.runContinuesBefore
+        ? { "data-run-continues-before": "true" }
+        : {})}
+      {...(layout.runContinuesAfter
+        ? { "data-run-continues-after": "true" }
+        : {})}
       // A note-style document flow: every turn spans the pane's column, and
       // only the reader's own turns take a background block, as scanning
       // anchors. Both roles keep the same horizontal padding so their text
       // aligns down a single edge (#192).
-      className={`group relative w-full px-4 py-3 text-sm leading-relaxed ${
+      className={`group relative w-full px-4 text-sm leading-relaxed ${seamClass} ${
         message.role === "user"
           ? "rounded-md bg-card text-accent-foreground"
           : "text-foreground"
@@ -276,7 +341,12 @@ function MessageItem({
           </span>
         </div>
       )}
-      {renderContent(message.content, toolResults, chatId)}
+      {renderContent(message.content, layout, {
+        toolResults,
+        chatId,
+        messageId: message.id,
+        expansion,
+      })}
     </div>
   );
 }
@@ -308,6 +378,10 @@ export function ConversationView({
     () => collectToolResults(allMessages),
     [allMessages]
   );
+  // Grouping is decided here, once, as a pure function of what is rendered —
+  // never measured at layout time (#236).
+  const layouts = useMemo(() => planLayout(messages), [messages]);
+  const expansion = useRowExpansion(chat?.id);
   const tagControls: TagControls | undefined =
     allTags && onAssignTag && onRemoveTag && onCreateTag
       ? { allTags, onAssignTag, onRemoveTag, onCreateTag }
@@ -509,7 +583,11 @@ export function ConversationView({
                   key={virtualItem.index}
                   data-index={virtualItem.index}
                   ref={virtualizer.measureElement}
-                  className="absolute left-0 right-0 flex flex-col pb-4"
+                  className={`absolute left-0 right-0 flex flex-col ${
+                    layouts[virtualItem.index]?.runContinuesAfter
+                      ? "pb-0"
+                      : "pb-4"
+                  }`}
                   style={{ transform: `translateY(${virtualItem.start}px)` }}
                 >
                   {virtualItem.index === firstUnseenIndex && (
@@ -519,9 +597,11 @@ export function ConversationView({
                   )}
                   <MessageItem
                     message={messages[virtualItem.index]}
+                    layout={layouts[virtualItem.index]}
                     agentName={agentName}
                     toolResults={toolResults}
                     chatId={chat?.id ?? ""}
+                    expansion={expansion}
                   />
                 </div>
               ))}
