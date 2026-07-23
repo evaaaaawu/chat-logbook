@@ -77,9 +77,11 @@ export function renormalizeFromRaw({
  * chips in chats archived before the rule existed: version 6. #234 captures the
  * per-message reasoning `effort`, backfilling it onto archived rows: version 7.
  * #235 carries an edit's `filePath` and `patch` into the tool result, so
- * archived edits can summarise as a diff: version 8.
+ * archived edits can summarise as a diff: version 8. #237 synthesizes an all-add
+ * patch for a new-file Write, which records none, so archived creates render as
+ * a diff instead of raw JSON: version 9.
  */
-export const NORMALIZE_VERSION = 8;
+export const NORMALIZE_VERSION = 9;
 
 export interface RunRenormalizeIfStaleOptions {
   plugins: readonly AgentPlugin[];
