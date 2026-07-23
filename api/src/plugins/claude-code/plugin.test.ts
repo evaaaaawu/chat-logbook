@@ -412,6 +412,52 @@ describe("ClaudeCodePlugin.normalize", () => {
     ]);
   });
 
+  it("synthesizes an all-add patch for a new-file Write, which records none", () => {
+    // A create records the whole file in `content` and leaves `structuredPatch`
+    // empty — Claude Code does not diff a new file into hunks. The patch is
+    // synthesized from the content so the UI can render it like any other edit.
+    const result = plugin.normalize(
+      rawRecord({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "tool-2", content: "ok" },
+          ],
+        },
+        toolUseResult: {
+          type: "create",
+          filePath: "/repo/new.ts",
+          content: "one\ntwo\n",
+          structuredPatch: [],
+          originalFile: "",
+        },
+        isMeta: false,
+        isSidechain: false,
+        uuid: "msg-10b",
+        timestamp: "2024-01-01T00:00:10Z",
+      })
+    );
+
+    expect(result?.blocks).toEqual([
+      {
+        type: "tool_result",
+        toolUseId: "tool-2",
+        content: "ok",
+        filePath: "/repo/new.ts",
+        patch: [
+          {
+            oldStart: 0,
+            oldLines: 0,
+            newStart: 1,
+            newLines: 2,
+            lines: ["+one", "+two"],
+          },
+        ],
+      },
+    ]);
+  });
+
   it("leaves both fields off a result that edited no file", () => {
     const result = plugin.normalize(
       rawRecord({

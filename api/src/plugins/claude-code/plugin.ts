@@ -427,6 +427,11 @@ function normalizeBlock(
 // the file they touched and the unified-diff hunks they produced. Every other
 // tool records something else, so the shape itself is the test — no tool-name
 // table to keep in step with the Agent.
+//
+// A new-file Write is the exception: it records the whole file in `content` and
+// leaves `structuredPatch` empty, since there is nothing to diff against. The
+// patch is synthesized from that content as one all-add hunk so the file reads
+// as a diff like every other edit, rather than falling back to raw JSON.
 function editedFile(
   toolUseResult: unknown
 ): { filePath: string; patch: PatchHunk[] } | Record<string, never> {
@@ -434,9 +439,26 @@ function editedFile(
   const r = toolUseResult as Record<string, unknown>;
   if (typeof r.filePath !== "string" || !r.filePath) return {};
   if (!Array.isArray(r.structuredPatch)) return {};
+
   const patch = r.structuredPatch.filter(isPatchHunk);
-  if (patch.length === 0) return {};
-  return { filePath: r.filePath, patch };
+  if (patch.length > 0) return { filePath: r.filePath, patch };
+
+  const created = createdFilePatch(r);
+  if (created) return { filePath: r.filePath, patch: created };
+  return {};
+}
+
+// One all-add hunk built from a created file's content, numbered from line 1.
+// `@@ -0,0 +1,N @@` in unified-diff terms — the header a new file always gets.
+function createdFilePatch(r: Record<string, unknown>): PatchHunk[] | null {
+  if (r.type !== "create" || typeof r.content !== "string" || !r.content) {
+    return null;
+  }
+  const content = r.content.endsWith("\n") ? r.content.slice(0, -1) : r.content;
+  const lines = content.split("\n").map((line) => `+${line}`);
+  return [
+    { oldStart: 0, oldLines: 0, newStart: 1, newLines: lines.length, lines },
+  ];
 }
 
 function isPatchHunk(hunk: unknown): hunk is PatchHunk {
