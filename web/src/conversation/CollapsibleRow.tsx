@@ -26,6 +26,13 @@ interface CollapsibleRowProps {
    * siblings rather than children (#199).
    */
   isExpandable?: boolean;
+  /**
+   * Marks the one row a folded Run collapses to. While closed it wears its
+   * chevron in --primary — the colour cue that these lines open (#238). Spent
+   * once the row is open, and never worn by the individual rows inside it, so
+   * the accent stays rare enough to read as a cue rather than decoration.
+   */
+  isSummary?: boolean;
 }
 
 /**
@@ -43,6 +50,7 @@ export function CollapsibleRow({
   onToggle,
   children,
   isExpandable,
+  isSummary,
 }: CollapsibleRowProps) {
   if (!children && !isExpandable) {
     return (
@@ -58,6 +66,17 @@ export function CollapsibleRow({
     );
   }
 
+  // The chevron carries the "this opens" cue in colour, spent once open (#238):
+  //   folded summary row  → --primary, the rare accent that reads as a cue
+  //   collapsed individual → muted, taking the accent only on hover, where it
+  //                          answers a question the reader is actively asking
+  //   any expanded row     → muted, the affordance already spent
+  const chevronColour = isExpanded
+    ? ""
+    : isSummary
+      ? "text-primary"
+      : "group-hover:text-primary";
+
   return (
     <div>
       <button
@@ -66,13 +85,13 @@ export function CollapsibleRow({
         aria-expanded={isExpanded}
         // Muted and a size down from body text: these rows are the parts of a
         // session the reader scans past, not the prose they came to read.
-        className="flex w-full cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground"
+        className="group flex w-full cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground"
       >
         <ChevronDown
           data-testid="row-chevron"
           size={12}
           aria-hidden="true"
-          className={`shrink-0 transition-transform ${
+          className={`shrink-0 transition-transform ${chevronColour} ${
             isExpanded ? "" : "-rotate-90"
           }`}
         />
