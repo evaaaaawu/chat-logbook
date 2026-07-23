@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { RotateCcw } from "lucide-react";
 import type { Message, ContentBlock, Chat, Tag } from "@/types";
@@ -29,7 +36,12 @@ import {
   collectToolResults,
   type ToolResultBlock,
 } from "@/conversation/toolUnits";
-import { planLayout, type MessageLayout } from "@/conversation/runs";
+import {
+  planLayout,
+  type MessageLayout,
+  type RunEntry,
+} from "@/conversation/folds";
+import { FoldSummaryRow } from "@/conversation/FoldSummaryRow";
 import {
   useRowExpansion,
   type RowExpansion,
@@ -244,16 +256,77 @@ function renderContent(
       // The Run's own container: its rows sit a few pixels apart, where prose
       // around them keeps its breathing room. The contrast is the point (#236).
       <div
-        key={`run-${segment.blockIndices[0]}`}
+        key={`run-${entryKey(segment.entries[0]!)}`}
         data-testid="run"
         className="flex flex-col gap-0.5"
       >
-        {segment.blockIndices.map((blockIndex) =>
-          renderContentBlock(content[blockIndex]!, blockIndex, context)
+        {segment.entries.map((entry) =>
+          renderRunEntry(entry, content, context)
         )}
       </div>
     );
   });
+}
+
+function entryKey(entry: RunEntry): string {
+  return entry.kind === "unit"
+    ? `unit-${entry.blockIndex}`
+    : `fold-${entry.foldId}-${entry.blockIndices[0]}`;
+}
+
+function renderRunEntry(
+  entry: RunEntry,
+  content: ContentBlock[],
+  context: RenderContext
+) {
+  if (entry.kind === "unit") {
+    return renderContentBlock(
+      content[entry.blockIndex]!,
+      entry.blockIndex,
+      context
+    );
+  }
+
+  const isExpanded = context.expansion.isKeyExpanded(entry.foldId);
+  const units =
+    isExpanded &&
+    entry.blockIndices.map((blockIndex) =>
+      renderContentBlock(content[blockIndex]!, blockIndex, context)
+    );
+
+  return (
+    <Fragment key={entryKey(entry)}>
+      {/* Only the turn the fold starts in draws the summary; the turns it
+          swallows draw their units or nothing at all (#199). */}
+      {entry.isAnchor && (
+        <FoldSummaryRow
+          summary={entry.summary}
+          isExpanded={isExpanded}
+          onToggle={() => context.expansion.toggleKey(entry.foldId)}
+        />
+      )}
+      {units}
+    </Fragment>
+  );
+}
+
+/**
+ * Whether a Message has nothing left to draw because a fold anchored in an
+ * earlier turn is holding all of it. Such a turn is skipped outright rather
+ * than left as an empty block, which would stack up as stray padding.
+ */
+function isFoldedAway(layout: MessageLayout, expansion: RowExpansion): boolean {
+  if (layout.segments.length === 0) return false;
+  return layout.segments.every(
+    (segment) =>
+      segment.kind === "run" &&
+      segment.entries.every(
+        (entry) =>
+          entry.kind === "fold" &&
+          !entry.isAnchor &&
+          !expansion.isKeyExpanded(entry.foldId)
+      )
+  );
 }
 
 // An effort is already a readable word, so it needs no id→name table the way a
@@ -289,6 +362,7 @@ function MessageItem({
   chatId: string;
   expansion: RowExpansion;
 }) {
+  if (isFoldedAway(layout, expansion)) return null;
   const copyValue = messageToMarkdown(message);
   // A Run recorded as several turns gives up the padding at its seams, so the
   // stretch reads as one group rather than a column of fragments (#236).

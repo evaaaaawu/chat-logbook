@@ -24,6 +24,10 @@ function isSkimRow(block: ContentBlock): boolean {
  * A pure function of the rendered Messages, so grouping is decided before
  * layout rather than measured after it (#236).
  */
+export function rowKeyOf(row: RowRef): string {
+  return rowKey(row.messageId, row.blockIndex);
+}
+
 export function groupRuns(messages: Message[]): Run[] {
   const runs: Run[] = [];
   let current: RowRef[] = [];
@@ -57,7 +61,7 @@ export type Segment =
   | { kind: "run"; blockIndices: number[] }
   | { kind: "block"; blockIndex: number };
 
-export interface MessageLayout {
+export interface RunLayout {
   segments: Segment[];
   /** The message opens inside a Run that started in an earlier turn. */
   runContinuesBefore: boolean;
@@ -66,13 +70,14 @@ export interface MessageLayout {
 }
 
 /**
- * How each Message lays out, in the same order as the Messages given.
+ * How each Message lays out once Runs are grouped, in the order given.
  *
  * The seam flags are what let a Run read as one group even though the Agent
  * recorded it as many turns: the message boundaries inside a Run give up their
- * spacing, so the rows sit a few pixels apart instead of forty (#236).
+ * spacing, so the rows sit a few pixels apart instead of forty (#236). The
+ * folding pass refines this into what the view renders (see `folds.ts`).
  */
-export function planLayout(messages: Message[]): MessageLayout[] {
+export function planRunLayout(messages: Message[]): RunLayout[] {
   const runs = groupRuns(messages);
   // Which run each row belongs to, so a message can tell a seam from an end.
   const runIndexByRow = new Map<string, number>();

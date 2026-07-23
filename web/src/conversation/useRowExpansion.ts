@@ -4,6 +4,13 @@ import { useCallback, useMemo, useState } from "react";
 export interface RowExpansion {
   isExpanded: (messageId: string, blockIndex: number) => boolean;
   toggle: (messageId: string, blockIndex: number) => void;
+  /**
+   * The same two questions, asked with a row key already in hand. A fold is
+   * identified by the key of the unit it is anchored at, and that key travels
+   * through the layout rather than being taken apart again (#199).
+   */
+  isKeyExpanded: (rowKey: string) => boolean;
+  toggleKey: (rowKey: string) => void;
 }
 
 function key(messageId: string, blockIndex: number): string {
@@ -28,19 +35,31 @@ export function useRowExpansion(chatId: string | undefined): RowExpansion {
     setOpenRows(new Set());
   }
 
-  const isExpanded = useCallback(
-    (messageId: string, blockIndex: number) =>
-      openRows.has(key(messageId, blockIndex)),
+  const isKeyExpanded = useCallback(
+    (rowKey: string) => openRows.has(rowKey),
     [openRows]
   );
-  const toggle = useCallback((messageId: string, blockIndex: number) => {
+  const toggleKey = useCallback((rowKey: string) => {
     setOpenRows((current) => {
       const next = new Set(current);
-      const rowKey = key(messageId, blockIndex);
       if (!next.delete(rowKey)) next.add(rowKey);
       return next;
     });
   }, []);
 
-  return useMemo(() => ({ isExpanded, toggle }), [isExpanded, toggle]);
+  const isExpanded = useCallback(
+    (messageId: string, blockIndex: number) =>
+      isKeyExpanded(key(messageId, blockIndex)),
+    [isKeyExpanded]
+  );
+  const toggle = useCallback(
+    (messageId: string, blockIndex: number) =>
+      toggleKey(key(messageId, blockIndex)),
+    [toggleKey]
+  );
+
+  return useMemo(
+    () => ({ isExpanded, toggle, isKeyExpanded, toggleKey }),
+    [isExpanded, toggle, isKeyExpanded, toggleKey]
+  );
 }
