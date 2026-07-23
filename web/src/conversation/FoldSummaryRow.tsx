@@ -26,6 +26,7 @@ export function FoldSummaryRow({
       isExpanded={isExpanded}
       onToggle={onToggle}
       isExpandable
+      isSummary
     />
   );
 }
