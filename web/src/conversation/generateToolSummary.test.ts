@@ -10,7 +10,7 @@ describe("generateToolSummary", () => {
         name: "Read",
         input: { file_path: "src/index.ts" },
       })
-    ).toBe("Read: src/index.ts");
+    ).toEqual({ label: "Read: src/index.ts" });
   });
 
   it("summarizes Bash tool with command", () => {
@@ -21,7 +21,7 @@ describe("generateToolSummary", () => {
         name: "Bash",
         input: { command: "npm test" },
       })
-    ).toBe("Bash: npm test");
+    ).toEqual({ label: "Bash: npm test" });
   });
 
   it("truncates long Bash commands", () => {
@@ -32,10 +32,10 @@ describe("generateToolSummary", () => {
       name: "Bash",
       input: { command: longCommand },
     });
-    expect(result.length).toBeLessThanOrEqual(
+    expect(result.label.length).toBeLessThanOrEqual(
       100 + "Bash: ".length + "…".length
     );
-    expect(result).toMatch(/^Bash: a+…$/);
+    expect(result.label).toMatch(/^Bash: a+…$/);
   });
 
   it("summarizes Edit tool with file path", () => {
@@ -50,7 +50,7 @@ describe("generateToolSummary", () => {
           new_string: "bar",
         },
       })
-    ).toBe("Edit: src/app.ts");
+    ).toEqual({ label: "Edit: src/app.ts" });
   });
 
   it("summarizes Write tool with file path", () => {
@@ -61,10 +61,10 @@ describe("generateToolSummary", () => {
         name: "Write",
         input: { file_path: "README.md", content: "hello" },
       })
-    ).toBe("Write: README.md");
+    ).toEqual({ label: "Write: README.md" });
   });
 
-  it("summarizes an Edit that carries a patch as a diff line", () => {
+  it("hands an Edit's counts out separately from its label", () => {
     expect(
       generateToolSummary(
         {
@@ -89,7 +89,10 @@ describe("generateToolSummary", () => {
           ],
         }
       )
-    ).toBe("Edited CollapsibleToolCall.tsx +3 -1");
+    ).toEqual({
+      label: "Edited CollapsibleToolCall.tsx",
+      diffStat: { added: 3, removed: 1 },
+    });
   });
 
   it("summarizes a Write as written, counting a whole new file as added", () => {
@@ -117,7 +120,10 @@ describe("generateToolSummary", () => {
           ],
         }
       )
-    ).toBe("Wrote README.md +2 -0");
+    ).toEqual({
+      label: "Wrote README.md",
+      diffStat: { added: 2, removed: 0 },
+    });
   });
 
   it("sums a MultiEdit's hunks into one pair of counts", () => {
@@ -152,7 +158,10 @@ describe("generateToolSummary", () => {
           ],
         }
       )
-    ).toBe("Edited app.ts +3 -2");
+    ).toEqual({
+      label: "Edited app.ts",
+      diffStat: { added: 3, removed: 2 },
+    });
   });
 
   it("keeps the plain summary for an edit whose result carries no patch", () => {
@@ -166,7 +175,7 @@ describe("generateToolSummary", () => {
         },
         { type: "tool_result", tool_use_id: "t7", content: "updated" }
       )
-    ).toBe("Edit: src/app.ts");
+    ).toEqual({ label: "Edit: src/app.ts" });
   });
 
   it("summarizes Glob tool with pattern", () => {
@@ -177,7 +186,7 @@ describe("generateToolSummary", () => {
         name: "Glob",
         input: { pattern: "**/*.ts" },
       })
-    ).toBe("Glob: **/*.ts");
+    ).toEqual({ label: "Glob: **/*.ts" });
   });
 
   it("summarizes Grep tool with pattern", () => {
@@ -188,7 +197,7 @@ describe("generateToolSummary", () => {
         name: "Grep",
         input: { pattern: "TODO" },
       })
-    ).toBe("Grep: TODO");
+    ).toEqual({ label: "Grep: TODO" });
   });
 
   it("falls back to tool name for unknown tools", () => {
@@ -199,6 +208,6 @@ describe("generateToolSummary", () => {
         name: "CustomTool",
         input: { foo: "bar" },
       })
-    ).toBe("CustomTool");
+    ).toEqual({ label: "CustomTool" });
   });
 });

@@ -55,10 +55,13 @@ export function CollapsibleToolCall({
     !isDiff && readPath && typeof result?.content === "string"
   );
 
+  const { label, diffStat } = generateToolSummary(block, result);
+
   return (
     <CollapsibleRow
       icon={Terminal}
-      summary={generateToolSummary(block, result)}
+      summary={label}
+      diffStat={diffStat}
       hasError={result?.is_error}
       isExpanded={isExpanded}
       onToggle={onToggle}

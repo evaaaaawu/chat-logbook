@@ -47,6 +47,36 @@ describe("CollapsibleToolCall", () => {
     expect(screen.queryByText("The file a.tsx has been updated.")).toBeNull();
   });
 
+  it("gives an edit's counts the row's trailing edge, not its label", () => {
+    const result: ToolResultBlock = {
+      type: "tool_result",
+      tool_use_id: "t1",
+      content: "updated",
+      file_path: "web/src/conversation/CollapsibleToolCall.tsx",
+      patch: [
+        {
+          oldStart: 3,
+          oldLines: 4,
+          newStart: 3,
+          newLines: 6,
+          lines: [" keep", "-gone", "+one", "+two", "+three"],
+        },
+      ],
+    };
+
+    render(
+      <CollapsibleToolCall
+        block={editCall}
+        result={result}
+        isExpanded={false}
+        onToggle={() => {}}
+      />
+    );
+
+    expect(screen.getByTestId("row-diff-stat").textContent).toBe("+3 -1");
+    expect(screen.getByText("Edited CollapsibleToolCall.tsx")).not.toBeNull();
+  });
+
   it("falls back to the raw rendering when the result carries no patch", () => {
     const result: ToolResultBlock = {
       type: "tool_result",
