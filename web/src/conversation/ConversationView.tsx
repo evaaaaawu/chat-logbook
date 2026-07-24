@@ -46,6 +46,8 @@ import {
   useRowExpansion,
   type RowExpansion,
 } from "@/conversation/useRowExpansion";
+import { useReadingState } from "@/conversation/useReadingState";
+import { pickAnchor, resolveAnchorIndex } from "@/conversation/scrollAnchor";
 import { useScrollShortcuts } from "@/conversation/useScrollShortcuts";
 import { getAgentDisplayName } from "@/agent/agentDisplayName";
 import { getModelDisplayName } from "@/agent/modelDisplayName";
@@ -68,6 +70,12 @@ interface TagControls {
 interface ConversationViewProps extends Partial<TagControls> {
   chat: Chat | null;
   messages: Message[];
+  /**
+   * Whether the messages for the current chat are still loading. While true,
+   * `messages` may still hold the previously open chat's turns, so landing and
+   * restore must wait until it settles (#239).
+   */
+  loading?: boolean;
   error?: string | null;
   onRestore?: (id: string) => void;
   onRenameTitle?: (id: string, title: string) => void;
@@ -428,6 +436,7 @@ function MessageItem({
 export function ConversationView({
   chat,
   messages: allMessages,
+  loading = false,
   error,
   onRestore,
   onRenameTitle,
@@ -455,7 +464,14 @@ export function ConversationView({
   // Grouping is decided here, once, as a pure function of what is rendered —
   // never measured at layout time (#236).
   const layouts = useMemo(() => planLayout(messages), [messages]);
-  const expansion = useRowExpansion(chat?.id);
+  // Where the reader left this chat — scroll anchor and open rows — loaded on
+  // open and saved (debounced) as they read. Reading state, so it lives in the
+  // browser, not the Metadata store (#239).
+  const reading = useReadingState(chat?.id);
+  const expansion = useRowExpansion(chat?.id, {
+    initialOpenRows: reading.initial?.openRows,
+    onOpenRowsChange: reading.recordOpenRows,
+  });
   const tagControls: TagControls | undefined =
     allTags && onAssignTag && onRemoveTag && onCreateTag
       ? { allTags, onAssignTag, onRemoveTag, onCreateTag }
@@ -519,6 +535,28 @@ export function ConversationView({
     if (atBottom && firstUnseenIndexRef.current !== null) setPillConsumed(true);
   }, []);
 
+  // Note where the reader is, as a message anchor rather than a pixel offset, so
+  // reopening restores this spot even after estimated heights settle or the
+  // chat gains and loses messages (#239). Read from the rendered rows only, so
+  // it stays cheap on a long chat.
+  const captureAnchor = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const entries = virtualizer
+      .getVirtualItems()
+      .map((item) => ({
+        messageId: messages[item.index]?.id ?? "",
+        start: item.start,
+      }))
+      .filter((entry) => entry.messageId);
+    reading.recordAnchor(pickAnchor({ scrollTop: el.scrollTop, entries }));
+  }, [virtualizer, messages, reading]);
+
+  const handleScroll = useCallback(() => {
+    measurePill();
+    captureAnchor();
+  }, [measurePill, captureAnchor]);
+
   const jumpTop = useCallback(() => {
     // Instant index jump, not a smooth scroll: smooth-scrolling across
     // thousands of virtualized rows is slow and janky.
@@ -558,9 +596,11 @@ export function ConversationView({
       prevLenRef.current = 0;
       return;
     }
-    // Messages load a tick after the chat id is set, so land the moment they
-    // first arrive — not on the initial empty render.
-    if (messages.length === 0) return;
+    // Wait for this chat's own messages before landing: while the fetch is in
+    // flight, `messages` may still be the previously open chat's turns, and
+    // restoring against those would never find this chat's anchor (#239). An
+    // empty list has nothing to land on yet either.
+    if (loading || messages.length === 0) return;
 
     // First arrival for this chat: land at the bottom and reset the live-arrival
     // trackers. Guard by chat id so a later streamed message doesn't re-land.
@@ -569,6 +609,23 @@ export function ConversationView({
       prevLenRef.current = messages.length;
       setFirstUnseenIndex(null);
       setPillConsumed(false);
+      // Restore the remembered spot when there is one and its anchored message
+      // still exists; otherwise — a first visit, or an anchor whose message is
+      // gone — land at the bottom, the right answer for a fresh read (#239).
+      const anchor = reading.initial?.anchor ?? null;
+      const anchorIndex = resolveAnchorIndex(anchor, messages);
+      if (anchor && anchorIndex !== null) {
+        // scrollToIndex re-measures and re-scrolls until the message lands at
+        // the top, which a raw offset cannot do against estimated heights. The
+        // within-message offset is a small nudge applied once the row is there.
+        virtualizer.scrollToIndex(anchorIndex, { align: "start" });
+        const raf = requestAnimationFrame(() => {
+          const el = scrollContainerRef.current;
+          if (el && anchor.offset) el.scrollTop += anchor.offset;
+          measurePill();
+        });
+        return () => cancelAnimationFrame(raf);
+      }
       virtualizer.scrollToIndex(messages.length - 1, { align: "end" });
       // Re-measure after the jump settles so the pill reflects the landed
       // position (at the bottom it offers "back to top").
@@ -596,7 +653,7 @@ export function ConversationView({
       deriveFirstUnseenIndex({ current, action, prevLen })
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, messages.length]);
+  }, [chatId, messages.length, loading]);
 
   // Keep the pill correct as content height changes (messages expanding or
   // collapsing) even without a scroll event.
@@ -645,7 +702,7 @@ export function ConversationView({
           <div
             data-testid="conversation-panel"
             ref={scrollContainerRef}
-            onScroll={measurePill}
+            onScroll={handleScroll}
             className="absolute inset-0 overflow-y-auto p-6"
           >
             <div
