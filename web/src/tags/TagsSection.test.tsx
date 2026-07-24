@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import { TagsSection } from "./TagsSection";
@@ -51,6 +51,40 @@ describe("TagsSection — Match All/Any control", () => {
     await user.click(screen.getByTestId("tag-match-any"));
 
     expect(props.onTagModeChange).toHaveBeenCalledWith("any");
+  });
+});
+
+describe("TagsSection — collapse chevron", () => {
+  it("leads the header with the chevron, before the Tags title", () => {
+    renderSection();
+    const header = screen.getByTestId("tags-header");
+    const chevron = header.querySelector(".lucide-chevron-down");
+    const title = within(header).getByText("Tags");
+    expect(chevron).not.toBeNull();
+    // The chevron precedes the title in DOM order (chevron leads the row).
+    expect(
+      chevron!.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it("keeps the order caption free of the chevron", () => {
+    renderSection();
+    const caption = screen.getByTestId("tags-order-caption");
+    expect(caption.querySelector(".lucide-chevron-down")).toBeNull();
+  });
+
+  it("accents the chevron in --primary only while collapsed", async () => {
+    renderSection();
+    const header = screen.getByTestId("tags-header");
+    const chevronClass = () =>
+      header.querySelector(".lucide-chevron-down")!.getAttribute("class") ?? "";
+    // Expanded: muted, no accent, no rotation.
+    expect(chevronClass()).not.toContain("text-primary");
+    expect(chevronClass()).not.toContain("-rotate-90");
+    // Collapsed: accented and rotated.
+    await userEvent.click(header);
+    expect(chevronClass()).toContain("text-primary");
+    expect(chevronClass()).toContain("-rotate-90");
   });
 });
 

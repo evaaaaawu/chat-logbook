@@ -35,18 +35,25 @@ export function ProjectsSection({
         aria-expanded={!collapsed}
         className="flex items-center justify-between px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
-        <span>Projects</span>
-        <span
-          data-testid="projects-order-caption"
-          title={ORDER_TOOLTIP}
-          className="flex items-center gap-0.5 text-muted-foreground/80"
-        >
-          {ORDER_CAPTION}
+        <span className="flex items-center gap-1">
+          {/* The chevron leads the row and wears --primary while collapsed —
+              the rare accent that reads as "this opens", spent once expanded
+              (matches CollapsibleRow, #247/#238). */}
           <ChevronDown
             size={12}
             aria-hidden="true"
-            className={`transition-transform ${collapsed ? "-rotate-90" : ""}`}
+            className={`shrink-0 transition-transform ${
+              collapsed ? "-rotate-90 text-primary" : ""
+            }`}
           />
+          <span>Projects</span>
+        </span>
+        <span
+          data-testid="projects-order-caption"
+          title={ORDER_TOOLTIP}
+          className="text-muted-foreground/80"
+        >
+          {ORDER_CAPTION}
         </span>
       </button>
       {!collapsed && (
