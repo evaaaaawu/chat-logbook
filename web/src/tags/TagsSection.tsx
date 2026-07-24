@@ -414,11 +414,13 @@ export function TagsSection({
 
   return (
     <div data-testid="tags-section" className="flex flex-col">
-      {/* Header row: "Tags" and the All/Any match control sit together on the
-          left; the "A–Z" order caption stays on the right. Both "Tags" and the
-          A–Z caption are collapse toggles (the caption carries the chevron); the
-          match control is a sibling — never nested — so its buttons don't also
-          collapse the section, and it stays visible while collapsed. */}
+      {/* Header row: the chevron leads the "Tags" toggle, with the All/Any
+          match control beside it on the left; the "A–Z" order caption stays on
+          the right. Both "Tags" and the A–Z caption are collapse toggles; the
+          chevron now leads the "Tags" toggle (matching CollapsibleRow,
+          #247/#238). The match control is a sibling — never nested — so its
+          buttons don't also collapse the section, and it stays visible while
+          collapsed. */}
       <div className="flex items-center justify-between px-2 py-1.5 text-xs font-medium text-muted-foreground">
         <div className="flex items-center gap-2">
           <button
@@ -426,9 +428,18 @@ export function TagsSection({
             data-testid="tags-header"
             onClick={() => setCollapsed((c) => !c)}
             aria-expanded={!collapsed}
-            className="transition-colors hover:text-foreground"
+            className="flex items-center gap-1 transition-colors hover:text-foreground"
           >
-            Tags
+            {/* Accented in --primary while collapsed — the rare "this opens"
+                cue, spent once expanded. */}
+            <ChevronDown
+              size={12}
+              aria-hidden="true"
+              className={`shrink-0 transition-transform ${
+                collapsed ? "-rotate-90 text-primary" : ""
+              }`}
+            />
+            <span>Tags</span>
           </button>
           {sorted.length > 0 && (
             <MatchControl mode={tagMode} onChange={onTagModeChange} />
@@ -440,14 +451,9 @@ export function TagsSection({
           onClick={() => setCollapsed((c) => !c)}
           aria-expanded={!collapsed}
           title="Sorted A–Z"
-          className="flex items-center gap-0.5 text-muted-foreground/80 transition-colors hover:text-foreground"
+          className="text-muted-foreground/80 transition-colors hover:text-foreground"
         >
           A–Z
-          <ChevronDown
-            size={12}
-            aria-hidden="true"
-            className={`transition-transform ${collapsed ? "-rotate-90" : ""}`}
-          />
         </button>
       </div>
       {!collapsed &&

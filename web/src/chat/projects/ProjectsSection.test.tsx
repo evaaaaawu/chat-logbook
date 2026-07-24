@@ -71,6 +71,38 @@ describe("ProjectsSection", () => {
     expect(caption).toHaveAttribute("title", "Sorted by recent activity");
   });
 
+  it("leads the header with the chevron, before the Projects title", () => {
+    renderSection();
+    const header = screen.getByTestId("projects-header");
+    const chevron = header.querySelector(".lucide-chevron-down");
+    const title = within(header).getByText("Projects");
+    expect(chevron).not.toBeNull();
+    // The chevron precedes the title in DOM order (chevron leads the row).
+    expect(
+      chevron!.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it("keeps the order caption free of the chevron", () => {
+    renderSection();
+    const caption = screen.getByTestId("projects-order-caption");
+    expect(caption.querySelector(".lucide-chevron-down")).toBeNull();
+  });
+
+  it("accents the chevron in --primary only while collapsed", async () => {
+    renderSection();
+    const header = screen.getByTestId("projects-header");
+    const chevronClass = () =>
+      header.querySelector(".lucide-chevron-down")!.getAttribute("class") ?? "";
+    // Expanded: muted, no accent, no rotation.
+    expect(chevronClass()).not.toContain("text-primary");
+    expect(chevronClass()).not.toContain("-rotate-90");
+    // Collapsed: accented and rotated.
+    await userEvent.click(header);
+    expect(chevronClass()).toContain("text-primary");
+    expect(chevronClass()).toContain("-rotate-90");
+  });
+
   it("collapses and expands the project list from the header", async () => {
     renderSection();
     expect(screen.getByTestId("project-row-web")).toBeInTheDocument();
