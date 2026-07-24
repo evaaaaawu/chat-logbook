@@ -13,7 +13,23 @@ const EDIT_VERBS: Record<string, string> = {
   Write: "Wrote",
 };
 
-function countLines(patch: PatchHunk[]): { added: number; removed: number } {
+/** How big an edit was, in lines. */
+export interface DiffStat {
+  added: number;
+  removed: number;
+}
+
+export interface ToolSummary {
+  /** The one-line description: the verb and what it applied to. */
+  label: string;
+  /**
+   * The counts, kept out of the label so the row can place them at its trailing
+   * edge — where a truncating path cannot push them off the end (#250).
+   */
+  diffStat?: DiffStat;
+}
+
+function countLines(patch: PatchHunk[]): DiffStat {
   let added = 0;
   let removed = 0;
   for (const hunk of patch) {
@@ -51,24 +67,26 @@ function getString(value: unknown): string | undefined {
 export function generateToolSummary(
   block: ToolUseBlock,
   result?: ToolResultBlock
-): string {
+): ToolSummary {
   const { name } = block;
   const input = getInput(block.input);
 
   const verb = EDIT_VERBS[name];
   if (verb && result?.file_path && result.patch?.length) {
-    const { added, removed } = countLines(result.patch);
-    return `${verb} ${basename(result.file_path)} +${added} -${removed}`;
+    return {
+      label: `${verb} ${basename(result.file_path)}`,
+      diffStat: countLines(result.patch),
+    };
   }
 
   const filePath = getString(input.file_path);
-  if (filePath) return `${name}: ${filePath}`;
+  if (filePath) return { label: `${name}: ${filePath}` };
 
   const command = getString(input.command);
-  if (command) return `${name}: ${truncate(command)}`;
+  if (command) return { label: `${name}: ${truncate(command)}` };
 
   const pattern = getString(input.pattern);
-  if (pattern) return `${name}: ${pattern}`;
+  if (pattern) return { label: `${name}: ${pattern}` };
 
-  return name;
+  return { label: name };
 }

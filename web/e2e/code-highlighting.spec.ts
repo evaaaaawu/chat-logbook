@@ -99,8 +99,9 @@ test("a large diff expands and highlights in a real browser without stalling", a
 
   // The collapsed tool unit summarises the write; the full path shows once the
   // diff is expanded.
-  const summary = page.getByText("Wrote constants.ts +200 -0");
+  const summary = page.getByText("Wrote constants.ts");
   await expect(summary).toBeVisible();
+  await expect(page.getByTestId("row-diff-stat")).toHaveText("+200 -0");
 
   const start = Date.now();
   await summary.click();

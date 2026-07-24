@@ -677,7 +677,11 @@ describe("Conversation tool units", () => {
       />
     );
 
-    expect(await screen.findByText("Edited App.tsx +3 -1")).not.toBeNull();
+    expect(await screen.findByText("Edited App.tsx")).not.toBeNull();
+    // The counts keep their own place at the row's trailing edge (#250).
+    expect((await screen.findByTestId("row-diff-stat")).textContent).toBe(
+      "+3 -1"
+    );
   });
 
   it("shows input and output under one left rule marking the unit's extent", async () => {
