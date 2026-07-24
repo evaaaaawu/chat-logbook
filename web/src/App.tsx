@@ -143,7 +143,7 @@ function App() {
   const handleRenameTitle = (id: string, title: string) => {
     void setTitle(id, title);
   };
-  const { messages, error } = useMessages(selectedId);
+  const { messages, loading: messagesLoading, error } = useMessages(selectedId);
   const { toast, showToast, dismissToast } = useToast();
 
   // Switching views (Chat List <-> Trash) flushes any held-back background order
@@ -648,6 +648,7 @@ function App() {
           <ConversationView
             chat={selectedChat}
             messages={messages}
+            loading={messagesLoading}
             error={error}
             onRestore={handleRestore}
             onRenameTitle={handleRenameTitle}
