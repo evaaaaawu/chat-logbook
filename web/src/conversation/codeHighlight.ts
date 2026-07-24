@@ -101,6 +101,19 @@ export function useHighlighter(
   filePath: string
 ): ((text: string) => string) | null {
   const language = useMemo(() => languageForPath(filePath), [filePath]);
+  return useLanguageHighlighter(language);
+}
+
+/**
+ * The same highlighter, for a caller that already knows its language.
+ *
+ * A tool call's input is serialised JSON, so nothing has to be inferred from a
+ * path — the language is known at the call site (#251). Passing `null` keeps
+ * the highlighter unloaded and the caller rendering plain.
+ */
+export function useLanguageHighlighter(
+  language: string | null
+): ((text: string) => string) | null {
   const [hljs, setHljs] = useState<HLJSApi | null>(null);
 
   useEffect(() => {
