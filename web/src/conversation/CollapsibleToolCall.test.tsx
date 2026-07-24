@@ -66,4 +66,59 @@ describe("CollapsibleToolCall", () => {
     expect(screen.queryByTestId("diff-line")).toBeNull();
     expect(screen.getByText("The file a.tsx has been updated.")).not.toBeNull();
   });
+
+  it("renders an expanded read as a numbered file excerpt, not raw output", () => {
+    const readCall: ToolUseBlock = {
+      type: "tool_use",
+      id: "t2",
+      name: "Read",
+      input: { file_path: "src/answer.ts" },
+    };
+    const result: ToolResultBlock = {
+      type: "tool_result",
+      tool_use_id: "t2",
+      content: "40\tconst answer = 42;\n41\treturn answer;",
+    };
+
+    render(
+      <CollapsibleToolCall
+        block={readCall}
+        result={result}
+        isExpanded
+        onToggle={() => {}}
+      />
+    );
+
+    const rows = screen.getAllByTestId("excerpt-line");
+    expect(rows).toHaveLength(2);
+    expect(screen.getByText("src/answer.ts")).not.toBeNull();
+    // The numbers are lifted into the gutter, so the raw `40\t…` never shows.
+    expect(screen.getByText("const answer = 42;")).not.toBeNull();
+    expect(screen.queryByText(/40\tconst answer = 42;/)).toBeNull();
+  });
+
+  it("falls back to the raw rendering for a read whose result is not text", () => {
+    const readCall: ToolUseBlock = {
+      type: "tool_use",
+      id: "t3",
+      name: "Read",
+      input: { file_path: "shot.png" },
+    };
+    const result: ToolResultBlock = {
+      type: "tool_result",
+      tool_use_id: "t3",
+      content: [{ type: "image", source: "…" }],
+    };
+
+    render(
+      <CollapsibleToolCall
+        block={readCall}
+        result={result}
+        isExpanded
+        onToggle={() => {}}
+      />
+    );
+
+    expect(screen.queryByTestId("excerpt-line")).toBeNull();
+  });
 });

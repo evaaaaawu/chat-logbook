@@ -1480,11 +1480,11 @@ describe("Tool call rendering", () => {
     // Tool call summary should be visible
     expect(await screen.findByText("Read: src/utils.ts")).toBeInTheDocument();
 
-    // Full tool input should NOT be visible when collapsed
-    expect(screen.queryByText(/"file_path"/)).not.toBeInTheDocument();
+    // The file it read should NOT be visible when collapsed
+    expect(screen.queryByTestId("excerpt-line")).not.toBeInTheDocument();
   });
 
-  it("expands tool call to show full input when clicked", async () => {
+  it("expands tool call to show the file it read when clicked", async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -1494,8 +1494,9 @@ describe("Tool call rendering", () => {
     // Click to expand
     await user.click(summary);
 
-    // Should show the tool input details
-    expect(screen.getByText(/"file_path"/)).toBeInTheDocument();
+    // A read opens onto the file itself, not the call's raw JSON (#240).
+    const row = screen.getByTestId("excerpt-line");
+    expect(row.textContent).toContain("export function add(a, b)");
   });
 
   it("collapses tool call back when clicked again", async () => {
@@ -1507,10 +1508,10 @@ describe("Tool call rendering", () => {
 
     // Expand then collapse
     await user.click(summary);
-    expect(screen.getByText(/"file_path"/)).toBeInTheDocument();
+    expect(screen.getByTestId("excerpt-line")).toBeInTheDocument();
 
     await user.click(summary);
-    expect(screen.queryByText(/"file_path"/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("excerpt-line")).not.toBeInTheDocument();
   });
 });
 

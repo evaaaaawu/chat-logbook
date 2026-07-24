@@ -2,6 +2,7 @@ import { Terminal } from "lucide-react";
 import type { ContentBlock } from "@/types";
 import { CollapsibleRow } from "@/conversation/CollapsibleRow";
 import { DiffView } from "@/conversation/DiffView";
+import { FileExcerptView } from "@/conversation/FileExcerptView";
 import { generateToolSummary } from "@/conversation/generateToolSummary";
 import type { ToolResultBlock } from "@/conversation/toolUnits";
 
@@ -17,6 +18,12 @@ interface CollapsibleToolCallProps {
 function formatResultContent(content: unknown): string {
   if (typeof content === "string") return content;
   return JSON.stringify(content, null, 2);
+}
+
+function readFilePath(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null) return undefined;
+  const { file_path: filePath } = input as { file_path?: unknown };
+  return typeof filePath === "string" ? filePath : undefined;
 }
 
 /**
@@ -37,6 +44,17 @@ export function CollapsibleToolCall({
   const patch = result?.patch;
   const isDiff = Boolean(result?.file_path && patch && patch.length > 0);
 
+  // A read's whole value is the file it returned, so it gets the same treatment
+  // as an edit: the path, the file's own line numbers, and its code coloured.
+  // The path comes from the call — a read result carries only the text (#240).
+  // A non-text result (an image the tool returned) has no lines to number and
+  // keeps the raw rendering.
+  const readPath =
+    block.name === "Read" ? readFilePath(block.input) : undefined;
+  const isExcerpt = Boolean(
+    !isDiff && readPath && typeof result?.content === "string"
+  );
+
   return (
     <CollapsibleRow
       icon={Terminal}
@@ -47,6 +65,11 @@ export function CollapsibleToolCall({
     >
       {isDiff ? (
         <DiffView filePath={result!.file_path!} patch={patch!} />
+      ) : isExcerpt ? (
+        <FileExcerptView
+          filePath={readPath!}
+          content={result!.content as string}
+        />
       ) : (
         <>
           <pre className="overflow-x-auto rounded bg-card p-2 font-mono text-xs text-muted-foreground">

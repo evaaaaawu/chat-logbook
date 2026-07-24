@@ -584,7 +584,10 @@ describe("Conversation tool units", () => {
 
     await user.click(await screen.findByText("Read: /tmp/a.ts"));
 
-    expect(await screen.findByText(/export const answer = 42;/)).not.toBeNull();
+    // Highlighting splits the code into token spans, so match on the row's
+    // whole text rather than a single node's (#240).
+    const row = await screen.findByTestId("excerpt-line");
+    expect(row.textContent).toContain("export const answer = 42;");
   });
 
   it("pairs a call with a result recorded in the next turn", async () => {
