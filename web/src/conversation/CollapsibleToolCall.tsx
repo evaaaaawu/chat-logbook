@@ -4,6 +4,7 @@ import { CollapsibleRow } from "@/conversation/CollapsibleRow";
 import { DiffView } from "@/conversation/DiffView";
 import { FileExcerptView } from "@/conversation/FileExcerptView";
 import { generateToolSummary } from "@/conversation/generateToolSummary";
+import { JsonView } from "@/conversation/JsonView";
 import type { ToolResultBlock } from "@/conversation/toolUnits";
 
 type ToolUseBlock = Extract<ContentBlock, { type: "tool_use" }>;
@@ -75,9 +76,7 @@ export function CollapsibleToolCall({
         />
       ) : (
         <>
-          <pre className="overflow-x-auto rounded bg-card p-2 font-mono text-xs text-muted-foreground">
-            {JSON.stringify(block.input, null, 2)}
-          </pre>
+          <JsonView value={block.input} />
           {result && (
             <pre className="overflow-x-auto rounded bg-card p-2 font-mono text-xs text-muted-foreground">
               {formatResultContent(result.content)}
