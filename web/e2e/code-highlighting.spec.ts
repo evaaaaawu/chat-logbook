@@ -168,3 +168,37 @@ test("a large read expands as a highlighted, numbered excerpt without stalling",
   await expect(firstRow).toContainText("1");
   await expect(firstRow.locator(".hljs-keyword").first()).toBeVisible();
 });
+
+test("a tool call with no view of its own shows its input as coloured JSON", async ({
+  page,
+}) => {
+  await openChatWith(page, [
+    {
+      type: "tool_use",
+      id: "tool_3",
+      name: "Grep",
+      input: {
+        pattern: "useState",
+        // Long enough that an unwrapped line would stretch the pane if the
+        // block did not scroll on its own.
+        path: `web/src/${"very-long-directory-name/".repeat(20)}index.ts`,
+      },
+    },
+    { type: "tool_result", tool_use_id: "tool_3", content: "No matches found" },
+  ]);
+
+  await page.getByText("Grep", { exact: false }).first().click();
+
+  const input = page.getByTestId("json-input");
+  await expect(input.locator(".hljs-attr").first()).toBeVisible();
+
+  // The long value scrolls inside the block rather than widening it: the block
+  // stays within its column while its content overflows.
+  const box = await input.evaluate((node) => ({
+    scrollWidth: node.scrollWidth,
+    clientWidth: node.clientWidth,
+    parentWidth: (node.parentElement as HTMLElement).clientWidth,
+  }));
+  expect(box.scrollWidth).toBeGreaterThan(box.clientWidth);
+  expect(box.clientWidth).toBeLessThanOrEqual(box.parentWidth);
+});

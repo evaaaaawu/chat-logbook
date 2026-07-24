@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import type { ContentBlock } from "@/types";
 import type { ToolResultBlock } from "@/conversation/toolUnits";
@@ -150,5 +150,25 @@ describe("CollapsibleToolCall", () => {
     );
 
     expect(screen.queryByTestId("excerpt-line")).toBeNull();
+  });
+
+  it("colours the input of a unit that renders neither diff nor excerpt", async () => {
+    const searchCall: ToolUseBlock = {
+      type: "tool_use",
+      id: "t4",
+      name: "Grep",
+      input: { pattern: "useState" },
+    };
+
+    const { container } = render(
+      <CollapsibleToolCall block={searchCall} isExpanded onToggle={() => {}} />
+    );
+
+    await waitFor(() =>
+      expect(container.querySelector(".hljs-attr")).not.toBeNull()
+    );
+    expect(container.querySelector(".hljs-attr")?.textContent).toBe(
+      '"pattern"'
+    );
   });
 });
