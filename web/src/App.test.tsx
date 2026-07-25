@@ -1459,7 +1459,7 @@ describe("Conversation view", () => {
     expect(linkEl).toHaveAttribute("href", "https://example.com");
 
     // Assistant message has a syntax-highlighted code block
-    // rehype-highlight splits tokens into spans, so use a function matcher
+    // Highlighting splits tokens into spans, so use a function matcher
     const codeBlock = screen.getByText((_content, element) => {
       return (
         element?.tagName === "CODE" &&
