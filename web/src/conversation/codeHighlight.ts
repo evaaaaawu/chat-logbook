@@ -129,6 +129,10 @@ export function useLanguageHighlighter(
 
   return useMemo(() => {
     if (!language || !hljs) return null;
+    // The bundle carries the common languages, not every one a caller can name:
+    // a markdown fence says whatever word its writer typed. An unregistered one
+    // stays null, so the block renders plain instead of throwing.
+    if (!hljs.getLanguage(language)) return null;
     return (text: string) =>
       hljs.highlight(text, { language, ignoreIllegals: true }).value;
   }, [language, hljs]);
