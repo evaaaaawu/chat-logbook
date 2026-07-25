@@ -78,6 +78,33 @@ async function openChatWith(
   await page.getByText("Code conversation").click();
 }
 
+// The highlight.js package's own modules, however the server names them: the
+// dev server serves its pre-bundled dependency as `highlight__js_...`, a build
+// serves it from the package path. Matching the package rather than the word
+// keeps the app's own `codeHighlight.ts` — and any directory that happens to be
+// named after a highlighter — out of the count.
+const GRAMMAR_MODULE = /highlight__js|highlight\.js\/lib|lowlight/;
+
+/**
+ * Every request for the syntax grammars, collected from now on.
+ *
+ * The stylesheet that colours the tokens is filtered out: the theme is a few kB
+ * of CSS that ships with the app either way, and it is the grammars that #253
+ * is keeping off a code-free read.
+ *
+ * Attach this before navigating, or the initial load's requests are missed.
+ */
+function trackGrammarRequests(page: import("@playwright/test").Page): string[] {
+  const urls: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (GRAMMAR_MODULE.test(url) && !/\.css(\?|$)/.test(url)) {
+      urls.push(url);
+    }
+  });
+  return urls;
+}
+
 test("a large diff expands and highlights in a real browser without stalling", async ({
   page,
 }) => {
@@ -201,4 +228,44 @@ test("a tool call with no view of its own shows its input as coloured JSON", asy
   }));
   expect(box.scrollWidth).toBeGreaterThan(box.clientWidth);
   expect(box.clientWidth).toBeLessThanOrEqual(box.parentWidth);
+});
+
+test("a chat with no code of any kind fetches no grammars", async ({
+  page,
+}) => {
+  const grammars = trackGrammarRequests(page);
+
+  await openChatWith(page, [
+    { type: "text", text: "No code here — just a note about the plan." },
+  ]);
+
+  await expect(
+    page.getByText("No code here — just a note about the plan.")
+  ).toBeVisible();
+
+  // The grammars load on demand, so give a late fetch a chance to show up
+  // before concluding that none was made.
+  await page.waitForTimeout(500);
+
+  expect(grammars).toEqual([]);
+});
+
+test("a markdown code block is coloured by the same grammars a diff uses", async ({
+  page,
+}) => {
+  const grammars = trackGrammarRequests(page);
+
+  await openChatWith(page, [
+    { type: "text", text: "```ts\nconst total = items.length;\n```" },
+  ]);
+
+  // The block is coloured, and its source is intact under the token markup.
+  await expect(page.locator(".hljs-keyword").first()).toBeVisible();
+  await expect(page.locator("code.hljs")).toContainText(
+    "const total = items.length;"
+  );
+
+  // One highlighter, fetched once: markdown pulls the same grammars the diff
+  // and read views do, rather than a second copy of its own (#253).
+  expect(new Set(grammars).size).toBe(1);
 });
