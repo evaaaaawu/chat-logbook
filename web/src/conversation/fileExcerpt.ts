@@ -1,3 +1,5 @@
+import { capLines } from "@/conversation/commandOutput";
+
 /**
  * One line of a file as a Read tool reported it.
  *
@@ -31,15 +33,14 @@ const NUMBERED_LINE = /^(\d+)\t(.*)$/;
  * view can offer to reveal the rest — the same bargain a long diff strikes.
  */
 export function buildExcerpt(content: string, lineCap: number): FileExcerpt {
-  const rawLines = content.split("\n");
-  const numbered = NUMBERED_LINE.test(rawLines[0] ?? "");
+  const { lines: kept, hiddenLines } = capLines(content, lineCap);
+  const numbered = NUMBERED_LINE.test(kept[0] ?? "");
 
-  const kept = rawLines.slice(0, lineCap);
   const lines = kept.map((raw) => {
     const match = numbered ? NUMBERED_LINE.exec(raw) : null;
     if (!match) return { lineNumber: null, text: raw };
     return { lineNumber: Number(match[1]), text: match[2] };
   });
 
-  return { lines, hiddenLines: Math.max(0, rawLines.length - kept.length) };
+  return { lines, hiddenLines };
 }
