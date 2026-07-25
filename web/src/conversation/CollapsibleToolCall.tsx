@@ -1,6 +1,7 @@
 import { Terminal } from "lucide-react";
 import type { ContentBlock } from "@/types";
 import { CollapsibleRow } from "@/conversation/CollapsibleRow";
+import { CommandView } from "@/conversation/CommandView";
 import { DiffView } from "@/conversation/DiffView";
 import { FileExcerptView } from "@/conversation/FileExcerptView";
 import { generateToolSummary } from "@/conversation/generateToolSummary";
@@ -25,6 +26,12 @@ function readFilePath(input: unknown): string | undefined {
   if (typeof input !== "object" || input === null) return undefined;
   const { file_path: filePath } = input as { file_path?: unknown };
   return typeof filePath === "string" ? filePath : undefined;
+}
+
+function shellCommand(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null) return undefined;
+  const { command } = input as { command?: unknown };
+  return typeof command === "string" ? command : undefined;
 }
 
 /**
@@ -56,6 +63,11 @@ export function CollapsibleToolCall({
     !isDiff && readPath && typeof result?.content === "string"
   );
 
+  // A Bash unit is worth expanding for the command it ran and what that command
+  // said back, so the command renders as shell and the call's input is not also
+  // dumped as JSON above it (#252).
+  const command = block.name === "Bash" ? shellCommand(block.input) : undefined;
+
   const { label, diffStat } = generateToolSummary(block, result);
 
   return (
@@ -73,6 +85,11 @@ export function CollapsibleToolCall({
         <FileExcerptView
           filePath={readPath!}
           content={result!.content as string}
+        />
+      ) : command !== undefined ? (
+        <CommandView
+          command={command}
+          output={result ? formatResultContent(result.content) : undefined}
         />
       ) : (
         <>
