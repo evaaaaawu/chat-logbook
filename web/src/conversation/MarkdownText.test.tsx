@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MarkdownText } from "@/conversation/MarkdownText";
@@ -67,6 +67,36 @@ describe("MarkdownText code block copying", () => {
     render(<MarkdownText>{"use the `id` field"}</MarkdownText>);
 
     expect(screen.queryByRole("button", { name: "Copy code" })).toBeNull();
+  });
+});
+
+describe("MarkdownText code block highlighting", () => {
+  it("colours a fenced block's keywords", async () => {
+    const { container } = render(
+      <MarkdownText>{"```ts\nconst x = 1;\nreturn x;\n```"}</MarkdownText>
+    );
+
+    // The tokens are what the reader sees as colour; the surface they sit on is
+    // the `.hljs` block the theme paints.
+    await waitFor(() => {
+      expect(container.querySelector(".hljs-keyword")).not.toBeNull();
+    });
+    expect(container.querySelector("code.hljs")).not.toBeNull();
+    expect(container.textContent).toContain("const x = 1;");
+  });
+
+  it("still shows the code for a language it cannot colour", async () => {
+    // A fence carries whatever word its writer typed, and the bundle carries a
+    // common set. The block has to stay readable either way.
+    const { container } = render(
+      <MarkdownText>{"```mermaid\ngraph TD;\nA-->B;\n```"}</MarkdownText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("code.hljs")).not.toBeNull();
+    });
+    expect(container.textContent).toContain("graph TD;");
+    expect(container.querySelector(".hljs-keyword")).toBeNull();
   });
 });
 

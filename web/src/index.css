@@ -28,6 +28,10 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-diff-add: var(--diff-add);
+  --color-diff-remove: var(--diff-remove);
+  --color-diff-add-muted: var(--diff-add-muted);
+  --color-diff-remove-muted: var(--diff-remove-muted);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -86,6 +90,25 @@
   --accent-foreground: #93a1a1;
   /* Solarized red */
   --destructive: #dc322f;
+  /* An edit's line counts, added and removed (#250). Measured against
+     --background #002b36 and against a row's hover ground #0a333e (white/4%
+     laid over it):
+       --diff-add          6.59:1 / 5.92:1 — clears the 4.5:1 AA text floor
+       --diff-remove       5.48:1 / 4.93:1 — clears it as well. Solarized red
+                           itself (--destructive) is only 3.25:1 as text, so
+                           the text tone is the lifted red; the diff's 10%
+                           ground keeps --destructive, where no text floor
+                           applies.
+       --diff-add-muted    3.06:1 / 2.75:1
+       --diff-remove-muted 3.42:1 / 3.07:1
+     The muted pair is what the counts wear at rest, next to a
+     --muted-foreground label sitting at 2.79:1 — quiet enough that a long
+     session's rows don't out-shout the prose, and never quieter than the
+     label beside them. They resolve to the full pair on hover or expansion. */
+  --diff-add: #22c55e;
+  --diff-remove: #ff6e64;
+  --diff-add-muted: #4f7a5e;
+  --diff-remove-muted: #9e6b6e;
   --border: #073642;
   --input: #073642;
   /* Solarized cyan */
@@ -125,6 +148,10 @@
   --accent: #073642;
   --accent-foreground: #93a1a1;
   --destructive: #dc322f;
+  --diff-add: #22c55e;
+  --diff-remove: #ff6e64;
+  --diff-add-muted: #4f7a5e;
+  --diff-remove-muted: #9e6b6e;
   --border: #073642;
   --input: #073642;
   --ring: #2aa198;

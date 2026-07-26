@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import type { ContentBlock } from "@/types";
 import type { ToolResultBlock } from "@/conversation/toolUnits";
@@ -47,6 +47,36 @@ describe("CollapsibleToolCall", () => {
     expect(screen.queryByText("The file a.tsx has been updated.")).toBeNull();
   });
 
+  it("gives an edit's counts the row's trailing edge, not its label", () => {
+    const result: ToolResultBlock = {
+      type: "tool_result",
+      tool_use_id: "t1",
+      content: "updated",
+      file_path: "web/src/conversation/CollapsibleToolCall.tsx",
+      patch: [
+        {
+          oldStart: 3,
+          oldLines: 4,
+          newStart: 3,
+          newLines: 6,
+          lines: [" keep", "-gone", "+one", "+two", "+three"],
+        },
+      ],
+    };
+
+    render(
+      <CollapsibleToolCall
+        block={editCall}
+        result={result}
+        isExpanded={false}
+        onToggle={() => {}}
+      />
+    );
+
+    expect(screen.getByTestId("row-diff-stat").textContent).toBe("+3 -1");
+    expect(screen.getByText("Edited CollapsibleToolCall.tsx")).not.toBeNull();
+  });
+
   it("falls back to the raw rendering when the result carries no patch", () => {
     const result: ToolResultBlock = {
       type: "tool_result",
@@ -65,5 +95,210 @@ describe("CollapsibleToolCall", () => {
 
     expect(screen.queryByTestId("diff-line")).toBeNull();
     expect(screen.getByText("The file a.tsx has been updated.")).not.toBeNull();
+  });
+
+  it("renders an expanded read as a numbered file excerpt, not raw output", () => {
+    const readCall: ToolUseBlock = {
+      type: "tool_use",
+      id: "t2",
+      name: "Read",
+      input: { file_path: "src/answer.ts" },
+    };
+    const result: ToolResultBlock = {
+      type: "tool_result",
+      tool_use_id: "t2",
+      content: "40\tconst answer = 42;\n41\treturn answer;",
+    };
+
+    render(
+      <CollapsibleToolCall
+        block={readCall}
+        result={result}
+        isExpanded
+        onToggle={() => {}}
+      />
+    );
+
+    const rows = screen.getAllByTestId("excerpt-line");
+    expect(rows).toHaveLength(2);
+    expect(screen.getByText("src/answer.ts")).not.toBeNull();
+    // The numbers are lifted into the gutter, so the raw `40\t…` never shows.
+    expect(screen.getByText("const answer = 42;")).not.toBeNull();
+    expect(screen.queryByText(/40\tconst answer = 42;/)).toBeNull();
+  });
+
+  it("falls back to the raw rendering for a read whose result is not text", () => {
+    const readCall: ToolUseBlock = {
+      type: "tool_use",
+      id: "t3",
+      name: "Read",
+      input: { file_path: "shot.png" },
+    };
+    const result: ToolResultBlock = {
+      type: "tool_result",
+      tool_use_id: "t3",
+      content: [{ type: "image", source: "…" }],
+    };
+
+    render(
+      <CollapsibleToolCall
+        block={readCall}
+        result={result}
+        isExpanded
+        onToggle={() => {}}
+      />
+    );
+
+    expect(screen.queryByTestId("excerpt-line")).toBeNull();
+  });
+
+  it("renders an expanded Bash unit's command as shell, not raw JSON", async () => {
+    const bashCall: ToolUseBlock = {
+      type: "tool_use",
+      id: "t5",
+      name: "Bash",
+      input: { command: 'echo "hi"', description: "Say hi" },
+    };
+    const result: ToolResultBlock = {
+      type: "tool_result",
+      tool_use_id: "t5",
+      content: "hi",
+    };
+
+    const { container } = render(
+      <CollapsibleToolCall
+        block={bashCall}
+        result={result}
+        isExpanded
+        onToggle={() => {}}
+      />
+    );
+
+    // The command stands on its own, with the call's input no longer repeated
+    // as JSON above it.
+    expect(screen.queryByTestId("json-input")).toBeNull();
+    expect(screen.getByTestId("command-line").textContent).toBe('echo "hi"');
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-testid="command-line"] .hljs-string')
+      ).not.toBeNull()
+    );
+  });
+
+  it("renders a Bash unit's output beneath the command, with no language guessed", async () => {
+    const bashCall: ToolUseBlock = {
+      type: "tool_use",
+      id: "t6",
+      name: "Bash",
+      input: { command: 'echo "hi"' },
+    };
+    const result: ToolResultBlock = {
+      type: "tool_result",
+      tool_use_id: "t6",
+      // Reads like shell, but it is only what the command printed.
+      content: 'export FOO="hi"',
+    };
+
+    const { container } = render(
+      <CollapsibleToolCall
+        block={bashCall}
+        result={result}
+        isExpanded
+        onToggle={() => {}}
+      />
+    );
+
+    const commandBlock = screen.getByTestId("command");
+    const output = screen.getByTestId("command-output");
+    expect(output.textContent).toContain('export FOO="hi"');
+    expect(
+      commandBlock.compareDocumentPosition(output) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    // Once the highlighter has landed for the command, the output beside it is
+    // still untouched — nothing was guessed for it.
+    await waitFor(() =>
+      expect(commandBlock.querySelector('[class*="hljs-"]')).not.toBeNull()
+    );
+    expect(output.querySelector('[class*="hljs-"]')).toBeNull();
+    expect(container.querySelector("[data-testid='json-input']")).toBeNull();
+  });
+
+  it("renders a Bash unit that printed nothing as the command alone", () => {
+    const bashCall: ToolUseBlock = {
+      type: "tool_use",
+      id: "t7",
+      name: "Bash",
+      input: { command: "git add ." },
+    };
+    const result: ToolResultBlock = {
+      type: "tool_result",
+      tool_use_id: "t7",
+      content: "",
+    };
+
+    render(
+      <CollapsibleToolCall
+        block={bashCall}
+        result={result}
+        isExpanded
+        onToggle={() => {}}
+      />
+    );
+
+    expect(screen.getByTestId("command-line").textContent).toBe("git add .");
+    expect(screen.queryByTestId("command-output")).toBeNull();
+  });
+
+  it("still reads as failed for a Bash unit that reported an error", () => {
+    const bashCall: ToolUseBlock = {
+      type: "tool_use",
+      id: "t8",
+      name: "Bash",
+      input: { command: "pnpm test" },
+    };
+    const result: ToolResultBlock = {
+      type: "tool_result",
+      tool_use_id: "t8",
+      content: "1 test failed",
+      is_error: true,
+    };
+
+    render(
+      <CollapsibleToolCall
+        block={bashCall}
+        result={result}
+        isExpanded
+        onToggle={() => {}}
+      />
+    );
+
+    expect(screen.getByTestId("row-error")).not.toBeNull();
+    // What it said back is what explains the failure, so it still renders.
+    expect(screen.getByTestId("command-output").textContent).toContain(
+      "1 test failed"
+    );
+  });
+
+  it("colours the input of a unit that renders neither diff nor excerpt", async () => {
+    const searchCall: ToolUseBlock = {
+      type: "tool_use",
+      id: "t4",
+      name: "Grep",
+      input: { pattern: "useState" },
+    };
+
+    const { container } = render(
+      <CollapsibleToolCall block={searchCall} isExpanded onToggle={() => {}} />
+    );
+
+    await waitFor(() =>
+      expect(container.querySelector(".hljs-attr")).not.toBeNull()
+    );
+    expect(container.querySelector(".hljs-attr")?.textContent).toBe(
+      '"pattern"'
+    );
   });
 });

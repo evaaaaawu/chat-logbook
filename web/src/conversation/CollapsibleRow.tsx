@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import { ChevronDown, type LucideIcon } from "lucide-react";
+import type { DiffStat } from "@/conversation/generateToolSummary";
 
 interface CollapsibleRowProps {
   /** The kind marker — a terminal for tool units, a brain for thinking. */
@@ -8,6 +9,11 @@ interface CollapsibleRowProps {
   summary: string;
   /** Marks the row as reporting a failure. */
   hasError?: boolean;
+  /**
+   * How big an edit was. Given its own place at the row's trailing edge, so a
+   * long path truncates instead of pushing the counts off the end (#250).
+   */
+  diffStat?: DiffStat;
   /**
    * Whether the row is open. Controlled from above, because the virtualizer
    * recycles rows by position and state kept here would not survive it (#236).
@@ -35,6 +41,12 @@ interface CollapsibleRowProps {
   isSummary?: boolean;
 }
 
+// A side that changed nothing dims rather than disappears, so a purely additive
+// edit reads at a glance without the row changing shape.
+function zero(count: number): string {
+  return count === 0 ? "opacity-50" : "";
+}
+
 /**
  * One collapsed line that opens into its detail.
  *
@@ -46,6 +58,7 @@ export function CollapsibleRow({
   icon: Icon,
   summary,
   hasError,
+  diffStat,
   isExpanded,
   onToggle,
   children,
@@ -77,6 +90,17 @@ export function CollapsibleRow({
       ? "text-primary"
       : "group-hover:text-primary";
 
+  // The counts sit close to the muted label at rest — enough to tell an edit
+  // that mostly added from one that mostly removed while scanning — and resolve
+  // to the colours of the diff they open onto when the row is hovered or open
+  // (#250). Full saturation on every row would out-compete the prose.
+  const addedColour = isExpanded
+    ? "text-diff-add"
+    : "text-diff-add-muted group-hover:text-diff-add";
+  const removedColour = isExpanded
+    ? "text-diff-remove"
+    : "text-diff-remove-muted group-hover:text-diff-remove";
+
   return (
     <div>
       <button
@@ -103,6 +127,29 @@ export function CollapsibleRow({
             aria-label="Failed"
             className="ml-1 size-1.5 shrink-0 rounded-full bg-destructive"
           />
+        )}
+        {diffStat && (
+          <span
+            data-testid="row-diff-stat"
+            className="ml-auto shrink-0 pl-2 font-mono tabular-nums"
+          >
+            <span
+              data-testid="row-diff-added"
+              className={`transition-colors ${addedColour} ${zero(
+                diffStat.added
+              )}`}
+            >
+              +{diffStat.added}
+            </span>{" "}
+            <span
+              data-testid="row-diff-removed"
+              className={`transition-colors ${removedColour} ${zero(
+                diffStat.removed
+              )}`}
+            >
+              -{diffStat.removed}
+            </span>
+          </span>
         )}
       </button>
       {isExpanded && children && (

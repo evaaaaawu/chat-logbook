@@ -35,6 +35,8 @@ New colors enter `web/src/index.css` as a CSS variable wired through `@theme inl
 
 Text of any size clears 4.5:1 against the surface it renders on. Measure against the actual surface (`--card` for the batch bar, `--background` for the sidebar), not a guess. Known debt: `--primary` itself sits at 4.12:1 — tracked as a palette-level issue, don't fix it per-button.
 
+An edit's diff stat, measured against `--background` #002b36 and a row's hover ground #0a333e (#250): `--diff-add` 6.59:1 / 5.92:1 and `--diff-remove` 5.48:1 / 4.93:1 both clear the floor. `--destructive` does not clear it as text — 3.25:1 — which is why the removed count has its own lifted tone rather than reusing it. Known debt: the muted pair the counts rest in, `--diff-add-muted` 3.06:1 and `--diff-remove-muted` 3.42:1, sits under the floor. Both are above the `--muted-foreground` label they sit beside (2.79:1), so they are no quieter than the row already is — the whole muted skim layer is what #219 is auditing, and this pair belongs to that decision rather than a separate one.
+
 ## Tokens
 
 The action-facing subset of `web/src/index.css` (Solarized dark):

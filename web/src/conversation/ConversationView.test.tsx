@@ -584,7 +584,10 @@ describe("Conversation tool units", () => {
 
     await user.click(await screen.findByText("Read: /tmp/a.ts"));
 
-    expect(await screen.findByText(/export const answer = 42;/)).not.toBeNull();
+    // Highlighting splits the code into token spans, so match on the row's
+    // whole text rather than a single node's (#240).
+    const row = await screen.findByTestId("excerpt-line");
+    expect(row.textContent).toContain("export const answer = 42;");
   });
 
   it("pairs a call with a result recorded in the next turn", async () => {
@@ -674,7 +677,11 @@ describe("Conversation tool units", () => {
       />
     );
 
-    expect(await screen.findByText("Edited App.tsx +3 -1")).not.toBeNull();
+    expect(await screen.findByText("Edited App.tsx")).not.toBeNull();
+    // The counts keep their own place at the row's trailing edge (#250).
+    expect((await screen.findByTestId("row-diff-stat")).textContent).toBe(
+      "+3 -1"
+    );
   });
 
   it("shows input and output under one left rule marking the unit's extent", async () => {

@@ -1,8 +1,11 @@
 import { Terminal } from "lucide-react";
 import type { ContentBlock } from "@/types";
 import { CollapsibleRow } from "@/conversation/CollapsibleRow";
+import { CommandView } from "@/conversation/CommandView";
 import { DiffView } from "@/conversation/DiffView";
+import { FileExcerptView } from "@/conversation/FileExcerptView";
 import { generateToolSummary } from "@/conversation/generateToolSummary";
+import { JsonView } from "@/conversation/JsonView";
 import type { ToolResultBlock } from "@/conversation/toolUnits";
 
 type ToolUseBlock = Extract<ContentBlock, { type: "tool_use" }>;
@@ -17,6 +20,18 @@ interface CollapsibleToolCallProps {
 function formatResultContent(content: unknown): string {
   if (typeof content === "string") return content;
   return JSON.stringify(content, null, 2);
+}
+
+function readFilePath(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null) return undefined;
+  const { file_path: filePath } = input as { file_path?: unknown };
+  return typeof filePath === "string" ? filePath : undefined;
+}
+
+function shellCommand(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null) return undefined;
+  const { command } = input as { command?: unknown };
+  return typeof command === "string" ? command : undefined;
 }
 
 /**
@@ -37,21 +52,48 @@ export function CollapsibleToolCall({
   const patch = result?.patch;
   const isDiff = Boolean(result?.file_path && patch && patch.length > 0);
 
+  // A read's whole value is the file it returned, so it gets the same treatment
+  // as an edit: the path, the file's own line numbers, and its code coloured.
+  // The path comes from the call — a read result carries only the text (#240).
+  // A non-text result (an image the tool returned) has no lines to number and
+  // keeps the raw rendering.
+  const readPath =
+    block.name === "Read" ? readFilePath(block.input) : undefined;
+  const isExcerpt = Boolean(
+    !isDiff && readPath && typeof result?.content === "string"
+  );
+
+  // A Bash unit is worth expanding for the command it ran and what that command
+  // said back, so the command renders as shell and the call's input is not also
+  // dumped as JSON above it (#252).
+  const command = block.name === "Bash" ? shellCommand(block.input) : undefined;
+
+  const { label, diffStat } = generateToolSummary(block, result);
+
   return (
     <CollapsibleRow
       icon={Terminal}
-      summary={generateToolSummary(block, result)}
+      summary={label}
+      diffStat={diffStat}
       hasError={result?.is_error}
       isExpanded={isExpanded}
       onToggle={onToggle}
     >
       {isDiff ? (
         <DiffView filePath={result!.file_path!} patch={patch!} />
+      ) : isExcerpt ? (
+        <FileExcerptView
+          filePath={readPath!}
+          content={result!.content as string}
+        />
+      ) : command !== undefined ? (
+        <CommandView
+          command={command}
+          output={result ? formatResultContent(result.content) : undefined}
+        />
       ) : (
         <>
-          <pre className="overflow-x-auto rounded bg-card p-2 font-mono text-xs text-muted-foreground">
-            {JSON.stringify(block.input, null, 2)}
-          </pre>
+          <JsonView value={block.input} />
           {result && (
             <pre className="overflow-x-auto rounded bg-card p-2 font-mono text-xs text-muted-foreground">
               {formatResultContent(result.content)}
