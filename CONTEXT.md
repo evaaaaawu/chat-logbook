@@ -52,9 +52,13 @@ _Avoid_: segment, part, chunk
 A tool call paired with its tool result, shown as one collapsible row — the result belongs to the call, not to the turn it happened to arrive in. Collapsed it is a one-line summary; expanded it shows the call's input and output.
 _Avoid_: tool call (when the pair is meant), tool block pair
 
+**Action**:
+What a Tool unit did, said in a way no Agent owns: one of `edit`, `write`, `read`, `search`, `execute`, `delegate`, or `other`. Every Plugin translates its Agent's tool names into this set, so the UI renders Actions and never tool names. An Action carries meaning; the wording it is shown as (`Edited`, `Ran`) belongs to the UI, and changing that wording never touches stored rows.
+_Avoid_: verb, operation, tool type, tool name
+
 **Run**:
 A consecutive stretch of skim-layer rows — Tool units and thinking — with no message text between them, presented as one tight visual group. A Run of enough Tool units folds into a single summary row that names what happened; thinking rows share the Run's density but are never hidden behind that summary.
-_Avoid_: tool group, batch, sequence
+_Avoid_: tool group, batch, sequence; never "run" for executing a command — that is the Action `execute`
 
 **chat id**:
 The short, user-facing id for a Chat that you can paste anywhere and any agent can pattern-match. The code field is `chat_id`; the wire form is `clog_` + 6 Crockford base-32 characters (e.g. `clog_a3f7kx`).
