@@ -22,18 +22,6 @@ function formatResultContent(content: unknown): string {
   return JSON.stringify(content, null, 2);
 }
 
-function readFilePath(input: unknown): string | undefined {
-  if (typeof input !== "object" || input === null) return undefined;
-  const { file_path: filePath } = input as { file_path?: unknown };
-  return typeof filePath === "string" ? filePath : undefined;
-}
-
-function shellCommand(input: unknown): string | undefined {
-  if (typeof input !== "object" || input === null) return undefined;
-  const { command } = input as { command?: unknown };
-  return typeof command === "string" ? command : undefined;
-}
-
 /**
  * The row's one line: what happened, then what it happened to.
  *
@@ -70,18 +58,23 @@ export function CollapsibleToolCall({
   // A read's whole value is the file it returned, so it gets the same treatment
   // as an edit: the path, the file's own line numbers, and its code coloured.
   // The path comes from the call — a read result carries only the text (#240).
-  // A non-text result (an image the tool returned) has no lines to number and
-  // keeps the raw rendering.
+  // A read that named no path fetched something else (a URL reads as a phrase),
+  // and a non-text result (an image the tool returned) has no lines to number;
+  // both keep the raw rendering.
+  const action = block.action;
   const readPath =
-    block.name === "Read" ? readFilePath(block.input) : undefined;
+    action?.kind === "read" && action.object?.type === "path"
+      ? action.object.value
+      : undefined;
   const isExcerpt = Boolean(
     !isDiff && readPath && typeof result?.content === "string"
   );
 
-  // A Bash unit is worth expanding for the command it ran and what that command
+  // An execute is worth expanding for the command it ran and what that command
   // said back, so the command renders as shell and the call's input is not also
-  // dumped as JSON above it (#252).
-  const command = block.name === "Bash" ? shellCommand(block.input) : undefined;
+  // dumped as JSON above it (#252). The command is the Action's detail, since
+  // the row itself is labelled with what the call said it was for (#263).
+  const command = action?.kind === "execute" ? action.detail : undefined;
 
   const { verb, object, diffStat } = generateToolSummary(block, result);
 
