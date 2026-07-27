@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
-// The row names the file by its basename, so what has to give way is a long
-// name in a narrow pane — the case that used to eat the counts (#250).
+// What has to give way is a long name in a narrow pane — the case that used to
+// eat the counts (#250).
 const LONG_NAME =
   "CollapsibleToolCallSummaryRowWithAVeryLongDescriptiveFileName.test.tsx";
 const LONG_PATH = `web/src/conversation/${LONG_NAME}`;
@@ -113,7 +113,9 @@ test("the counts survive a name long enough to truncate", async ({ page }) => {
   const stat = page.getByTestId("row-diff-stat");
   await expect(stat).toHaveText("+39 -2");
 
-  const label = page.getByText(`Edited ${LONG_NAME}`);
+  // A name this long outruns even the directory it gave up first (#262), so
+  // the label as a whole is what runs out of room here.
+  const label = page.getByTestId("row-label");
   const truncated = await label.evaluate(
     (el) => el.scrollWidth > el.clientWidth
   );

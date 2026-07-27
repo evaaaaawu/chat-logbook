@@ -5,8 +5,11 @@ import type { DiffStat } from "@/conversation/generateToolSummary";
 interface CollapsibleRowProps {
   /** The kind marker — a terminal for tool units, a brain for thinking. */
   icon: LucideIcon;
-  /** The one-line collapsed summary. */
-  summary: string;
+  /**
+   * The one-line collapsed summary. A node rather than a string, because a
+   * tool unit's label is several slots that truncate differently (#262).
+   */
+  summary: ReactNode;
   /** Marks the row as reporting a failure. */
   hasError?: boolean;
   /**

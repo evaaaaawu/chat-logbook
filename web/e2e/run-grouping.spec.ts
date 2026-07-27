@@ -86,8 +86,9 @@ async function rowTop(
   path: string
 ): Promise<{ top: number; bottom: number }> {
   const box = await page
-    // The row names the file, not the path it sits at.
-    .getByRole("button", { name: new RegExp(`Read ${path.split("/").pop()}`) })
+    // The row names the path, verb and all, with the two joined by a space
+    // the layout cannot drop (#262).
+    .getByRole("button", { name: new RegExp(`Read\\s${path}`) })
     .boundingBox();
   return { top: box!.y, bottom: box!.y + box!.height };
 }
