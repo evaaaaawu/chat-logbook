@@ -130,13 +130,17 @@ test("a large diff expands and highlights in a real browser without stalling", a
 
   // The collapsed tool unit summarises the write; the full path shows once the
   // diff is expanded.
-  const summary = page.getByText("Wrote constants.ts");
+  const summary = page.getByTestId("row-label");
   await expect(summary).toBeVisible();
   await expect(page.getByTestId("row-diff-stat")).toHaveText("+200 -0");
 
   const start = Date.now();
   await summary.click();
-  await expect(page.getByText("web/src/constants.ts")).toBeVisible();
+  // Scoped to what opened, since the collapsed row above it now names the
+  // same path (#262).
+  await expect(
+    page.getByTestId("unit-detail").getByText("web/src/constants.ts")
+  ).toBeVisible();
 
   // Highlighting arrives after the lazy highlighter load — the keyword tokens
   // appear, proving the language was inferred and applied.
@@ -182,7 +186,7 @@ test("a large read expands as a highlighted, numbered excerpt without stalling",
     },
   ]);
 
-  const summary = page.getByText("Read constants.ts");
+  const summary = page.getByTestId("row-label");
   await expect(summary).toBeVisible();
 
   const start = Date.now();
