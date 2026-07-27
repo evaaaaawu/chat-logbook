@@ -536,6 +536,10 @@ describe("Conversation collapsed units", () => {
                 id: "t1",
                 name: "Read",
                 input: { file_path: "/tmp/a.ts" },
+                action: {
+                  kind: "read",
+                  object: { type: "path", value: "/tmp/a.ts" },
+                },
               },
             ],
             timestamp: "2024-01-01T00:01:00Z",
@@ -545,7 +549,7 @@ describe("Conversation collapsed units", () => {
     );
 
     // The collapsed row is still rendered — it is content, just not authored.
-    expect(await screen.findByText("Read: /tmp/a.ts")).not.toBeNull();
+    expect(await screen.findByText("Read a.ts")).not.toBeNull();
     // ...but the header belongs to the text turn alone.
     expect(screen.getAllByText("Claude Code")).toHaveLength(1);
   });
@@ -569,6 +573,10 @@ describe("Conversation tool units", () => {
                 id: "t1",
                 name: "Read",
                 input: { file_path: "/tmp/a.ts" },
+                action: {
+                  kind: "read",
+                  object: { type: "path", value: "/tmp/a.ts" },
+                },
               },
               {
                 type: "tool_result",
@@ -582,7 +590,7 @@ describe("Conversation tool units", () => {
       />
     );
 
-    await user.click(await screen.findByText("Read: /tmp/a.ts"));
+    await user.click(await screen.findByText("Read a.ts"));
 
     // Highlighting splits the code into token spans, so match on the row's
     // whole text rather than a single node's (#240).
@@ -609,6 +617,10 @@ describe("Conversation tool units", () => {
                 id: "t1",
                 name: "Bash",
                 input: { command: "pnpm test" },
+                action: {
+                  kind: "execute",
+                  object: { type: "phrase", value: "pnpm test" },
+                },
               },
             ],
             timestamp: "2024-01-01T00:00:00Z",
@@ -625,7 +637,7 @@ describe("Conversation tool units", () => {
       />
     );
 
-    await user.click(await screen.findByText("Bash: pnpm test"));
+    await user.click(await screen.findByText('Ran "pnpm test"'));
 
     expect(await screen.findByText(/17 passed/)).not.toBeNull();
   });
@@ -647,6 +659,10 @@ describe("Conversation tool units", () => {
                 id: "t1",
                 name: "Edit",
                 input: { file_path: "/repo/web/src/App.tsx" },
+                action: {
+                  kind: "edit",
+                  object: { type: "path", value: "/repo/web/src/App.tsx" },
+                },
               },
             ],
             timestamp: "2024-01-01T00:00:00Z",
@@ -701,6 +717,10 @@ describe("Conversation tool units", () => {
                 id: "t1",
                 name: "Bash",
                 input: { command: "pnpm test" },
+                action: {
+                  kind: "execute",
+                  object: { type: "phrase", value: "pnpm test" },
+                },
               },
               { type: "tool_result", tool_use_id: "t1", content: "17 passed" },
             ],
@@ -710,7 +730,7 @@ describe("Conversation tool units", () => {
       />
     );
 
-    await user.click(await screen.findByText("Bash: pnpm test"));
+    await user.click(await screen.findByText('Ran "pnpm test"'));
 
     const detail = container.querySelector('[data-testid="unit-detail"]')!;
     expect(detail).not.toBeNull();
@@ -738,6 +758,10 @@ describe("Conversation tool units", () => {
                 id: "t1",
                 name: "Read",
                 input: { file_path: "/tmp/a.ts" },
+                action: {
+                  kind: "read",
+                  object: { type: "path", value: "/tmp/a.ts" },
+                },
               },
             ],
             timestamp: "2024-01-01T00:00:00Z",
@@ -747,7 +771,7 @@ describe("Conversation tool units", () => {
     );
 
     const row = await screen.findByRole("button", {
-      name: /Read: \/tmp\/a\.ts/,
+      name: /Read a\.ts/,
     });
     expect(row).toHaveAttribute("aria-expanded", "false");
     expect(row.querySelector('[data-testid="row-chevron"]')).not.toBeNull();
@@ -805,6 +829,10 @@ describe("Conversation tool units", () => {
                 id: "t1",
                 name: "Bash",
                 input: { command: "pnpm test" },
+                action: {
+                  kind: "execute",
+                  object: { type: "phrase", value: "pnpm test" },
+                },
               },
             ],
             timestamp: "2024-01-01T00:00:00Z",
@@ -826,7 +854,7 @@ describe("Conversation tool units", () => {
       />
     );
 
-    const row = await screen.findByRole("button", { name: /Bash: pnpm test/ });
+    const row = await screen.findByRole("button", { name: /Ran "pnpm test"/ });
     expect(row.querySelector('[data-testid="row-error"]')).not.toBeNull();
   });
 
@@ -844,6 +872,10 @@ describe("Conversation tool units", () => {
                 id: "t1",
                 name: "Bash",
                 input: { command: "pnpm test" },
+                action: {
+                  kind: "execute",
+                  object: { type: "phrase", value: "pnpm test" },
+                },
               },
               { type: "tool_result", tool_use_id: "t1", content: "17 passed" },
             ],
@@ -853,7 +885,7 @@ describe("Conversation tool units", () => {
       />
     );
 
-    const row = await screen.findByRole("button", { name: /Bash: pnpm test/ });
+    const row = await screen.findByRole("button", { name: /Ran "pnpm test"/ });
     expect(row.querySelector('[data-testid="row-error"]')).toBeNull();
   });
 });
@@ -998,6 +1030,10 @@ describe("ConversationView — visualize widgets", () => {
     id: "toolu_w1",
     name: "mcp__visualize__show_widget",
     input: { title: "arch_diagram", widget_code: "<svg />" },
+    action: {
+      kind: "other" as const,
+      object: { type: "phrase" as const, value: "visualize" },
+    },
   };
 
   it("draws the widget beside its tool row, named as a drawing not a screenshot", async () => {
@@ -1024,7 +1060,7 @@ describe("ConversationView — visualize widgets", () => {
     expect(img.getAttribute("alt")).toBe("Diagram");
     // The source stays reachable — the drawing is the point, but the reader can
     // still open the row that produced it.
-    expect(screen.getByText(/show_widget/)).toBeTruthy();
+    expect(screen.getByText(/visualize/)).toBeTruthy();
   });
 });
 
@@ -1050,7 +1086,13 @@ describe("copying a whole message", () => {
             content: [
               { type: "thinking", thinking: "considering" },
               { type: "text", text: "Here is the answer." },
-              { type: "tool_use", id: "t1", name: "Read", input: {} },
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "Read",
+                input: {},
+                action: { kind: "read" },
+              },
             ],
             timestamp: "2024-01-01T00:00:00Z",
           },
@@ -1077,7 +1119,15 @@ describe("messages with nothing to take away", () => {
           {
             id: "m-tool-only",
             role: "assistant",
-            content: [{ type: "tool_use", id: "t1", name: "Read", input: {} }],
+            content: [
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "Read",
+                input: {},
+                action: { kind: "read" },
+              },
+            ],
             timestamp: "2024-01-01T00:00:00Z",
           },
         ]}
@@ -1098,7 +1148,13 @@ describe("messages with nothing to take away", () => {
             role: "assistant",
             content: [
               { type: "text", text: "Reading the file." },
-              { type: "tool_use", id: "t2", name: "Read", input: {} },
+              {
+                type: "tool_use",
+                id: "t2",
+                name: "Read",
+                input: {},
+                action: { kind: "read" },
+              },
             ],
             timestamp: "2024-01-01T00:00:00Z",
           },
@@ -1122,14 +1178,28 @@ describe("Run grouping", () => {
       role: "assistant",
       content: [
         { type: "thinking", thinking: "weighing the options" },
-        { type: "tool_use", id: "t1", name: "Read", input: {} },
+        {
+          type: "tool_use",
+          id: "t1",
+          name: "Read",
+          input: {},
+          action: { kind: "read" },
+        },
       ],
       timestamp: "2024-01-01T00:00:00Z",
     },
     {
       id: "m-2",
       role: "assistant",
-      content: [{ type: "tool_use", id: "t2", name: "Bash", input: {} }],
+      content: [
+        {
+          type: "tool_use",
+          id: "t2",
+          name: "Bash",
+          input: {},
+          action: { kind: "execute" },
+        },
+      ],
       timestamp: "2024-01-01T00:01:00Z",
     },
     {
@@ -1196,7 +1266,16 @@ describe("Folding a long Run", () => {
       id,
       role: "assistant",
       content: [
-        { type: "tool_use", id: `t-${id}`, name: "Bash", input: { command } },
+        {
+          type: "tool_use",
+          id: `t-${id}`,
+          name: "Bash",
+          input: { command },
+          action: {
+            kind: "execute",
+            object: { type: "phrase", value: command },
+          },
+        },
       ],
       timestamp: "2024-01-01T00:00:00Z",
     };
@@ -1277,6 +1356,7 @@ describe("Row expansion", () => {
           id: `t-${id}`,
           name: "Read",
           input: { file_path: path },
+          action: { kind: "read", object: { type: "path", value: path } },
         },
       ],
       timestamp: "2024-01-01T00:00:00Z",
@@ -1295,9 +1375,7 @@ describe("Row expansion", () => {
       />
     );
 
-    await user.click(
-      await screen.findByRole("button", { name: /Read: \/b\.ts/ })
-    );
+    await user.click(await screen.findByRole("button", { name: /Read b\.ts/ }));
 
     rerender(
       <ConversationView
@@ -1318,12 +1396,13 @@ describe("Row expansion", () => {
     );
 
     expect(
-      await screen.findByRole("button", { name: /Read: \/b\.ts/ })
+      await screen.findByRole("button", { name: /Read b\.ts/ })
     ).toHaveAttribute("aria-expanded", "true");
     // and no neighbour inherited it
-    expect(
-      screen.getByRole("button", { name: /Read: \/a\.ts/ })
-    ).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: /Read a\.ts/ })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
   });
   it("remembers each row of a turn separately", async () => {
     const user = userEvent.setup();
@@ -1340,12 +1419,20 @@ describe("Row expansion", () => {
                 id: "t1",
                 name: "Read",
                 input: { file_path: "/a.ts" },
+                action: {
+                  kind: "read",
+                  object: { type: "path", value: "/a.ts" },
+                },
               },
               {
                 type: "tool_use",
                 id: "t2",
                 name: "Read",
                 input: { file_path: "/b.ts" },
+                action: {
+                  kind: "read",
+                  object: { type: "path", value: "/b.ts" },
+                },
               },
             ],
             timestamp: "2024-01-01T00:00:00Z",
@@ -1354,16 +1441,16 @@ describe("Row expansion", () => {
       />
     );
 
-    await user.click(
-      await screen.findByRole("button", { name: /Read: \/b\.ts/ })
-    );
+    await user.click(await screen.findByRole("button", { name: /Read b\.ts/ }));
 
-    expect(
-      screen.getByRole("button", { name: /Read: \/b\.ts/ })
-    ).toHaveAttribute("aria-expanded", "true");
-    expect(
-      screen.getByRole("button", { name: /Read: \/a\.ts/ })
-    ).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: /Read b\.ts/ })).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: /Read a\.ts/ })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
   });
 
   it("opens a different chat with every row closed", async () => {
@@ -1372,9 +1459,7 @@ describe("Row expansion", () => {
       <ConversationView chat={chat} messages={[tool("m-a", "/a.ts")]} />
     );
 
-    await user.click(
-      await screen.findByRole("button", { name: /Read: \/a\.ts/ })
-    );
+    await user.click(await screen.findByRole("button", { name: /Read a\.ts/ }));
 
     rerender(
       <ConversationView
@@ -1384,7 +1469,7 @@ describe("Row expansion", () => {
     );
 
     expect(
-      await screen.findByRole("button", { name: /Read: \/a\.ts/ })
+      await screen.findByRole("button", { name: /Read a\.ts/ })
     ).toHaveAttribute("aria-expanded", "false");
   });
 });

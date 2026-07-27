@@ -258,6 +258,10 @@ describe("ClaudeCodePlugin.normalize", () => {
         id: "tool-1",
         name: "Read",
         input: { file_path: "src/index.ts" },
+        action: {
+          kind: "read",
+          object: { type: "path", value: "src/index.ts" },
+        },
       },
     ]);
     expect(result?.text).toBe("");
@@ -849,6 +853,10 @@ describe("ClaudeCodePlugin.normalize → visualize widgets", () => {
         id: "toolu_w1",
         name: "mcp__visualize__show_widget",
         input: { title: "arch_diagram", widget_code: svg },
+        action: {
+          kind: "other",
+          object: { type: "phrase", value: "visualize" },
+        },
       },
       { type: "image", mediaType: "image/svg+xml", ref: "msg-w-1.0" },
     ]);
@@ -866,6 +874,10 @@ describe("ClaudeCodePlugin.normalize → visualize widgets", () => {
         id: "toolu_w1",
         name: "mcp__visualize__show_widget",
         input: { title: "arch_diagram", widget_code: html },
+        action: {
+          kind: "other",
+          object: { type: "phrase", value: "visualize" },
+        },
       },
     ]);
   });

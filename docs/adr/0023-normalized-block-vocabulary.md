@@ -39,6 +39,8 @@ Three adjacent rules ride on the same contract:
 - **`NormalizedMessage.model`** — an optional field capturing the model id the Agent recorded on the message (e.g. `claude-opus-4-8`). Absent when the Agent doesn't record one.
 - **`NormalizedMessage.effort`** — an optional field capturing the reasoning effort the Agent recorded for the message (e.g. `medium`). Per message, exactly like `model`, and absent when the Agent recorded none. Claude Code writes it beside the message rather than inside it, so the Plugin reads it off the record's top level. Stored in the Agent's own wording. Unlike a model id, an effort is already a readable word, so the frontend needs no id→name table for it — it capitalizes the first letter at render and shows the rest untouched.
 
+- **`tool_use.action`** — what the call did, as one of `edit`, `write`, `read`, `search`, `execute`, `delegate`, `other`, together with what it applied to (a path, or a phrase such as a command's description or a search pattern). The Plugin decides it from its own Agent's tool names, so nothing downstream keys on a tool name — which is what the last bullet under Consequences promises, and what the row label did not honour until ADR-0025. Required on the write side, since an unrecognized tool is `other` rather than nothing; the read side treats it as optional, because rows normalized before it existed read as `other` until re-normalize catches up. The word a reader sees is not stored: see ADR-0025 for why.
+
 The API serves these shapes as-is (with `tool_result.toolUseId` mapped to wire-form `tool_use_id`, matching the existing convention).
 
 ## Considered alternatives

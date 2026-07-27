@@ -81,7 +81,7 @@ export function renormalizeFromRaw({
  * patch for a new-file Write, which records none, so archived creates render as
  * a diff instead of raw JSON: version 9.
  */
-export const NORMALIZE_VERSION = 9;
+export const NORMALIZE_VERSION = 10;
 
 export interface RunRenormalizeIfStaleOptions {
   plugins: readonly AgentPlugin[];

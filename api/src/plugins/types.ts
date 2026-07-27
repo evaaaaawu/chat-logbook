@@ -30,10 +30,53 @@ export interface PatchHunk {
   lines: string[];
 }
 
+/**
+ * What a Tool unit did, said in a way no Agent owns (ADR-0025).
+ *
+ * Every Plugin translates its own Agent's tool names into this set, so the UI
+ * renders Actions and never tool names. `execute` rather than `run` because Run
+ * already names the visual grouping of skim-layer rows.
+ */
+export type ActionKind =
+  | "edit"
+  | "write"
+  | "read"
+  | "search"
+  | "execute"
+  | "delegate"
+  | "other";
+
+/**
+ * What an Action applied to. A path says the value is a file location, which is
+ * the UI's cue that it may drop leading directories to fit — a phrase has no
+ * such structure and truncates from the end. A URL is a phrase for that reason:
+ * its identifying part is at the front.
+ */
+export type ActionObject =
+  | { type: "path"; value: string }
+  | { type: "phrase"; value: string };
+
+export interface Action {
+  kind: ActionKind;
+  /** Absent when the call named nothing to act on. */
+  object?: ActionObject;
+}
+
 export type NormalizedBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; thinking: string }
-  | { type: "tool_use"; id: string; name: string; input: unknown }
+  | {
+      type: "tool_use";
+      id: string;
+      name: string;
+      input: unknown;
+      /**
+       * Required here because every call has one — an unrecognized tool is
+       * `other`, not nothing. Optional on the read side, where rows normalized
+       * before this field existed are still in flight until re-normalize runs.
+       */
+      action: Action;
+    }
   | {
       type: "tool_result";
       toolUseId: string;

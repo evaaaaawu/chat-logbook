@@ -114,6 +114,10 @@ test("a large diff expands and highlights in a real browser without stalling", a
       id: "tool_1",
       name: "Write",
       input: { file_path: "web/src/constants.ts" },
+      action: {
+        kind: "write",
+        object: { type: "path", value: "web/src/constants.ts" },
+      },
     },
     {
       type: "tool_result",
@@ -166,6 +170,10 @@ test("a large read expands as a highlighted, numbered excerpt without stalling",
       id: "tool_2",
       name: "Read",
       input: { file_path: "web/src/constants.ts" },
+      action: {
+        kind: "read",
+        object: { type: "path", value: "web/src/constants.ts" },
+      },
     },
     {
       type: "tool_result",
@@ -174,7 +182,7 @@ test("a large read expands as a highlighted, numbered excerpt without stalling",
     },
   ]);
 
-  const summary = page.getByText("Read: web/src/constants.ts");
+  const summary = page.getByText("Read constants.ts");
   await expect(summary).toBeVisible();
 
   const start = Date.now();
@@ -210,11 +218,15 @@ test("a tool call with no view of its own shows its input as coloured JSON", asy
         // block did not scroll on its own.
         path: `web/src/${"very-long-directory-name/".repeat(20)}index.ts`,
       },
+      action: {
+        kind: "search",
+        object: { type: "phrase", value: "useState" },
+      },
     },
     { type: "tool_result", tool_use_id: "tool_3", content: "No matches found" },
   ]);
 
-  await page.getByText("Grep", { exact: false }).first().click();
+  await page.getByText('Searched for "useState"').first().click();
 
   const input = page.getByTestId("json-input");
   await expect(input.locator(".hljs-attr").first()).toBeVisible();

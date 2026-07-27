@@ -1478,7 +1478,7 @@ describe("Tool call rendering", () => {
     await user.click(await screen.findByText("Refactor utils"));
 
     // Tool call summary should be visible
-    expect(await screen.findByText("Read: src/utils.ts")).toBeInTheDocument();
+    expect(await screen.findByText("Read utils.ts")).toBeInTheDocument();
 
     // The file it read should NOT be visible when collapsed
     expect(screen.queryByTestId("excerpt-line")).not.toBeInTheDocument();
@@ -1489,7 +1489,7 @@ describe("Tool call rendering", () => {
     render(<App />);
 
     await user.click(await screen.findByText("Refactor utils"));
-    const summary = await screen.findByText("Read: src/utils.ts");
+    const summary = await screen.findByText("Read utils.ts");
 
     // Click to expand
     await user.click(summary);
@@ -1504,7 +1504,7 @@ describe("Tool call rendering", () => {
     render(<App />);
 
     await user.click(await screen.findByText("Refactor utils"));
-    const summary = await screen.findByText("Read: src/utils.ts");
+    const summary = await screen.findByText("Read utils.ts");
 
     // Expand then collapse
     await user.click(summary);
@@ -1521,7 +1521,7 @@ describe("Thinking block rendering", () => {
     render(<App />);
 
     await user.click(await screen.findByText("Refactor utils"));
-    await screen.findByText("Read: src/utils.ts");
+    await screen.findByText("Read utils.ts");
 
     // session-3 has one empty thinking and one with content
     // Only one "Thinking..." button should appear
@@ -1730,7 +1730,7 @@ describe("Tool call rendering (continued)", () => {
     render(<App />);
 
     await user.click(await screen.findByText("Refactor utils"));
-    await screen.findByText("Read: src/utils.ts");
+    await screen.findByText("Read utils.ts");
 
     // tool_result content should not appear
     expect(

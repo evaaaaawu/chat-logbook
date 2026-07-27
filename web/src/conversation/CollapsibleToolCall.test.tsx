@@ -11,6 +11,7 @@ const editCall: ToolUseBlock = {
   id: "t1",
   name: "Edit",
   input: { file_path: "a.tsx", old_string: "x", new_string: "y" },
+  action: { kind: "edit", object: { type: "path", value: "src/a.tsx" } },
 };
 
 describe("CollapsibleToolCall", () => {
@@ -74,7 +75,35 @@ describe("CollapsibleToolCall", () => {
     );
 
     expect(screen.getByTestId("row-diff-stat").textContent).toBe("+3 -1");
-    expect(screen.getByText("Edited CollapsibleToolCall.tsx")).not.toBeNull();
+    expect(screen.getByText("Edited a.tsx")).not.toBeNull();
+  });
+
+  // One register across the whole column: a row says what happened, never which
+  // tool ran or what its JSON held (#260).
+  it.each([
+    [
+      { kind: "execute", object: { type: "phrase", value: "Run the suite" } },
+      'Ran "Run the suite"',
+    ],
+    [
+      { kind: "search", object: { type: "phrase", value: "useMessages" } },
+      'Searched for "useMessages"',
+    ],
+    [
+      { kind: "other", object: { type: "phrase", value: "Claude Browser" } },
+      'Used "Claude Browser"',
+    ],
+    [{ kind: "other" }, "Used"],
+  ] as const)("reads as a sentence, never as a tool name", (action, label) => {
+    render(
+      <CollapsibleToolCall
+        block={{ ...editCall, name: "mcp__Claude_Browser__computer", action }}
+        isExpanded={false}
+        onToggle={() => {}}
+      />
+    );
+
+    expect(screen.getByText(label)).not.toBeNull();
   });
 
   it("falls back to the raw rendering when the result carries no patch", () => {
