@@ -39,6 +39,7 @@ async function openRunChat(page: import("@playwright/test").Page) {
     id,
     name: "Read",
     input: { file_path: path },
+    action: { kind: "read", object: { type: "path", value: path } },
   });
   await page.route(/\/api\/chats\/clog_run1(\?|$)/, (route) =>
     route.fulfill({
@@ -85,7 +86,8 @@ async function rowTop(
   path: string
 ): Promise<{ top: number; bottom: number }> {
   const box = await page
-    .getByRole("button", { name: new RegExp(`Read: ${path}`) })
+    // The row names the file, not the path it sits at.
+    .getByRole("button", { name: new RegExp(`Read ${path.split("/").pop()}`) })
     .boundingBox();
   return { top: box!.y, bottom: box!.y + box!.height };
 }

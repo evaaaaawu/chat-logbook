@@ -85,6 +85,7 @@ function editOf(filePath: string, added: number, removed: number) {
       id: "tool_1",
       name: "Edit",
       input: { file_path: filePath },
+      action: { kind: "edit", object: { type: "path", value: filePath } },
     },
     {
       type: "tool_result",
