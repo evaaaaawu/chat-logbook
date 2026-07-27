@@ -1,5 +1,5 @@
 import { Terminal } from "lucide-react";
-import type { ContentBlock } from "@/types";
+import type { ActionObject, ContentBlock } from "@/types";
 import { CollapsibleRow } from "@/conversation/CollapsibleRow";
 import { CommandView } from "@/conversation/CommandView";
 import { DiffView } from "@/conversation/DiffView";
@@ -32,6 +32,21 @@ function shellCommand(input: unknown): string | undefined {
   if (typeof input !== "object" || input === null) return undefined;
   const { command } = input as { command?: unknown };
   return typeof command === "string" ? command : undefined;
+}
+
+/**
+ * The row's one line: what happened, then what it happened to.
+ *
+ * A path stands on its own — it is already a name. A phrase is text the call
+ * supplied, so quoting it keeps `Searched for "npm test"` from reading as if
+ * the words were ours. The filename alone for now; #262 gives the row a shape
+ * that can show the directory too without ever clipping the name.
+ */
+function sentence(verb: string, object?: ActionObject): string {
+  if (!object) return verb;
+  if (object.type === "phrase") return `${verb} "${object.value}"`;
+  const slash = object.value.lastIndexOf("/");
+  return `${verb} ${slash === -1 ? object.value : object.value.slice(slash + 1)}`;
 }
 
 /**
@@ -68,12 +83,12 @@ export function CollapsibleToolCall({
   // dumped as JSON above it (#252).
   const command = block.name === "Bash" ? shellCommand(block.input) : undefined;
 
-  const { label, diffStat } = generateToolSummary(block, result);
+  const { verb, object, diffStat } = generateToolSummary(block, result);
 
   return (
     <CollapsibleRow
       icon={Terminal}
-      summary={label}
+      summary={sentence(verb, object)}
       diffStat={diffStat}
       hasError={result?.is_error}
       isExpanded={isExpanded}

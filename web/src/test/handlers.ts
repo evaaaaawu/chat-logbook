@@ -274,6 +274,10 @@ export const fakeMessages: Record<string, Message[]> = {
           id: "tool-1",
           name: "Read",
           input: { file_path: "src/utils.ts" },
+          action: {
+            kind: "read",
+            object: { type: "path", value: "src/utils.ts" },
+          },
         },
         {
           type: "tool_result",

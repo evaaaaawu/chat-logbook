@@ -35,10 +35,48 @@ export interface PatchHunk {
   lines: string[];
 }
 
+/**
+ * What a Tool unit did, said in a way no Agent owns (ADR-0025). The Plugin
+ * decides it at normalize time, so nothing here keys on a tool's name.
+ */
+export type ActionKind =
+  | "edit"
+  | "write"
+  | "read"
+  | "search"
+  | "execute"
+  | "delegate"
+  | "other";
+
+/**
+ * What an Action applied to. A path may drop leading directories to fit, since
+ * its filename is the identifying part; a phrase may not, and truncates from
+ * the end like ordinary prose.
+ */
+export type ActionObject =
+  | { type: "path"; value: string }
+  | { type: "phrase"; value: string };
+
+export interface Action {
+  kind: ActionKind;
+  object?: ActionObject;
+}
+
 export type ContentBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; thinking: string }
-  | { type: "tool_use"; id: string; name: string; input: unknown }
+  | {
+      type: "tool_use";
+      id: string;
+      name: string;
+      input: unknown;
+      /**
+       * Optional only because rows normalized before Actions existed are still
+       * in flight until re-normalize catches up; such a row reads as `other`
+       * rather than falling back to its tool name.
+       */
+      action?: Action;
+    }
   | {
       type: "tool_result";
       tool_use_id: string;

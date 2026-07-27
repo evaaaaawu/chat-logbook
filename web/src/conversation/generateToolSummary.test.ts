@@ -1,213 +1,86 @@
 import { describe, it, expect } from "vitest";
+import type { Action, ContentBlock } from "@/types";
 import { generateToolSummary } from "./generateToolSummary";
 
+type ToolUseBlock = Extract<ContentBlock, { type: "tool_use" }>;
+
+function toolUse(action?: Action): ToolUseBlock {
+  // The tool's name and input stay on the block, and the summary is expected to
+  // ignore both: what the call did is the Action's to say, not the tool's.
+  return {
+    type: "tool_use",
+    id: "t1",
+    name: "Edit",
+    input: { file_path: "/repo/web/src/types.ts" },
+    ...(action ? { action } : {}),
+  };
+}
+
 describe("generateToolSummary", () => {
-  it("summarizes Read tool with file path", () => {
+  it("says what an edit did, and names the file as a path", () => {
     expect(
-      generateToolSummary({
-        type: "tool_use",
-        id: "t1",
-        name: "Read",
-        input: { file_path: "src/index.ts" },
-      })
-    ).toEqual({ label: "Read: src/index.ts" });
-  });
-
-  it("summarizes Bash tool with command", () => {
-    expect(
-      generateToolSummary({
-        type: "tool_use",
-        id: "t2",
-        name: "Bash",
-        input: { command: "npm test" },
-      })
-    ).toEqual({ label: "Bash: npm test" });
-  });
-
-  it("truncates long Bash commands", () => {
-    const longCommand = "a".repeat(120);
-    const result = generateToolSummary({
-      type: "tool_use",
-      id: "t3",
-      name: "Bash",
-      input: { command: longCommand },
+      generateToolSummary(
+        toolUse({
+          kind: "edit",
+          object: { type: "path", value: "/repo/web/src/types.ts" },
+        })
+      )
+    ).toEqual({
+      verb: "Edited",
+      object: { type: "path", value: "/repo/web/src/types.ts" },
     });
-    expect(result.label.length).toBeLessThanOrEqual(
-      100 + "Bash: ".length + "…".length
+  });
+
+  // One word per act, and the same word the fold summary above these rows uses.
+  // `Wrote` stays apart from `Edited` because the difference is what a reader
+  // scanning a Run is looking for: the last of three touches rewrote the file.
+  it.each([
+    ["write", "Wrote"],
+    ["read", "Read"],
+    ["search", "Searched for"],
+    ["execute", "Ran"],
+    ["delegate", "Delegated"],
+    ["other", "Used"],
+  ] as const)("says %s as %s", (kind, verb) => {
+    expect(generateToolSummary(toolUse({ kind })).verb).toBe(verb);
+  });
+
+  // A row normalized before Actions existed, still in flight until re-normalize
+  // catches up. It reads as an unremarkable call rather than reaching back for
+  // the tool's name — that fallback is the machine register this replaced.
+  it("treats a row with no Action as an unremarkable one, not as its tool", () => {
+    const summary = generateToolSummary(toolUse());
+
+    expect(summary.verb).toBe("Used");
+    expect(summary.object).toBeUndefined();
+  });
+
+  // The counts come from the patch the result carried, not from the Action:
+  // how big an edit was is a fact about what came back, and ADR-0023 keeps it
+  // derived at render rather than stored.
+  it("counts an edit's lines from the patch its result carried", () => {
+    const summary = generateToolSummary(
+      toolUse({
+        kind: "edit",
+        object: { type: "path", value: "/repo/web/src/types.ts" },
+      }),
+      {
+        type: "tool_result",
+        tool_use_id: "t1",
+        content: "updated",
+        file_path: "/repo/web/src/types.ts",
+        patch: [
+          {
+            oldStart: 1,
+            oldLines: 2,
+            newStart: 1,
+            newLines: 3,
+            lines: [" kept", "-gone", "+new", "+also new"],
+          },
+        ],
+      }
     );
-    expect(result.label).toMatch(/^Bash: a+…$/);
-  });
 
-  it("summarizes Edit tool with file path", () => {
-    expect(
-      generateToolSummary({
-        type: "tool_use",
-        id: "t4",
-        name: "Edit",
-        input: {
-          file_path: "src/app.ts",
-          old_string: "foo",
-          new_string: "bar",
-        },
-      })
-    ).toEqual({ label: "Edit: src/app.ts" });
-  });
-
-  it("summarizes Write tool with file path", () => {
-    expect(
-      generateToolSummary({
-        type: "tool_use",
-        id: "t5",
-        name: "Write",
-        input: { file_path: "README.md", content: "hello" },
-      })
-    ).toEqual({ label: "Write: README.md" });
-  });
-
-  it("hands an Edit's counts out separately from its label", () => {
-    expect(
-      generateToolSummary(
-        {
-          type: "tool_use",
-          id: "t4",
-          name: "Edit",
-          input: { file_path: "web/src/conversation/CollapsibleToolCall.tsx" },
-        },
-        {
-          type: "tool_result",
-          tool_use_id: "t4",
-          content: "updated",
-          file_path: "web/src/conversation/CollapsibleToolCall.tsx",
-          patch: [
-            {
-              oldStart: 3,
-              oldLines: 4,
-              newStart: 3,
-              newLines: 6,
-              lines: [" keep", "-gone", "+one", "+two", "+three"],
-            },
-          ],
-        }
-      )
-    ).toEqual({
-      label: "Edited CollapsibleToolCall.tsx",
-      diffStat: { added: 3, removed: 1 },
-    });
-  });
-
-  it("summarizes a Write as written, counting a whole new file as added", () => {
-    expect(
-      generateToolSummary(
-        {
-          type: "tool_use",
-          id: "t5",
-          name: "Write",
-          input: { file_path: "/repo/docs/README.md", content: "a\nb\n" },
-        },
-        {
-          type: "tool_result",
-          tool_use_id: "t5",
-          content: "created",
-          file_path: "/repo/docs/README.md",
-          patch: [
-            {
-              oldStart: 1,
-              oldLines: 0,
-              newStart: 1,
-              newLines: 2,
-              lines: ["+a", "+b"],
-            },
-          ],
-        }
-      )
-    ).toEqual({
-      label: "Wrote README.md",
-      diffStat: { added: 2, removed: 0 },
-    });
-  });
-
-  it("sums a MultiEdit's hunks into one pair of counts", () => {
-    expect(
-      generateToolSummary(
-        {
-          type: "tool_use",
-          id: "t6",
-          name: "MultiEdit",
-          input: { file_path: "/repo/src/app.ts" },
-        },
-        {
-          type: "tool_result",
-          tool_use_id: "t6",
-          content: "updated",
-          file_path: "/repo/src/app.ts",
-          patch: [
-            {
-              oldStart: 1,
-              oldLines: 2,
-              newStart: 1,
-              newLines: 2,
-              lines: ["-a", "+b"],
-            },
-            {
-              oldStart: 40,
-              oldLines: 3,
-              newStart: 40,
-              newLines: 4,
-              lines: [" keep", "-c", "+d", "+e"],
-            },
-          ],
-        }
-      )
-    ).toEqual({
-      label: "Edited app.ts",
-      diffStat: { added: 3, removed: 2 },
-    });
-  });
-
-  it("keeps the plain summary for an edit whose result carries no patch", () => {
-    expect(
-      generateToolSummary(
-        {
-          type: "tool_use",
-          id: "t7",
-          name: "Edit",
-          input: { file_path: "src/app.ts" },
-        },
-        { type: "tool_result", tool_use_id: "t7", content: "updated" }
-      )
-    ).toEqual({ label: "Edit: src/app.ts" });
-  });
-
-  it("summarizes Glob tool with pattern", () => {
-    expect(
-      generateToolSummary({
-        type: "tool_use",
-        id: "t6",
-        name: "Glob",
-        input: { pattern: "**/*.ts" },
-      })
-    ).toEqual({ label: "Glob: **/*.ts" });
-  });
-
-  it("summarizes Grep tool with pattern", () => {
-    expect(
-      generateToolSummary({
-        type: "tool_use",
-        id: "t7",
-        name: "Grep",
-        input: { pattern: "TODO" },
-      })
-    ).toEqual({ label: "Grep: TODO" });
-  });
-
-  it("falls back to tool name for unknown tools", () => {
-    expect(
-      generateToolSummary({
-        type: "tool_use",
-        id: "t8",
-        name: "CustomTool",
-        input: { foo: "bar" },
-      })
-    ).toEqual({ label: "CustomTool" });
+    expect(summary.diffStat).toEqual({ added: 2, removed: 1 });
   });
 });
