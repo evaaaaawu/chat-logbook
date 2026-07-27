@@ -1,4 +1,4 @@
-import type { ContentBlock, Message } from "@/types";
+import type { ActionKind, ContentBlock, Message } from "@/types";
 import {
   groupRuns,
   planRunLayout,
@@ -142,28 +142,49 @@ function foldEntries(
   return entries;
 }
 
-/** What a tool did, in the reader's terms rather than the tool's name. */
-interface Action {
+/** How a group of Actions reads once it is counted. */
+interface Phrasing {
   verb: string;
   noun: string;
 }
 
-// Grouped by what the tool did, not by which tool ran: a reader skimming a
-// folded stretch wants to know it was six commands, not six Bashes. Reading and
-// searching land in one group — both are the Agent looking things up (#199).
+// Keyed on the Action, not on the tool that ran: a reader skimming a folded
+// stretch wants to know it was six commands, not six Bashes — and an Agent that
+// calls its shell `shell` must land in the same group (#261).
 //
-// `wrote` rather than `created` because Write covers both a new file and an
-// overwrite, and the summary sits one click above rows that already say
-// `Wrote foo.ts +12 -0`. One act, one word, at both densities.
-const ACTIONS: Record<string, Action> = {
-  Bash: { verb: "ran", noun: "command" },
-  Edit: { verb: "edited", noun: "file" },
-  MultiEdit: { verb: "edited", noun: "file" },
-  Write: { verb: "wrote", noun: "file" },
-  Read: { verb: "read", noun: "file" },
-  Grep: { verb: "read", noun: "file" },
-  Glob: { verb: "read", noun: "file" },
+// The wording lives here rather than in the stored Action, the same split the
+// row density draws (ADR-0025). `wrote` rather than `created` because write
+// covers both a new file and an overwrite, and the summary sits one click above
+// rows that already say `Wrote foo.ts +12 -0`. One act, one word, at both
+// densities.
+//
+// Every kind but `other` has a phrasing: `other` is the unbounded tail — an MCP
+// server a reader happened to install — with nothing to be counted as. Typed
+// exhaustively so a kind added later cannot land in that tail by accident.
+const PHRASINGS: Record<Exclude<ActionKind, "other">, Phrasing> = {
+  execute: { verb: "ran", noun: "command" },
+  edit: { verb: "edited", noun: "file" },
+  write: { verb: "wrote", noun: "file" },
+  read: { verb: "read", noun: "file" },
+  // One group with read, though the rows they hide keep the two apart: a search
+  // reads as `Searched for "useMessages"` because its object is a pattern, but
+  // a line above, both are the Agent looking things up (#199). Merging here
+  // rather than in the Action keeps grouping a matter of wording (ADR-0025).
+  search: { verb: "read", noun: "file" },
+  // A subagent's whole run comes back as one unit, so what was handed off is a
+  // task rather than a call.
+  delegate: { verb: "delegated", noun: "task" },
 };
+
+/**
+ * How a call's Action reads in a summary, or nothing when it has no group.
+ *
+ * A unit normalized before Actions existed has no kind at all, and counts the
+ * same way `other` does rather than reaching back for its tool name (#260).
+ */
+function phrasingOf(kind: ActionKind | undefined): Phrasing | undefined {
+  return kind === undefined || kind === "other" ? undefined : PHRASINGS[kind];
+}
 
 // Two groups is what a one-line summary carries before it stops being skimmable.
 const MAX_NAMED_GROUPS = 2;
@@ -182,20 +203,20 @@ function capitalize(text: string): string {
  * A pure function of the units, so the row can be planned before layout.
  */
 export function foldSummary(blocks: ToolUseBlock[]): string {
-  const groups = new Map<string, { action: Action; count: number }>();
-  // A tool that fits no group still happened, so it is counted in the
+  const groups = new Map<string, { phrasing: Phrasing; count: number }>();
+  // A call that fits no group still happened, so it is counted in the
   // remainder rather than dropped — the summary would otherwise hide it.
   let unknown = 0;
   for (const block of blocks) {
-    const action = ACTIONS[block.name];
-    if (!action) {
+    const phrasing = phrasingOf(block.action?.kind);
+    if (!phrasing) {
       unknown += 1;
       continue;
     }
-    const key = `${action.verb} ${action.noun}`;
+    const key = `${phrasing.verb} ${phrasing.noun}`;
     const group = groups.get(key);
     if (group) group.count += 1;
-    else groups.set(key, { action, count: 1 });
+    else groups.set(key, { phrasing, count: 1 });
   }
 
   // Largest first, and insertion order breaks a tie, so equal groups read in
@@ -206,7 +227,7 @@ export function foldSummary(blocks: ToolUseBlock[]): string {
   const named = ranked.slice(0, MAX_NAMED_GROUPS);
 
   const phrases = named.map(
-    ({ action, count }) => `${action.verb} ${plural(count, action.noun)}`
+    ({ phrasing, count }) => `${phrasing.verb} ${plural(count, phrasing.noun)}`
   );
 
   const remainder =
