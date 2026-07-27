@@ -14,6 +14,11 @@ const editCall: ToolUseBlock = {
   action: { kind: "edit", object: { type: "path", value: "src/a.tsx" } },
 };
 
+/** What the row reads as, with the label's own slots joined back up. */
+function labelOf(element: HTMLElement): string {
+  return (element.textContent ?? "").replace(/\s+/g, " ");
+}
+
 describe("CollapsibleToolCall", () => {
   it("renders an expanded edit result as a diff, not raw JSON", () => {
     const result: ToolResultBlock = {
@@ -75,7 +80,7 @@ describe("CollapsibleToolCall", () => {
     );
 
     expect(screen.getByTestId("row-diff-stat").textContent).toBe("+3 -1");
-    expect(screen.getByText("Edited a.tsx")).not.toBeNull();
+    expect(labelOf(screen.getByTestId("row-label"))).toBe("Edited src/a.tsx");
   });
 
   // One register across the whole column: a row says what happened, never which
@@ -104,6 +109,85 @@ describe("CollapsibleToolCall", () => {
     );
 
     expect(screen.getByText(label)).not.toBeNull();
+    // A phrase has no directory to give up, so it stays one slot and truncates
+    // from the end as before (#262).
+    expect(screen.queryByTestId("row-label-name")).toBeNull();
+  });
+
+  // Two rows reading `Edited types.ts` hide whether that was one file twice or
+  // two files once, so the row names the directory too (#262).
+  it("names the directory a path sits in, not the filename alone", () => {
+    render(
+      <CollapsibleToolCall
+        block={{
+          ...editCall,
+          action: {
+            kind: "edit",
+            object: {
+              type: "path",
+              value: "web/src/conversation/CollapsibleToolCall.tsx",
+            },
+          },
+        }}
+        isExpanded={false}
+        onToggle={() => {}}
+      />
+    );
+
+    expect(labelOf(screen.getByTestId("row-label"))).toBe(
+      "Edited web/src/conversation/CollapsibleToolCall.tsx"
+    );
+  });
+
+  // The filename is the part that identifies a path, so it gets a slot of its
+  // own — the directory beside it is what a narrow row gives away (#262).
+  it("keeps the filename in a slot the directory cannot squeeze", () => {
+    render(
+      <CollapsibleToolCall
+        block={{
+          ...editCall,
+          action: {
+            kind: "edit",
+            object: {
+              type: "path",
+              value: "web/src/conversation/CollapsibleToolCall.tsx",
+            },
+          },
+        }}
+        isExpanded={false}
+        onToggle={() => {}}
+      />
+    );
+
+    expect(screen.getByTestId("row-label-dir").textContent).toBe(
+      "web/src/conversation"
+    );
+    // The separator travels with the name, so what is left after a squeeze
+    // still reads as a path rather than as a bare word.
+    expect(screen.getByTestId("row-label-name").textContent).toBe(
+      "/CollapsibleToolCall.tsx"
+    );
+  });
+
+  // Nothing to give up means nothing to split: the label stays one slot.
+  it("leaves a path with no directory as one whole label", () => {
+    render(
+      <CollapsibleToolCall
+        block={{
+          ...editCall,
+          action: {
+            kind: "read",
+            object: { type: "path", value: "README.md" },
+          },
+        }}
+        isExpanded={false}
+        onToggle={() => {}}
+      />
+    );
+
+    expect(screen.getByText("Read README.md")).not.toBeNull();
+    expect(screen.queryByTestId("row-label-dir")).toBeNull();
+    expect(screen.queryByTestId("row-label-name")).toBeNull();
   });
 
   it("falls back to the raw rendering when the result carries no patch", () => {

@@ -549,7 +549,11 @@ describe("Conversation collapsed units", () => {
     );
 
     // The collapsed row is still rendered — it is content, just not authored.
-    expect(await screen.findByText("Read a.ts")).not.toBeNull();
+    // The verb and the path are separate slots, so what joins them is an
+    // unbreakable space rather than a plain one (#262).
+    expect((await screen.findByTestId("row-label")).textContent).toMatch(
+      /^Read\s\/tmp\/a\.ts$/
+    );
     // ...but the header belongs to the text turn alone.
     expect(screen.getAllByText("Claude Code")).toHaveLength(1);
   });
@@ -590,7 +594,7 @@ describe("Conversation tool units", () => {
       />
     );
 
-    await user.click(await screen.findByText("Read a.ts"));
+    await user.click(await screen.findByTestId("row-label"));
 
     // Highlighting splits the code into token spans, so match on the row's
     // whole text rather than a single node's (#240).
@@ -693,7 +697,9 @@ describe("Conversation tool units", () => {
       />
     );
 
-    expect(await screen.findByText("Edited App.tsx")).not.toBeNull();
+    expect((await screen.findByTestId("row-label")).textContent).toMatch(
+      /^Edited\s\/repo\/web\/src\/App\.tsx$/
+    );
     // The counts keep their own place at the row's trailing edge (#250).
     expect((await screen.findByTestId("row-diff-stat")).textContent).toBe(
       "+3 -1"
@@ -771,7 +777,7 @@ describe("Conversation tool units", () => {
     );
 
     const row = await screen.findByRole("button", {
-      name: /Read a\.ts/,
+      name: /Read\s\/tmp\/a\.ts/,
     });
     expect(row).toHaveAttribute("aria-expanded", "false");
     expect(row.querySelector('[data-testid="row-chevron"]')).not.toBeNull();
@@ -1375,7 +1381,9 @@ describe("Row expansion", () => {
       />
     );
 
-    await user.click(await screen.findByRole("button", { name: /Read b\.ts/ }));
+    await user.click(
+      await screen.findByRole("button", { name: /Read \/b\.ts/ })
+    );
 
     rerender(
       <ConversationView
@@ -1396,13 +1404,12 @@ describe("Row expansion", () => {
     );
 
     expect(
-      await screen.findByRole("button", { name: /Read b\.ts/ })
+      await screen.findByRole("button", { name: /Read \/b\.ts/ })
     ).toHaveAttribute("aria-expanded", "true");
     // and no neighbour inherited it
-    expect(screen.getByRole("button", { name: /Read a\.ts/ })).toHaveAttribute(
-      "aria-expanded",
-      "false"
-    );
+    expect(
+      screen.getByRole("button", { name: /Read \/a\.ts/ })
+    ).toHaveAttribute("aria-expanded", "false");
   });
   it("remembers each row of a turn separately", async () => {
     const user = userEvent.setup();
@@ -1441,16 +1448,16 @@ describe("Row expansion", () => {
       />
     );
 
-    await user.click(await screen.findByRole("button", { name: /Read b\.ts/ }));
+    await user.click(
+      await screen.findByRole("button", { name: /Read \/b\.ts/ })
+    );
 
-    expect(screen.getByRole("button", { name: /Read b\.ts/ })).toHaveAttribute(
-      "aria-expanded",
-      "true"
-    );
-    expect(screen.getByRole("button", { name: /Read a\.ts/ })).toHaveAttribute(
-      "aria-expanded",
-      "false"
-    );
+    expect(
+      screen.getByRole("button", { name: /Read \/b\.ts/ })
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByRole("button", { name: /Read \/a\.ts/ })
+    ).toHaveAttribute("aria-expanded", "false");
   });
 
   it("opens a different chat with every row closed", async () => {
@@ -1459,7 +1466,9 @@ describe("Row expansion", () => {
       <ConversationView chat={chat} messages={[tool("m-a", "/a.ts")]} />
     );
 
-    await user.click(await screen.findByRole("button", { name: /Read a\.ts/ }));
+    await user.click(
+      await screen.findByRole("button", { name: /Read \/a\.ts/ })
+    );
 
     rerender(
       <ConversationView
@@ -1469,7 +1478,7 @@ describe("Row expansion", () => {
     );
 
     expect(
-      await screen.findByRole("button", { name: /Read a\.ts/ })
+      await screen.findByRole("button", { name: /Read \/a\.ts/ })
     ).toHaveAttribute("aria-expanded", "false");
   });
 });
