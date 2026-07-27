@@ -60,6 +60,14 @@ export interface Action {
   kind: ActionKind;
   /** Absent when the call named nothing to act on. */
   object?: ActionObject;
+  /**
+   * The verbatim input the expanded view renders, when the object is a label
+   * rather than the input itself (#263). A shell command's description is the
+   * better row label and the command is the better thing to expand onto, so an
+   * `execute` carries both. Absent where the object already is the input — a
+   * read's path names the very file the excerpt renders.
+   */
+  detail?: string;
 }
 
 export type NormalizedBlock =

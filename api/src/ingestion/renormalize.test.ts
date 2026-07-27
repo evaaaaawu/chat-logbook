@@ -536,6 +536,7 @@ describe("renormalizeFromRaw → Actions", () => {
         action: {
           kind: "execute",
           object: { type: "phrase", value: "Run the suite" },
+          detail: "pnpm test",
         },
       },
     ]);

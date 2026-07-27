@@ -79,9 +79,12 @@ export function renormalizeFromRaw({
  * #235 carries an edit's `filePath` and `patch` into the tool result, so
  * archived edits can summarise as a diff: version 8. #237 synthesizes an all-add
  * patch for a new-file Write, which records none, so archived creates render as
- * a diff instead of raw JSON: version 9.
+ * a diff instead of raw JSON: version 9. #260 records what each call did as an
+ * Action, so archived rows say `Ran the suite` rather than `Bash`: version 10.
+ * #263 carries the verbatim command as that Action's `detail`, so an archived
+ * shell unit expands onto its command again: version 11.
  */
-export const NORMALIZE_VERSION = 10;
+export const NORMALIZE_VERSION = 11;
 
 export interface RunRenormalizeIfStaleOptions {
   plugins: readonly AgentPlugin[];

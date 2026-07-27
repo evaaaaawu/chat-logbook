@@ -35,6 +35,11 @@ function path(value: string | undefined) {
   return value ? { object: { type: "path" as const, value } } : {};
 }
 
+/** The verbatim input behind a label, omitted when the call carried none. */
+function detail(value: string | undefined) {
+  return value ? { detail: value } : {};
+}
+
 /**
  * The Action behind one Claude Code tool call (ADR-0025).
  *
@@ -45,10 +50,11 @@ export function toolAction(name: string, input: unknown): Action {
   if (name === "Bash") {
     // The description is what the call said it was for, and nearly every call
     // carries one. The command itself is the worse label: most run past a
-    // readable width and many are several lines (#260).
-    const said =
-      getString(input, "description") ?? firstLine(getString(input, "command"));
-    return { kind: "execute", ...phrase(said) };
+    // readable width and many are several lines (#260). It is the better thing
+    // to expand onto, though, so it rides along whole as the detail (#263).
+    const command = getString(input, "command");
+    const said = getString(input, "description") ?? firstLine(command);
+    return { kind: "execute", ...phrase(said), ...detail(command) };
   }
 
   if (name === "Agent" || name === "SendMessage") {
