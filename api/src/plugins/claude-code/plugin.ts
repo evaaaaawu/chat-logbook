@@ -11,6 +11,7 @@ import type {
   ChatRef,
 } from "../types.js";
 import { svgWidgetCode, themeWidgetSvg } from "../visualize-widget.js";
+import { toolAction } from "./actions.js";
 
 export class ClaudeCodePlugin implements AgentPlugin {
   readonly id = "claude-code";
@@ -496,13 +497,16 @@ function normalizeOneBlock(
       return { type: "text", text: String(b.text ?? "") };
     case "thinking":
       return { type: "thinking", thinking: String(b.thinking ?? "") };
-    case "tool_use":
+    case "tool_use": {
+      const name = String(b.name ?? "");
       return {
         type: "tool_use",
         id: String(b.id ?? ""),
-        name: String(b.name ?? ""),
+        name,
         input: b.input,
+        action: toolAction(name, b.input),
       };
+    }
     case "tool_result":
       return {
         type: "tool_result",

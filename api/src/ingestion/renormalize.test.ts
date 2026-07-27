@@ -391,6 +391,10 @@ describe("renormalizeFromRaw → visualize widgets", () => {
         id: "toolu_w1",
         name: "mcp__visualize__show_widget",
         input: { title: "diagram", widget_code: WIDGET_SVG },
+        action: {
+          kind: "other",
+          object: { type: "phrase", value: "visualize" },
+        },
       },
       { type: "image", mediaType: "image/svg+xml", ref: "m-wid.0" },
     ]);
@@ -479,5 +483,72 @@ describe("renormalizeFromRaw → inline images", () => {
     expect(archive.getNormalizeVersion()).toBe(NORMALIZE_VERSION);
 
     archive.close();
+  });
+});
+
+describe("renormalizeFromRaw → Actions", () => {
+  it("gives an Action to a tool row archived before Actions existed", () => {
+    const archive = createArchiveRepository({ dataDir });
+    archive.ensureChat("claude-code", "session-1", new Date(1700000000000));
+    const toolUse = {
+      type: "tool_use",
+      id: "toolu_a1",
+      name: "Bash",
+      input: { command: "pnpm test", description: "Run the suite" },
+    };
+    const { id: rawId } = archive.insertRawMessage({
+      agent: "claude-code",
+      sourceId: "session-1",
+      sourcePath: "/fake/session-1.jsonl",
+      sourceLocator: "L1",
+      payload: {
+        type: "assistant",
+        message: { role: "assistant", content: [toolUse] },
+        uuid: "m-act",
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      ingestedAt: new Date(1700000000000),
+    });
+    // The stale row a pre-Action plugin produced: the tool's own name, and no
+    // word for what it did.
+    archive.upsertNormalizedMessage({
+      agent: "claude-code",
+      sourceId: "session-1",
+      rawId,
+      message: {
+        messageId: "m-act",
+        role: "assistant",
+        ts: "2024-01-01T00:00:00Z",
+        text: "",
+        blocks: [toolUse as never],
+      },
+    });
+
+    renormalizeFromRaw({ archive, plugins: [new ClaudeCodePlugin()] });
+
+    const [message] = archive.read.listMessagesByChat(
+      "claude-code",
+      "session-1"
+    );
+    expect(message.blocks).toEqual([
+      {
+        ...toolUse,
+        action: {
+          kind: "execute",
+          object: { type: "phrase", value: "Run the suite" },
+        },
+      },
+    ]);
+    // Raw is what re-normalize reads, never what it writes (ADR-0004).
+    expect(archive.read.listRawMessages()).toHaveLength(1);
+
+    archive.close();
+  });
+
+  it("is ahead of the version that shipped widget drawings, so #260 re-normalizes", () => {
+    // Version 9 shipped the code-highlighting pass. Naming what a tool call did
+    // is the next normalize-output change, and only a bump reaches chats whose
+    // Source files are long gone.
+    expect(NORMALIZE_VERSION).toBeGreaterThanOrEqual(10);
   });
 });
