@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.23.0] - 2026-07-28
+
+The conversation pane now reads like a set of notes rather than a log of tool calls. A folded row tells you what happened instead of which tool ran, file edits show their diff, and images, slash commands, and model names each have a place of their own. Reopen an old chat and you land where you left off.
+
+### Added
+
+- File edits render as a diff. The folded row already shows what changed and how many lines came and went; expand it for the full diff, with the code coloured. A `Write` that creates a new file shows as a diff too.
+- A file read renders as an excerpt of that file, coloured for its language. A `Bash` call shows its command as shell, and a tool call's input JSON is coloured.
+- Consecutive tool calls gather into a Run. A long Run folds into one summary row telling you what the stretch did and how many files it touched — expand it when you want the steps.
+- Reopening a chat returns you to where you stopped reading. Reading state is kept per chat, in your browser.
+- Images in a message show as thumbnails, with a lightbox on click. A diagram the assistant drew is marked apart from a screenshot you pasted.
+- Each message header names the model that wrote it, and the reasoning effort the turn ran at.
+- A file mentioned in a message renders as an inline chip you can click.
+- Copy a whole message, or a single code block within it.
+- A slash command renders as a command line instead of raw text.
+
+### Changed
+
+- A folded row now says what the call did, not which tool ran. When the column is too narrow, the row drops the directory and keeps the filename.
+- Harness noise collapses into system rows instead of sitting in the middle of the conversation.
+- Filter-panel sections and folded Run summaries both lead with an accented chevron.
+
+### Fixed
+
+- Single newlines in prose stay as line breaks instead of being swallowed.
+- A language the bundle has no grammar for is left unhighlighted rather than mislabelled.
+
+### Upgrade notes
+
+- The first launch of v0.23.0 re-normalizes your archived chats once, so images, models, and diffs are filled in for chats already stored. The list can look empty while that pass runs — wait for it to finish; nothing is lost.
+
 ## [0.22.0] - 2026-07-19
 
 The conversation pane now reads like a document instead of a chat feed. Each turn is labelled with who spoke and when, empty turns no longer clutter the view, and every tool call folds into a single tidy row you can expand when you want the detail.

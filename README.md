@@ -38,8 +38,9 @@ The full problem statement, user stories, and direction live in the [PRD](docs/P
 **Reading**
 
 - **Three-column layout.** Resizable panels for filters, chat list, and conversation — in a Solarized Dark theme that matches Claude Code's terminal.
-- **Rich rendering.** Markdown, syntax-highlighted code, collapsible tool calls with one-line summaries, and collapsible thinking.
+- **Rich rendering.** Markdown, syntax-highlighted code, inline images, and file edits shown as diffs. A tool call folds into one row saying what it did, and a stretch of them folds into a single Run.
 - **Long chats stay fast.** A conversation opens at its latest message and scrolls smoothly however far it runs; a corner button, `⌘↑` / `⌘↓` (`Ctrl` elsewhere), or `Home` / `End` jump to the start or the latest.
+- **Pick up where you left off.** Reopening a chat returns you to the last place you read.
 - **Metadata at a glance.** The ⓘ in the header shows when a chat started and last changed, its agent, project, and IDs — with one-click copy.
 
 **Finding & organizing**
