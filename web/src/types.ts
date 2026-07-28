@@ -60,6 +60,12 @@ export type ActionObject =
 export interface Action {
   kind: ActionKind;
   object?: ActionObject;
+  /**
+   * The verbatim input the expanded view renders, present when the object is a
+   * label rather than the input itself (#263) — a shell command's description
+   * reads better on the row than the command, so the command rides here.
+   */
+  detail?: string;
 }
 
 export type ContentBlock =

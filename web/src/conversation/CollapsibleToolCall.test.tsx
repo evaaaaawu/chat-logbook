@@ -190,6 +190,39 @@ describe("CollapsibleToolCall", () => {
     expect(screen.queryByTestId("row-label-name")).toBeNull();
   });
 
+  // A row normalized before the command rode along has a label but nothing to
+  // expand onto, so it reads as it always did until re-normalize catches up.
+  it("falls back to the raw rendering for an execute that carries no command", () => {
+    const oldCall: ToolUseBlock = {
+      type: "tool_use",
+      id: "t11",
+      name: "Bash",
+      input: { command: "pnpm test" },
+      action: {
+        kind: "execute",
+        object: { type: "phrase", value: "Run the suite" },
+      },
+    };
+    const result: ToolResultBlock = {
+      type: "tool_result",
+      tool_use_id: "t11",
+      content: "1 passed",
+    };
+
+    render(
+      <CollapsibleToolCall
+        block={oldCall}
+        result={result}
+        isExpanded
+        onToggle={() => {}}
+      />
+    );
+
+    expect(screen.queryByTestId("command-line")).toBeNull();
+    expect(screen.getByTestId("json-input")).not.toBeNull();
+    expect(screen.getByText("1 passed")).not.toBeNull();
+  });
+
   it("falls back to the raw rendering when the result carries no patch", () => {
     const result: ToolResultBlock = {
       type: "tool_result",
@@ -216,6 +249,10 @@ describe("CollapsibleToolCall", () => {
       id: "t2",
       name: "Read",
       input: { file_path: "src/answer.ts" },
+      action: {
+        kind: "read",
+        object: { type: "path", value: "src/answer.ts" },
+      },
     };
     const result: ToolResultBlock = {
       type: "tool_result",
@@ -240,12 +277,77 @@ describe("CollapsibleToolCall", () => {
     expect(screen.queryByText(/40\tconst answer = 42;/)).toBeNull();
   });
 
+  // Same signal, another Agent: a read that names a path expands onto that
+  // file, whether the tool was called `Read` or anything else (#263).
+  it("expands any read of a path onto the file, whatever the Agent calls the tool", () => {
+    const readCall: ToolUseBlock = {
+      type: "tool_use",
+      id: "t9",
+      name: "read_file",
+      input: { path: "src/answer.ts" },
+      action: {
+        kind: "read",
+        object: { type: "path", value: "src/answer.ts" },
+      },
+    };
+    const result: ToolResultBlock = {
+      type: "tool_result",
+      tool_use_id: "t9",
+      content: "40\tconst answer = 42;",
+    };
+
+    render(
+      <CollapsibleToolCall
+        block={readCall}
+        result={result}
+        isExpanded
+        onToggle={() => {}}
+      />
+    );
+
+    expect(screen.getAllByTestId("excerpt-line")).toHaveLength(1);
+    expect(screen.getByText("src/answer.ts")).not.toBeNull();
+  });
+
+  // A fetch is a read too, but what it names is a URL rather than a file, so
+  // there is no file to number lines against (#263).
+  it("keeps the raw rendering for a read that named no file", () => {
+    const fetchCall: ToolUseBlock = {
+      type: "tool_use",
+      id: "t10",
+      name: "WebFetch",
+      input: { url: "https://example.com/docs" },
+      action: {
+        kind: "read",
+        object: { type: "phrase", value: "https://example.com/docs" },
+      },
+    };
+    const result: ToolResultBlock = {
+      type: "tool_result",
+      tool_use_id: "t10",
+      content: "The page said something.",
+    };
+
+    render(
+      <CollapsibleToolCall
+        block={fetchCall}
+        result={result}
+        isExpanded
+        onToggle={() => {}}
+      />
+    );
+
+    expect(screen.queryByTestId("excerpt-line")).toBeNull();
+    expect(screen.getByText("The page said something.")).not.toBeNull();
+  });
+
   it("falls back to the raw rendering for a read whose result is not text", () => {
     const readCall: ToolUseBlock = {
       type: "tool_use",
       id: "t3",
       name: "Read",
       input: { file_path: "shot.png" },
+      action: { kind: "read", object: { type: "path", value: "shot.png" } },
     };
     const result: ToolResultBlock = {
       type: "tool_result",
@@ -265,12 +367,53 @@ describe("CollapsibleToolCall", () => {
     expect(screen.queryByTestId("excerpt-line")).toBeNull();
   });
 
+  // The Action decides the renderer, so an Agent that names its shell tool
+  // something else gets the same expansion from the same signal (#263).
+  it("expands any execute onto its command, whatever the Agent calls the tool", async () => {
+    const shellCall: ToolUseBlock = {
+      type: "tool_use",
+      id: "t4",
+      name: "shell",
+      input: { cmd: ["pnpm", "test"] },
+      action: {
+        kind: "execute",
+        object: { type: "phrase", value: "Run the suite" },
+        detail: "pnpm test",
+      },
+    };
+    const result: ToolResultBlock = {
+      type: "tool_result",
+      tool_use_id: "t4",
+      content: "1 passed",
+    };
+
+    render(
+      <CollapsibleToolCall
+        block={shellCall}
+        result={result}
+        isExpanded
+        onToggle={() => {}}
+      />
+    );
+
+    expect(screen.getByTestId("command-line").textContent).toBe("pnpm test");
+    expect(screen.getByTestId("command-output").textContent).toContain(
+      "1 passed"
+    );
+    expect(screen.queryByTestId("json-input")).toBeNull();
+  });
+
   it("renders an expanded Bash unit's command as shell, not raw JSON", async () => {
     const bashCall: ToolUseBlock = {
       type: "tool_use",
       id: "t5",
       name: "Bash",
       input: { command: 'echo "hi"', description: "Say hi" },
+      action: {
+        kind: "execute",
+        object: { type: "phrase", value: "Say hi" },
+        detail: 'echo "hi"',
+      },
     };
     const result: ToolResultBlock = {
       type: "tool_result",
@@ -305,6 +448,7 @@ describe("CollapsibleToolCall", () => {
       id: "t6",
       name: "Bash",
       input: { command: 'echo "hi"' },
+      action: { kind: "execute", detail: 'echo "hi"' },
     };
     const result: ToolResultBlock = {
       type: "tool_result",
@@ -345,6 +489,7 @@ describe("CollapsibleToolCall", () => {
       id: "t7",
       name: "Bash",
       input: { command: "git add ." },
+      action: { kind: "execute", detail: "git add ." },
     };
     const result: ToolResultBlock = {
       type: "tool_result",
@@ -371,6 +516,7 @@ describe("CollapsibleToolCall", () => {
       id: "t8",
       name: "Bash",
       input: { command: "pnpm test" },
+      action: { kind: "execute", detail: "pnpm test" },
     };
     const result: ToolResultBlock = {
       type: "tool_result",

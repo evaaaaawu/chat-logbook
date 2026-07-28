@@ -43,6 +43,23 @@ describe("Actions the Claude Code plugin gives a tool call", () => {
     ).toEqual({
       kind: "execute",
       object: { type: "phrase", value: "List archive tables" },
+      detail: 'sqlite3 archive.db "SELECT name FROM sqlite_master"',
+    });
+  });
+
+  // The description is the better label and the command is the better thing to
+  // expand onto, so an execute carries both (#263). The command stays whole —
+  // its later lines are exactly what the expanded view has to show.
+  it("keeps a multi-line command whole as the detail behind its label", () => {
+    expect(
+      actionOf("Bash", {
+        command: "pnpm test \\\n  --reporter=verbose",
+        description: "Run the suite",
+      })
+    ).toEqual({
+      kind: "execute",
+      object: { type: "phrase", value: "Run the suite" },
+      detail: "pnpm test \\\n  --reporter=verbose",
     });
   });
 
@@ -54,6 +71,7 @@ describe("Actions the Claude Code plugin gives a tool call", () => {
     ).toEqual({
       kind: "execute",
       object: { type: "phrase", value: "pnpm test \\" },
+      detail: "pnpm test \\\n  --reporter=verbose",
     });
   });
 
