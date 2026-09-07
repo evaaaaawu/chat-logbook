@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import {
   useReadingPosition,
-  type AnchoredMessage,
+  type RenderedMessage,
 } from "@/conversation/useReadingPosition";
 import type {
   ScrollAlign,
@@ -81,13 +81,13 @@ const TALL = { scrollHeight: 1000, clientHeight: 300 };
 const scrolledUp: ScrollMetrics = { scrollTop: 0, ...TALL };
 const atBottom: ScrollMetrics = { scrollTop: 700, ...TALL };
 
-function messages(count: number): AnchoredMessage[] {
+function messages(count: number): RenderedMessage[] {
   return Array.from({ length: count }, (_, i) => ({ id: `m-${i + 1}` }));
 }
 
 interface Props {
   chatId: string | undefined;
-  messages: readonly AnchoredMessage[];
+  messages: readonly RenderedMessage[];
   loading?: boolean;
   contentHeight?: number;
 }
@@ -213,6 +213,27 @@ describe("restoring where the reader left off", () => {
 
     expect(surface.lastJump).toEqual({ index: 2, align: "start" });
     expect(surface.nudges).toEqual([]);
+  });
+
+  it("still nudges when the chat is re-read in the frame after landing", () => {
+    // The restore finishes a frame later, and the Messages array changes
+    // identity on every re-read. Tying the frame to the effect run that
+    // scheduled it would cancel the nudge here, silently.
+    const surface = fakeSurface(atBottom);
+    const reading = fakeReading({
+      anchor: { messageId: "m-2", offset: 30 },
+      openRows: [],
+    });
+    const { rerender } = mount(
+      { chatId: "c1", messages: messages(3) },
+      { surface, reading }
+    );
+
+    // A re-read that changed nothing lands between the jump and the frame.
+    act(() => rerender({ chatId: "c1", messages: messages(3) }));
+    act(() => surface.runFrames());
+
+    expect(surface.nudges).toEqual([30]);
   });
 
   it("restores against the chat's own messages, never the outgoing chat's", () => {
@@ -387,6 +408,22 @@ describe("messages arriving while the chat is open", () => {
 
     expect(result.current.unread.dividerIndex).toBeNull();
     expect(surface.lastJump).toEqual({ index: 2, align: "end" });
+  });
+
+  it("clears the divider as the chat changes, not once its messages land", () => {
+    // The switch stays in flight for a while, and `messages` still holds the
+    // outgoing chat's turns throughout. The divider is the old chat's, so it
+    // goes the moment the chat does — waiting for the fetch would leave it
+    // pointing into a chat that is no longer on screen.
+    const surface = fakeSurface(atBottom);
+    const { result, rerender } = mountScrolledUp(surface);
+    act(() => rerender({ chatId: "c1", messages: messages(4) }));
+    expect(result.current.unread.dividerIndex).toBe(3);
+
+    act(() => rerender({ chatId: "c2", messages: messages(4), loading: true }));
+
+    expect(result.current.unread.dividerIndex).toBeNull();
+    expect(result.current.unread.pillVisible).toBe(false);
   });
 
   it("clears the divider and the pill when a different chat opens", () => {

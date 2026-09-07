@@ -9,9 +9,11 @@ import type { ReadingStateController } from "@/conversation/useReadingState";
 
 /**
  * What the Reading position needs of a rendered Message: its Normalized id.
- * Positions are anchored to that id, never to a place in the list (ADR-0026).
+ * The scroll spot is anchored to that id rather than to a place in the list
+ * (ADR-0026). The Unread divider is not yet — it is still an index here, and
+ * #271 is where it moves onto an id.
  */
-export interface AnchoredMessage {
+export interface RenderedMessage {
   id: string;
 }
 
@@ -38,10 +40,10 @@ export interface ReadingPositionInput {
   /** The open Chat, or undefined when the pane has none. */
   chatId: string | undefined;
   /** The Messages actually rendered, already filtered of turns that draw nothing. */
-  messages: readonly AnchoredMessage[];
+  messages: readonly RenderedMessage[];
   /**
-   * Whether this chat's Messages are still in flight. While true, `messages`
-   * may still hold the previously open chat's turns, so landing and restore
+   * Whether this Chat's Messages are still in flight. While true, `messages`
+   * may still hold the previously open Chat's turns, so landing and restore
    * wait until it settles (#239).
    */
   loading: boolean;
@@ -51,14 +53,14 @@ export interface ReadingPositionInput {
    * moves the pill without a scroll event.
    */
   contentHeight: number;
-  /** Where the reader left this chat last visit, and where to write it back. */
+  /** Where the reader left this Chat last visit, and where to write it back. */
   reading: ReadingStateController;
   /** The scrollable column, as the only way this module touches the scroll. */
   surface: ScrollSurface;
 }
 
 /**
- * What the live stream appending Messages should do to the open chat (#189).
+ * What the live stream appending Messages should do to the open Chat (#189).
  *
  * - `follow`: pinned to the bottom, so track the newest Message (live monitor).
  * - `flag`: scrolled up, so leave the viewport put and mark the arrivals
@@ -104,7 +106,7 @@ function consume(current: UnreadState): UnreadState {
  * back to it, so persistence stays with `useReadingState`, which this module
  * takes as a dependency rather than swallowing (the row-expansion hook shares
  * it). Everything else — whether the pill has been dismissed, whether the
- * reader is pinned to the bottom, which chat has been landed on, how many
+ * reader is pinned to the bottom, which Chat has been landed on, how many
  * Messages there were last time — is internal, and the pane sees only what it
  * draws (#270).
  */
@@ -118,20 +120,20 @@ export function useReadingPosition({
 }: ReadingPositionInput): ReadingPosition {
   // Which direction the scroll pill offers. Kept in state (rather than read
   // during render) so it survives scroll events, jumps, and content that grows
-  // or shrinks as messages expand/collapse. Defaults to hidden until the first
+  // or shrinks as Messages expand and collapse. Defaults to hidden until the first
   // measurement, so the pill never flashes on mount.
   const [pillTarget, setPillTarget] = useState<ScrollPillTarget>(null);
   // The unread mark, held as one value because its two halves only ever change
-  // together: where the divider sits (the index of the first message that
+  // together: where the divider sits (the index of the first Message that
   // arrived while the reader was scrolled up, #189 — null means caught up, and
-  // it is set once per chat then frozen), and whether the reader has already
+  // it is set once per Chat then frozen), and whether the reader has already
   // acted on the batch. Acting hides the "new messages" pill without touching
-  // the divider, which stays until the chat changes (the LINE pattern).
+  // the divider, which stays until the Chat changes (the LINE pattern).
   const [unreadState, setUnreadState] = useState<UnreadState>(CAUGHT_UP);
-  // The unread mark belongs to the chat that is open, so it clears as the chat
+  // The unread mark belongs to the Chat that is open, so it clears as the Chat
   // changes. Done here rather than in the landing effect below — React's own
   // pattern for adjusting state when a prop changes — so the divider is gone in
-  // the same render the new chat arrives in, with no flash of the old one's.
+  // the same render the new Chat arrives in, with no flash of the old one's.
   const [markedChat, setMarkedChat] = useState(chatId);
   if (markedChat !== chatId) {
     setMarkedChat(chatId);
@@ -147,7 +149,7 @@ export function useReadingPosition({
     if (!viewport) return;
     const target = getScrollPillTarget(viewport);
     setPillTarget(target);
-    // "top" (or too-short-to-scroll) means the latest message is in view, so the
+    // "top" (or too-short-to-scroll) means the latest Message is in view, so the
     // reader is caught up: reaching the bottom with a divider present consumes
     // the pending "new messages" pill.
     const atBottom = target === "top" || target === null;
@@ -155,10 +157,10 @@ export function useReadingPosition({
     if (atBottom) setUnreadState(consume);
   }, [surface]);
 
-  // Note where the reader is, as a message anchor rather than a pixel offset, so
+  // Note where the reader is, as a Message anchor rather than a pixel offset, so
   // reopening restores this spot even after estimated heights settle or the
-  // chat gains and loses messages (#239). Read from the rendered rows only, so
-  // it stays cheap on a long chat.
+  // Chat gains and loses Messages (#239). Read from the rendered rows only, so
+  // it stays cheap on a long Chat.
   const captureAnchor = useCallback(() => {
     const viewport = surface.getViewport();
     if (!viewport) return;
@@ -191,7 +193,7 @@ export function useReadingPosition({
   }, [surface, messageCount]);
 
   // The "new messages" pill jumps to the divider — the start of what's new —
-  // not the very bottom, so a long run of new messages reads from its
+  // not the very bottom, so a long run of new Messages reads from its
   // beginning. Acting on the pill consumes it; the divider stays.
   const dividerIndex = unreadState.dividerIndex;
   const onJumpUnread = useCallback(() => {
@@ -200,9 +202,25 @@ export function useReadingPosition({
     setUnreadState(consume);
   }, [surface, dividerIndex]);
 
-  // Landing and restore. This effect keys on the chat and the loading flag: it
-  // runs until it finds a chat with its own Messages settled, lands once, and
-  // then stands down for the rest of the visit. Which chat it has landed on is
+  // A scroll that finishes a frame later — the restore nudge, the re-measure
+  // after a jump — outlives the effect run that scheduled it. Returning the
+  // cancel as that effect's cleanup would drop the frame whenever a dependency
+  // changed in between, and the Messages array changes identity on every
+  // re-read of the Chat, so the nudge would go missing with nothing to show for
+  // it. The frame is cancelled on unmount instead, where it is genuinely moot.
+  const pendingFrameRef = useRef<(() => void) | null>(null);
+  const scheduleFrame = useCallback(
+    (cb: () => void) => {
+      pendingFrameRef.current?.();
+      pendingFrameRef.current = surface.afterFrame(cb);
+    },
+    [surface]
+  );
+  useEffect(() => () => pendingFrameRef.current?.(), []);
+
+  // Landing and restore. This effect keys on the Chat and the loading flag: it
+  // runs until it finds a Chat with its own Messages settled, lands once, and
+  // then stands down for the rest of the visit. Which Chat it has landed on is
   // its own state, held apart from the arrival baseline below (#270).
   const landedChatRef = useRef<string | null>(null);
   useEffect(() => {
@@ -210,40 +228,41 @@ export function useReadingPosition({
       landedChatRef.current = null;
       return;
     }
-    // Wait for this chat's own messages before landing: while the fetch is in
-    // flight, `messages` may still be the previously open chat's turns, and
-    // restoring against those would never find this chat's anchor (#239). An
+    // Wait for this Chat's own Messages before landing: while the fetch is in
+    // flight, `messages` may still be the previously open Chat's turns, and
+    // restoring against those would never find this Chat's anchor (#239). An
     // empty list has nothing to land on yet either.
     if (loading || messages.length === 0) return;
     if (landedChatRef.current === chatId) return;
 
     landedChatRef.current = chatId;
 
-    // Restore the remembered spot when there is one and its anchored message
-    // still exists; otherwise — a first visit, or an anchor whose message is
+    // Restore the remembered spot when there is one and its anchored Message
+    // still exists; otherwise — a first visit, or an anchor whose Message is
     // gone — land at the bottom, the right answer for a fresh read (#239).
     const anchor = reading.initial?.anchor ?? null;
     const anchorIndex = resolveAnchorIndex(anchor, messages);
     if (anchor && anchorIndex !== null) {
-      // scrollToIndex re-measures and re-scrolls until the message lands at the
+      // scrollToIndex re-measures and re-scrolls until the Message lands at the
       // top, which a raw offset cannot do against estimated heights. The
       // within-message offset is a small nudge applied once the row is there.
       surface.scrollToIndex(anchorIndex, { align: "start" });
-      return surface.afterFrame(() => {
+      scheduleFrame(() => {
         if (anchor.offset) surface.nudgeBy(anchor.offset);
         measurePill();
       });
+      return;
     }
-    // Open a chat at the bottom (latest messages), matching Claude Code
+    // Open a Chat at the bottom (its latest Messages), matching Claude Code
     // desktop: the most common recall question is "how did this session end?".
     surface.scrollToIndex(messages.length - 1, { align: "end" });
     // Re-measure after the jump settles so the pill reflects the landed
     // position (at the bottom it offers "back to top").
-    return surface.afterFrame(measurePill);
-  }, [chatId, loading, messages, reading, surface, measurePill]);
+    scheduleFrame(measurePill);
+  }, [chatId, loading, messages, reading, surface, measurePill, scheduleFrame]);
 
   // Live arrival. This effect keys on the Messages, and keeps its own count
-  // baseline — written on every run, never skipped, so a chat that empties and
+  // baseline — written on every run, never skipped, so a Chat that empties and
   // refills re-enters with a baseline that matches what is on screen. Sharing
   // one baseline with the landing effect above is what made that go wrong
   // before (#270).
@@ -253,9 +272,9 @@ export function useReadingPosition({
   }>({ chatId: undefined, count: 0 });
   useEffect(() => {
     const previous = arrivalBaselineRef.current;
-    // Only a landed chat's count is worth comparing against, so an un-landed
-    // run banks the count under no chat at all. That way the commit the landing
-    // effect lands on — where the count jumps from the previous chat's turns to
+    // Only a landed Chat's count is worth comparing against, so an un-landed
+    // run banks the count under no Chat at all. That way the commit the landing
+    // effect lands on — where the count jumps from the previous Chat's turns to
     // this one's — can never read as an arrival.
     const landed = landedChatRef.current === chatId;
     arrivalBaselineRef.current = {
@@ -265,7 +284,7 @@ export function useReadingPosition({
     if (!landed || previous.chatId !== chatId) return;
 
     // Follow the latest only when pinned at the bottom; otherwise hold the
-    // viewport and anchor the unread divider before the first new message —
+    // viewport and anchor the unread divider before the first new Message —
     // never yank a scrolled-up reader down (#189).
     const action = deriveArrivalAction({
       appended: messages.length > previous.count,
@@ -273,7 +292,8 @@ export function useReadingPosition({
     });
     if (action === "follow") {
       surface.scrollToIndex(messages.length - 1, { align: "end" });
-      return surface.afterFrame(measurePill);
+      scheduleFrame(measurePill);
+      return;
     }
     // Set-once-then-freeze: the divider anchors before the first Message that
     // arrived unseen — the count that was on screen — and later arrivals leave
@@ -285,7 +305,7 @@ export function useReadingPosition({
           : current
       );
     }
-  }, [chatId, messages, surface, measurePill]);
+  }, [chatId, messages, surface, measurePill, scheduleFrame]);
 
   // Keep the pill correct as content height changes (messages expanding or
   // collapsing) even without a scroll event.
