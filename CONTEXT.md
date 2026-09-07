@@ -142,6 +142,20 @@ _Avoid_: search box, command palette, quick open, filter box
 The hosted, install-free form of the app that ships with sample Chats instead of reading your machine. Exists so someone can try the product from a plain URL; nothing of yours ever reaches it, and real use stays local.
 _Avoid_: cloud version, web version, hosted app
 
+### Reading
+
+**Reading position**:
+Where you are inside the Open Chat right now — the spot you have scrolled to, the Unread divider, and which way the scroll pill points. Held only while the Chat is open, and rebuilt from Reading state when you come back to it.
+_Avoid_: scroll position, viewport, scroll state
+
+**Reading state**:
+The part of a Reading position worth remembering, plus the rows you had open, kept per Chat in the browser rather than in Metadata. It is not something you authored about a Chat — losing it costs you one landing at the bottom — so it stays local and bounded to the Chats you read most recently.
+_Avoid_: session state, scroll memory, cache
+
+**Unread divider**:
+The line marking where you left off when Messages arrive while you are scrolled up. It anchors before the first Message you have not seen and then holds still: later arrivals never move it, and it stays on screen after you have caught up, until the Chat is closed. Anchored to a Message, never to a position in the list (ADR-0026).
+_Avoid_: new messages marker, unread line, separator
+
 ### List ordering
 
 **Frozen order**:
