@@ -1,11 +1,4 @@
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { RotateCcw } from "lucide-react";
 import type { Message, ContentBlock, Chat, Tag } from "@/types";
@@ -18,17 +11,11 @@ import { InlineImage } from "@/conversation/InlineImage";
 import { ScrollPill } from "@/conversation/ScrollPill";
 import { NewMessagesPill } from "@/conversation/NewMessagesPill";
 import { UnreadDivider } from "@/conversation/UnreadDivider";
-import {
-  getScrollPillTarget,
-  type ScrollPillTarget,
-} from "@/conversation/scrollPillVisibility";
 import { formatMessageTimestamp } from "@/conversation/formatMessageTimestamp";
 import { messageAnchorId } from "@/conversation/messageAnchor";
 import { createScrollSurface } from "@/conversation/scrollSurface";
 import { messageToMarkdown } from "@/conversation/messageToMarkdown";
 import { CopyButton } from "@/shared/CopyButton";
-import { deriveArrivalAction } from "@/conversation/liveArrival";
-import { deriveFirstUnseenIndex } from "@/conversation/firstUnseenIndex";
 import {
   hasAuthorHeader,
   hasRenderableContent,
@@ -48,7 +35,7 @@ import {
   type RowExpansion,
 } from "@/conversation/useRowExpansion";
 import { useReadingState } from "@/conversation/useReadingState";
-import { pickAnchor, resolveAnchorIndex } from "@/conversation/scrollAnchor";
+import { useReadingPosition } from "@/conversation/useReadingPosition";
 import { useScrollShortcuts } from "@/conversation/useScrollShortcuts";
 import { getAgentDisplayName } from "@/agent/agentDisplayName";
 import { getModelDisplayName } from "@/agent/modelDisplayName";
@@ -515,161 +502,30 @@ export function ConversationView({
     [virtualizer]
   );
 
-  // Which direction the scroll pill offers. Kept in state (rather than read
-  // during render) so it survives scroll events, jumps, and content that grows
-  // or shrinks as messages expand/collapse. Defaults to hidden until the first
-  // measurement, so the pill never flashes on mount.
-  const [pillTarget, setPillTarget] = useState<ScrollPillTarget>(null);
-  // Where the unread divider sits: the index of the first message that arrived
-  // while the reader was scrolled up (issue #189). null = caught up, no divider.
-  // Set once per chat (frozen thereafter), reset on chat change.
-  const [firstUnseenIndex, setFirstUnseenIndex] = useState<number | null>(null);
-  // Whether the reader has acted on the unread batch — by jumping to the divider
-  // or scrolling to the bottom. Hides the "new messages" pill without touching
-  // the divider, which persists until the chat changes (the LINE pattern).
-  const [pillConsumed, setPillConsumed] = useState(false);
-  // Refs mirror the two values the scroll handler and arrival effect read,
-  // avoiding stale closures without re-subscribing on every change.
-  const atBottomRef = useRef(true);
-  const firstUnseenIndexRef = useRef<number | null>(null);
-  firstUnseenIndexRef.current = firstUnseenIndex;
-  const measurePill = useCallback(() => {
-    const viewport = surface.getViewport();
-    if (!viewport) return;
-    const target = getScrollPillTarget(viewport);
-    setPillTarget(target);
-    // "top" (or too-short-to-scroll) means the latest message is in view, so the
-    // reader is caught up: reaching the bottom with a divider present consumes
-    // the pending "new messages" pill.
-    const atBottom = target === "top" || target === null;
-    atBottomRef.current = atBottom;
-    if (atBottom && firstUnseenIndexRef.current !== null) setPillConsumed(true);
-  }, [surface]);
-
-  // Note where the reader is, as a message anchor rather than a pixel offset, so
-  // reopening restores this spot even after estimated heights settle or the
-  // chat gains and loses messages (#239). Read from the rendered rows only, so
-  // it stays cheap on a long chat.
-  const captureAnchor = useCallback(() => {
-    const viewport = surface.getViewport();
-    if (!viewport) return;
-    const entries = surface
-      .getVirtualItems()
-      .map((item) => ({
-        messageId: messages[item.index]?.id ?? "",
-        start: item.start,
-      }))
-      .filter((entry) => entry.messageId);
-    reading.recordAnchor(
-      pickAnchor({ scrollTop: viewport.scrollTop, entries })
-    );
-  }, [surface, messages, reading]);
-
-  const handleScroll = useCallback(() => {
-    measurePill();
-    captureAnchor();
-  }, [measurePill, captureAnchor]);
-
-  const jumpTop = useCallback(() => {
-    // Instant index jump, not a smooth scroll: smooth-scrolling across
-    // thousands of virtualized rows is slow and janky.
-    surface.scrollToIndex(0, { align: "start" });
-  }, [surface]);
-  const jumpBottom = useCallback(() => {
-    surface.scrollToIndex(messages.length - 1, { align: "end" });
-  }, [surface, messages.length]);
-  // The "new messages" pill jumps to the divider — the start of what's new —
-  // not the very bottom, so a long run of new messages reads from its
-  // beginning. Acting on the pill consumes it; the divider stays.
-  const jumpToUnread = useCallback(() => {
-    const index = firstUnseenIndexRef.current;
-    if (index === null) return;
-    surface.scrollToIndex(index, { align: "start" });
-    setPillConsumed(true);
-  }, [surface]);
-
-  // Keyboard equivalents of the pill: Cmd/Ctrl+arrows and Home/End. Enabled
-  // only while a chat with content is open.
-  useScrollShortcuts({
-    enabled: Boolean(chat) && messages.length > 0,
-    onJumpTop: jumpTop,
-    onJumpBottom: jumpBottom,
+  // Where the reader is inside this chat — the spot they scrolled to, the
+  // Unread divider, and which way the pill points. One module owns all of it,
+  // and hands back only what gets drawn (#270). The column's total height goes
+  // in because the pill has to move when a row opens or closes, which is not a
+  // scroll event.
+  const totalSize = virtualizer.getTotalSize();
+  const readingPosition = useReadingPosition({
+    chatId: chat?.id,
+    messages,
+    loading,
+    contentHeight: totalSize,
+    reading,
+    surface,
   });
 
-  // Open a chat at the bottom (latest messages), matching Claude Code desktop:
-  // the most common recall question is "how did this session end?".
-  const chatId = chat?.id;
-  const landedChatRef = useRef<string | null>(null);
-  // The message count at the previous run, to tell an append (live arrival) from
-  // an in-place change or a shrink.
-  const prevLenRef = useRef(0);
-  useEffect(() => {
-    if (!chatId) {
-      landedChatRef.current = null;
-      prevLenRef.current = 0;
-      return;
-    }
-    // Wait for this chat's own messages before landing: while the fetch is in
-    // flight, `messages` may still be the previously open chat's turns, and
-    // restoring against those would never find this chat's anchor (#239). An
-    // empty list has nothing to land on yet either.
-    if (loading || messages.length === 0) return;
-
-    // First arrival for this chat: land at the bottom and reset the live-arrival
-    // trackers. Guard by chat id so a later streamed message doesn't re-land.
-    if (landedChatRef.current !== chatId) {
-      landedChatRef.current = chatId;
-      prevLenRef.current = messages.length;
-      setFirstUnseenIndex(null);
-      setPillConsumed(false);
-      // Restore the remembered spot when there is one and its anchored message
-      // still exists; otherwise — a first visit, or an anchor whose message is
-      // gone — land at the bottom, the right answer for a fresh read (#239).
-      const anchor = reading.initial?.anchor ?? null;
-      const anchorIndex = resolveAnchorIndex(anchor, messages);
-      if (anchor && anchorIndex !== null) {
-        // scrollToIndex re-measures and re-scrolls until the message lands at
-        // the top, which a raw offset cannot do against estimated heights. The
-        // within-message offset is a small nudge applied once the row is there.
-        surface.scrollToIndex(anchorIndex, { align: "start" });
-        return surface.afterFrame(() => {
-          if (anchor.offset) surface.nudgeBy(anchor.offset);
-          measurePill();
-        });
-      }
-      surface.scrollToIndex(messages.length - 1, { align: "end" });
-      // Re-measure after the jump settles so the pill reflects the landed
-      // position (at the bottom it offers "back to top").
-      return surface.afterFrame(measurePill);
-    }
-
-    // Already landed: a live push re-read this chat (issue #189). Follow the
-    // latest only when pinned at the bottom; otherwise hold the viewport and
-    // anchor the unread divider before the first new message — never yank a
-    // scrolled-up reader down.
-    const prevLen = prevLenRef.current;
-    const appended = messages.length > prevLen;
-    prevLenRef.current = messages.length;
-    const action = deriveArrivalAction({
-      appended,
-      atBottom: atBottomRef.current,
-    });
-    if (action === "follow") {
-      surface.scrollToIndex(messages.length - 1, { align: "end" });
-      return surface.afterFrame(measurePill);
-    }
-    setFirstUnseenIndex((current) =>
-      deriveFirstUnseenIndex({ current, action, prevLen })
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, messages.length, loading]);
-
-  // Keep the pill correct as content height changes (messages expanding or
-  // collapsing) even without a scroll event.
-  const totalSize = virtualizer.getTotalSize();
-  useEffect(() => {
-    measurePill();
-  }, [totalSize, measurePill]);
+  // Keyboard equivalents of the pill: Cmd/Ctrl+arrows and Home/End. Wired here
+  // rather than inside the module — a global key listener is the pane's
+  // business, not the reading position's. Enabled only while a chat with
+  // content is open.
+  useScrollShortcuts({
+    enabled: Boolean(chat) && messages.length > 0,
+    onJumpTop: readingPosition.onJumpTop,
+    onJumpBottom: readingPosition.onJumpBottom,
+  });
 
   return (
     <div className="flex h-full flex-col">
@@ -711,7 +567,7 @@ export function ConversationView({
           <div
             data-testid="conversation-panel"
             ref={scrollContainerRef}
-            onScroll={handleScroll}
+            onScroll={readingPosition.onScroll}
             className="absolute inset-0 overflow-y-auto p-6"
           >
             <div
@@ -730,7 +586,8 @@ export function ConversationView({
                   }`}
                   style={{ transform: `translateY(${virtualItem.start}px)` }}
                 >
-                  {virtualItem.index === firstUnseenIndex && (
+                  {virtualItem.index ===
+                    readingPosition.unread.dividerIndex && (
                     <div className="pb-4">
                       <UnreadDivider />
                     </div>
@@ -748,13 +605,13 @@ export function ConversationView({
             </div>
           </div>
           <NewMessagesPill
-            visible={firstUnseenIndex !== null && !pillConsumed}
-            onClick={jumpToUnread}
+            visible={readingPosition.unread.pillVisible}
+            onClick={readingPosition.unread.onJump}
           />
           <ScrollPill
-            target={pillTarget}
-            onJumpTop={jumpTop}
-            onJumpBottom={jumpBottom}
+            target={readingPosition.scrollPill}
+            onJumpTop={readingPosition.onJumpTop}
+            onJumpBottom={readingPosition.onJumpBottom}
           />
         </div>
       )}
