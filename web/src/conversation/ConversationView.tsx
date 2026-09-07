@@ -24,6 +24,7 @@ import {
 } from "@/conversation/scrollPillVisibility";
 import { formatMessageTimestamp } from "@/conversation/formatMessageTimestamp";
 import { messageAnchorId } from "@/conversation/messageAnchor";
+import { createScrollSurface } from "@/conversation/scrollSurface";
 import { messageToMarkdown } from "@/conversation/messageToMarkdown";
 import { CopyButton } from "@/shared/CopyButton";
 import { deriveArrivalAction } from "@/conversation/liveArrival";
@@ -500,6 +501,20 @@ export function ConversationView({
     initialRect: { width: 800, height: 600 },
   });
 
+  // Every scroll touch below goes through this one seam rather than reaching
+  // for the virtualizer or the container's node: the pill measurement, the
+  // reading position, the three jumps, and the landing/restore effect (#269).
+  // useVirtualizer keeps one instance for the life of the component, so the
+  // surface is built once and the callbacks holding it stay stable.
+  const surface = useMemo(
+    () =>
+      createScrollSurface({
+        scroller: virtualizer,
+        getContainer: () => scrollContainerRef.current,
+      }),
+    [virtualizer]
+  );
+
   // Which direction the scroll pill offers. Kept in state (rather than read
   // during render) so it survives scroll events, jumps, and content that grows
   // or shrinks as messages expand/collapse. Defaults to hidden until the first
@@ -519,13 +534,9 @@ export function ConversationView({
   const firstUnseenIndexRef = useRef<number | null>(null);
   firstUnseenIndexRef.current = firstUnseenIndex;
   const measurePill = useCallback(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    const target = getScrollPillTarget({
-      scrollTop: el.scrollTop,
-      scrollHeight: el.scrollHeight,
-      clientHeight: el.clientHeight,
-    });
+    const viewport = surface.getViewport();
+    if (!viewport) return;
+    const target = getScrollPillTarget(viewport);
     setPillTarget(target);
     // "top" (or too-short-to-scroll) means the latest message is in view, so the
     // reader is caught up: reaching the bottom with a divider present consumes
@@ -533,24 +544,26 @@ export function ConversationView({
     const atBottom = target === "top" || target === null;
     atBottomRef.current = atBottom;
     if (atBottom && firstUnseenIndexRef.current !== null) setPillConsumed(true);
-  }, []);
+  }, [surface]);
 
   // Note where the reader is, as a message anchor rather than a pixel offset, so
   // reopening restores this spot even after estimated heights settle or the
   // chat gains and loses messages (#239). Read from the rendered rows only, so
   // it stays cheap on a long chat.
   const captureAnchor = useCallback(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    const entries = virtualizer
+    const viewport = surface.getViewport();
+    if (!viewport) return;
+    const entries = surface
       .getVirtualItems()
       .map((item) => ({
         messageId: messages[item.index]?.id ?? "",
         start: item.start,
       }))
       .filter((entry) => entry.messageId);
-    reading.recordAnchor(pickAnchor({ scrollTop: el.scrollTop, entries }));
-  }, [virtualizer, messages, reading]);
+    reading.recordAnchor(
+      pickAnchor({ scrollTop: viewport.scrollTop, entries })
+    );
+  }, [surface, messages, reading]);
 
   const handleScroll = useCallback(() => {
     measurePill();
@@ -560,20 +573,20 @@ export function ConversationView({
   const jumpTop = useCallback(() => {
     // Instant index jump, not a smooth scroll: smooth-scrolling across
     // thousands of virtualized rows is slow and janky.
-    virtualizer.scrollToIndex(0, { align: "start" });
-  }, [virtualizer]);
+    surface.scrollToIndex(0, { align: "start" });
+  }, [surface]);
   const jumpBottom = useCallback(() => {
-    virtualizer.scrollToIndex(messages.length - 1, { align: "end" });
-  }, [virtualizer, messages.length]);
+    surface.scrollToIndex(messages.length - 1, { align: "end" });
+  }, [surface, messages.length]);
   // The "new messages" pill jumps to the divider — the start of what's new —
   // not the very bottom, so a long run of new messages reads from its
   // beginning. Acting on the pill consumes it; the divider stays.
   const jumpToUnread = useCallback(() => {
     const index = firstUnseenIndexRef.current;
     if (index === null) return;
-    virtualizer.scrollToIndex(index, { align: "start" });
+    surface.scrollToIndex(index, { align: "start" });
     setPillConsumed(true);
-  }, [virtualizer]);
+  }, [surface]);
 
   // Keyboard equivalents of the pill: Cmd/Ctrl+arrows and Home/End. Enabled
   // only while a chat with content is open.
@@ -618,19 +631,16 @@ export function ConversationView({
         // scrollToIndex re-measures and re-scrolls until the message lands at
         // the top, which a raw offset cannot do against estimated heights. The
         // within-message offset is a small nudge applied once the row is there.
-        virtualizer.scrollToIndex(anchorIndex, { align: "start" });
-        const raf = requestAnimationFrame(() => {
-          const el = scrollContainerRef.current;
-          if (el && anchor.offset) el.scrollTop += anchor.offset;
+        surface.scrollToIndex(anchorIndex, { align: "start" });
+        return surface.afterFrame(() => {
+          if (anchor.offset) surface.nudgeBy(anchor.offset);
           measurePill();
         });
-        return () => cancelAnimationFrame(raf);
       }
-      virtualizer.scrollToIndex(messages.length - 1, { align: "end" });
+      surface.scrollToIndex(messages.length - 1, { align: "end" });
       // Re-measure after the jump settles so the pill reflects the landed
       // position (at the bottom it offers "back to top").
-      const raf = requestAnimationFrame(measurePill);
-      return () => cancelAnimationFrame(raf);
+      return surface.afterFrame(measurePill);
     }
 
     // Already landed: a live push re-read this chat (issue #189). Follow the
@@ -645,9 +655,8 @@ export function ConversationView({
       atBottom: atBottomRef.current,
     });
     if (action === "follow") {
-      virtualizer.scrollToIndex(messages.length - 1, { align: "end" });
-      const raf = requestAnimationFrame(measurePill);
-      return () => cancelAnimationFrame(raf);
+      surface.scrollToIndex(messages.length - 1, { align: "end" });
+      return surface.afterFrame(measurePill);
     }
     setFirstUnseenIndex((current) =>
       deriveFirstUnseenIndex({ current, action, prevLen })
