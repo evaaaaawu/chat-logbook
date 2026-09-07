@@ -504,17 +504,15 @@ export function ConversationView({
   // Every scroll touch below goes through this one seam rather than reaching
   // for the virtualizer or the container's node: the pill measurement, the
   // reading position, the three jumps, and the landing/restore effect (#269).
-  // The virtualizer is read through a ref because it is a fresh object on every
-  // render, which keeps the surface — and the callbacks holding it — stable.
-  const virtualizerRef = useRef(virtualizer);
-  virtualizerRef.current = virtualizer;
+  // useVirtualizer keeps one instance for the life of the component, so the
+  // surface is built once and the callbacks holding it stay stable.
   const surface = useMemo(
     () =>
       createScrollSurface({
-        getScroller: () => virtualizerRef.current,
-        getElement: () => scrollContainerRef.current,
+        scroller: virtualizer,
+        getContainer: () => scrollContainerRef.current,
       }),
-    []
+    [virtualizer]
   );
 
   // Which direction the scroll pill offers. Kept in state (rather than read

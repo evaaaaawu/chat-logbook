@@ -1,22 +1,23 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { createScrollSurface, type VirtualScroller } from "./scrollSurface";
+import {
+  createScrollSurface,
+  type ScrollContainer,
+  type VirtualItem,
+  type VirtualScroller,
+} from "./scrollSurface";
 
 function fakeScroller(overrides: Partial<VirtualScroller> = {}) {
   return {
     scrollToIndex: vi.fn(),
-    getVirtualItems: vi.fn(() => [] as { index: number; start: number }[]),
+    getVirtualItems: vi.fn(() => [] as VirtualItem[]),
     ...overrides,
   };
 }
 
 // A stand-in for the scroll container: only the three geometry reads and the
 // writable scrollTop the surface actually touches.
-function fakeElement(geometry: {
-  scrollTop: number;
-  scrollHeight: number;
-  clientHeight: number;
-}) {
-  return { ...geometry } as HTMLElement;
+function fakeContainer(geometry: ScrollContainer): ScrollContainer {
+  return { ...geometry };
 }
 
 afterEach(() => {
@@ -27,29 +28,13 @@ describe("createScrollSurface", () => {
   it("scrolls to an index through the virtualizer", () => {
     const scroller = fakeScroller();
     const surface = createScrollSurface({
-      getScroller: () => scroller,
-      getElement: () => null,
+      scroller,
+      getContainer: () => null,
     });
 
     surface.scrollToIndex(4, { align: "end" });
 
     expect(scroller.scrollToIndex).toHaveBeenCalledWith(4, { align: "end" });
-  });
-
-  it("reads the scroller each call, so a re-rendered virtualizer is never stale", () => {
-    let scroller = fakeScroller();
-    const surface = createScrollSurface({
-      getScroller: () => scroller,
-      getElement: () => null,
-    });
-    const replacement = fakeScroller();
-    scroller = replacement;
-
-    surface.scrollToIndex(0, { align: "start" });
-
-    expect(replacement.scrollToIndex).toHaveBeenCalledWith(0, {
-      align: "start",
-    });
   });
 
   it("reports the rendered rows as index and top edge", () => {
@@ -60,8 +45,8 @@ describe("createScrollSurface", () => {
       ]),
     });
     const surface = createScrollSurface({
-      getScroller: () => scroller,
-      getElement: () => null,
+      scroller,
+      getContainer: () => null,
     });
 
     expect(surface.getVirtualItems()).toEqual([
@@ -71,14 +56,14 @@ describe("createScrollSurface", () => {
   });
 
   it("reports the viewport geometry", () => {
-    const el = fakeElement({
+    const el = fakeContainer({
       scrollTop: 40,
       scrollHeight: 1000,
       clientHeight: 300,
     });
     const surface = createScrollSurface({
-      getScroller: () => fakeScroller(),
-      getElement: () => el,
+      scroller: fakeScroller(),
+      getContainer: () => el,
     });
 
     expect(surface.getViewport()).toEqual({
@@ -90,22 +75,22 @@ describe("createScrollSurface", () => {
 
   it("returns no viewport before the container is mounted", () => {
     const surface = createScrollSurface({
-      getScroller: () => fakeScroller(),
-      getElement: () => null,
+      scroller: fakeScroller(),
+      getContainer: () => null,
     });
 
     expect(surface.getViewport()).toBeNull();
   });
 
   it("nudges the viewport by a delta", () => {
-    const el = fakeElement({
+    const el = fakeContainer({
       scrollTop: 40,
       scrollHeight: 1000,
       clientHeight: 300,
     });
     const surface = createScrollSurface({
-      getScroller: () => fakeScroller(),
-      getElement: () => el,
+      scroller: fakeScroller(),
+      getContainer: () => el,
     });
 
     surface.nudgeBy(15);
@@ -115,8 +100,8 @@ describe("createScrollSurface", () => {
 
   it("ignores a nudge with no container to nudge", () => {
     const surface = createScrollSurface({
-      getScroller: () => fakeScroller(),
-      getElement: () => null,
+      scroller: fakeScroller(),
+      getContainer: () => null,
     });
 
     expect(() => surface.nudgeBy(15)).not.toThrow();
@@ -129,8 +114,8 @@ describe("createScrollSurface", () => {
       return frames.length;
     });
     const surface = createScrollSurface({
-      getScroller: () => fakeScroller(),
-      getElement: () => null,
+      scroller: fakeScroller(),
+      getContainer: () => null,
     });
     const cb = vi.fn();
 
@@ -146,8 +131,8 @@ describe("createScrollSurface", () => {
     vi.stubGlobal("requestAnimationFrame", () => 7);
     vi.stubGlobal("cancelAnimationFrame", cancel);
     const surface = createScrollSurface({
-      getScroller: () => fakeScroller(),
-      getElement: () => null,
+      scroller: fakeScroller(),
+      getContainer: () => null,
     });
 
     surface.afterFrame(vi.fn())();

@@ -1,8 +1,4 @@
-export interface ScrollMetrics {
-  scrollTop: number;
-  scrollHeight: number;
-  clientHeight: number;
-}
+import type { ScrollMetrics } from "@/conversation/scrollSurface";
 
 // Where the (single) scroll pill would take you if tapped. Chat logs anchor on
 // the latest message, so whenever you are away from the bottom the pill offers
