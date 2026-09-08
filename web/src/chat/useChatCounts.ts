@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProjectCount } from "@/chat/projects/projectFacets";
 
 // The filter panel's static, per-view counts (#131 Phase A). Server-derived so
@@ -57,11 +57,20 @@ export interface UseChatCountsResult {
 export function useChatCounts(mode: "main" | "trash"): UseChatCountsResult {
   const [counts, setCounts] = useState<ChatCounts>(EMPTY_COUNTS);
 
+  // The view a landing response has to still belong to. main and Trash count
+  // different universes, so a read that outlives its view is discarded rather
+  // than written: switching views while a read is in flight would otherwise let
+  // the slower response land last and leave the filter panel showing the view
+  // you just left, until the next interval tick. Guards every path into
+  // `refresh` — the view change, the background tick, and `reload`.
+  const currentMode = useRef(mode);
+
   const refresh = useCallback(async () => {
     try {
       const res = await fetch(countsUrl(mode));
       if (!res.ok) return;
       const data = (await res.json()) as Partial<ChatCounts>;
+      if (currentMode.current !== mode) return;
       setCounts({
         total: data.total ?? 0,
         projects: data.projects ?? [],
@@ -73,20 +82,22 @@ export function useChatCounts(mode: "main" | "trash"): UseChatCountsResult {
     }
   }, [mode]);
 
+  // One effect owns the view's whole read cadence: adopt the view, read it now,
+  // then keep reading on the background interval so facet counts track
+  // file-watcher ingestion. Adopting first means the outgoing view's in-flight
+  // read is already stale by the time it lands.
   useEffect(() => {
+    currentMode.current = mode;
     // `refresh` only setStates after `await fetch`, so this is not the
     // synchronous cascading render the rule guards against — it's a standard
     // fetch-on-mount / on-view-change.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
     const id = setInterval(() => {
       void refresh();
     }, BACKGROUND_REFRESH_MS);
     return () => clearInterval(id);
-  }, [refresh]);
+  }, [mode, refresh]);
 
   const tagCountById = useMemo(
     () => new Map(counts.tags.map((t) => [t.tagId, t.count])),
