@@ -574,7 +574,10 @@ function App() {
 
   // Mirror the latest handler into a ref after every commit. A window event
   // always arrives after a commit, so the listener below reads current state
-  // without ever holding a stale Open Chat, view mode or toast action.
+  // without ever holding a stale Open Chat, view mode or toast action. The
+  // mirror belongs in an effect rather than in render: React can throw a render
+  // away, and a handler written from one that never commits would leave the
+  // listener acting on state the app never showed.
   const handleShortcutRef = useRef(handleShortcut);
   useEffect(() => {
     handleShortcutRef.current = handleShortcut;

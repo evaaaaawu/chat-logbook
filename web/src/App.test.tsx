@@ -1146,6 +1146,23 @@ describe("Global shortcuts: the guards and the binding", () => {
     expect(screen.queryByTestId("toast")).not.toBeInTheDocument();
   });
 
+  it("leaves a keystroke inside an open popover to the popover", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+    await user.click(await screen.findByRole("button", { name: /chat info/i }));
+
+    const popover = await screen.findByTestId("chat-metadata-popover");
+    fireEvent.keyDown(popover, { key: "Backspace" });
+
+    // The other half of the same guard: a popover is portaled to <body> too, so
+    // only matching on the slot keeps the keystroke out of the shortcuts.
+    const list = screen.getByTestId("chat-list");
+    expect(within(list).getByText("Build a login page")).toBeInTheDocument();
+    expect(screen.queryByTestId("toast")).not.toBeInTheDocument();
+  });
+
   it("leaves a keystroke inside an open dialog to the dialog", async () => {
     const user = userEvent.setup();
     seedTags([
