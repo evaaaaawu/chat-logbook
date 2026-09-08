@@ -9,9 +9,9 @@ import type { ReadingStateController } from "@/conversation/useReadingState";
 
 /**
  * What the Reading position needs of a rendered Message: its Normalized id.
- * The scroll spot is anchored to that id rather than to a place in the list
- * (ADR-0026). The Unread divider is not yet — it is still an index here, and
- * #271 is where it moves onto an id.
+ * Both positions this module holds — the scroll spot and the Unread divider —
+ * are anchored to that id rather than to a place in the list, and resolved to
+ * an index only at render (ADR-0026).
  */
 export interface RenderedMessage {
   id: string;
@@ -19,7 +19,11 @@ export interface RenderedMessage {
 
 /** Where the Unread divider sits, and whether its pill is still worth offering. */
 export interface UnreadMark {
-  /** Index of the first Message the reader has not seen; null = caught up. */
+  /**
+   * Where the first Message the reader has not seen currently sits, resolved
+   * from the Message the divider is anchored to; null = caught up, or that
+   * Message no longer renders.
+   */
   dividerIndex: number | null;
   /** Whether the "new messages" pill should show — hidden once acted on. */
   pillVisible: boolean;
@@ -60,12 +64,60 @@ export interface ReadingPositionInput {
 }
 
 /**
+ * Whether Messages were appended since the last run, judged by which Message is
+ * last rather than by how many there are. The rendered list drops turns that
+ * draw nothing, so a Message arriving while an earlier one stops rendering
+ * leaves the count where it was, and counting concludes that nothing came
+ * (#271).
+ */
+function hasAppended({
+  previousLastId,
+  messages,
+}: {
+  previousLastId: string | undefined;
+  messages: readonly RenderedMessage[];
+}): boolean {
+  const lastId = lastIdOf(messages);
+  if (lastId === undefined) return false;
+  if (lastId === previousLastId) return false;
+  // A column that had nothing on it and now has something: all of it is new.
+  if (previousLastId === undefined) return true;
+  // The end of the list changed. That is an append only if the Message that
+  // used to be last is still here — otherwise the Chat lost turns off the end,
+  // which is a re-read shrinking, not an arrival.
+  return messages.some((message) => message.id === previousLastId);
+}
+
+function lastIdOf(messages: readonly RenderedMessage[]): string | undefined {
+  return messages[messages.length - 1]?.id;
+}
+
+/**
+ * Where the first Message the reader has not seen sits: just past the Message
+ * that was last when they were last caught up. Falls to the top of the list
+ * when that Message is gone, or when the column was empty.
+ */
+function firstUnseenIndex({
+  previousLastId,
+  messages,
+}: {
+  previousLastId: string | undefined;
+  messages: readonly RenderedMessage[];
+}): number {
+  const seen =
+    previousLastId === undefined
+      ? -1
+      : messages.findIndex((message) => message.id === previousLastId);
+  return seen + 1;
+}
+
+/**
  * What the live stream appending Messages should do to the open Chat (#189).
  *
  * - `follow`: pinned to the bottom, so track the newest Message (live monitor).
  * - `flag`: scrolled up, so leave the viewport put and mark the arrivals
  *   instead of yanking the reader down.
- * - `none`: the count did not grow, so nothing moves.
+ * - `none`: nothing was appended, so nothing moves.
  */
 type ArrivalAction = "follow" | "flag" | "none";
 
@@ -80,13 +132,19 @@ function deriveArrivalAction({
   return atBottom ? "follow" : "flag";
 }
 
-/** The unread mark as the module holds it, before the pane is told about it. */
+/**
+ * The unread mark as the module holds it, before the pane is told about it.
+ * The divider is the Message it sits in front of, not a place in the list: an
+ * index is correct the moment it is written and silently wrong afterwards,
+ * because an earlier turn starting or stopping rendering shifts everything
+ * beneath it (ADR-0026).
+ */
 interface UnreadState {
-  dividerIndex: number | null;
+  dividerMessageId: string | null;
   consumed: boolean;
 }
 
-const CAUGHT_UP: UnreadState = { dividerIndex: null, consumed: false };
+const CAUGHT_UP: UnreadState = { dividerMessageId: null, consumed: false };
 
 /**
  * Reaching the bottom with a divider present is the reader acting on the batch,
@@ -94,7 +152,7 @@ const CAUGHT_UP: UnreadState = { dividerIndex: null, consumed: false };
  * without reading the current value during render.
  */
 function consume(current: UnreadState): UnreadState {
-  if (current.dividerIndex === null || current.consumed) return current;
+  if (current.dividerMessageId === null || current.consumed) return current;
   return { ...current, consumed: true };
 }
 
@@ -124,10 +182,9 @@ export function useReadingPosition({
   // measurement, so the pill never flashes on mount.
   const [pillTarget, setPillTarget] = useState<ScrollPillTarget>(null);
   // The unread mark, held as one value because its two halves only ever change
-  // together: where the divider sits (the index of the first Message that
-  // arrived while the reader was scrolled up, #189 — null means caught up, and
-  // it is set once per Chat then frozen), and whether the reader has already
-  // acted on the batch. Acting hides the "new messages" pill without touching
+  // together: where the divider sits (the first Message that arrived while the
+  // reader was scrolled up, #189 — null means caught up, and it is set once per
+  // Chat then frozen), and whether the reader has already acted on the batch. Acting hides the "new messages" pill without touching
   // the divider, which stays until the Chat changes (the LINE pattern).
   const [unreadState, setUnreadState] = useState<UnreadState>(CAUGHT_UP);
   // The unread mark belongs to the Chat that is open, so it clears as the Chat
@@ -195,7 +252,18 @@ export function useReadingPosition({
   // The "new messages" pill jumps to the divider — the start of what's new —
   // not the very bottom, so a long run of new Messages reads from its
   // beginning. Acting on the pill consumes it; the divider stays.
-  const dividerIndex = unreadState.dividerIndex;
+  // The stored Message resolved to a place in the list, here rather than in the
+  // pane: the freeze rule and the resolution of what it froze belong together,
+  // and a divider whose Message is gone comes back as no divider rather than as
+  // some arbitrary position (ADR-0026).
+  const dividerMessageId = unreadState.dividerMessageId;
+  const dividerIndex = useMemo(() => {
+    if (dividerMessageId === null) return null;
+    const index = messages.findIndex(
+      (message) => message.id === dividerMessageId
+    );
+    return index === -1 ? null : index;
+  }, [dividerMessageId, messages]);
   const onJumpUnread = useCallback(() => {
     if (dividerIndex === null) return;
     surface.scrollToIndex(dividerIndex, { align: "start" });
@@ -261,25 +329,25 @@ export function useReadingPosition({
     scheduleFrame(measurePill);
   }, [chatId, loading, messages, reading, surface, measurePill, scheduleFrame]);
 
-  // Live arrival. This effect keys on the Messages, and keeps its own count
-  // baseline — written on every run, never skipped, so a Chat that empties and
-  // refills re-enters with a baseline that matches what is on screen. Sharing
-  // one baseline with the landing effect above is what made that go wrong
-  // before (#270).
+  // Live arrival. This effect keys on the Messages, and keeps its own baseline
+  // — the Message that was last, written on every run, never skipped, so a Chat
+  // that empties and refills re-enters with a baseline that matches what is on
+  // screen. Sharing one baseline with the landing effect above is what made
+  // that go wrong before (#270).
   const arrivalBaselineRef = useRef<{
     chatId: string | undefined;
-    count: number;
-  }>({ chatId: undefined, count: 0 });
+    lastId: string | undefined;
+  }>({ chatId: undefined, lastId: undefined });
   useEffect(() => {
     const previous = arrivalBaselineRef.current;
-    // Only a landed Chat's count is worth comparing against, so an un-landed
-    // run banks the count under no Chat at all. That way the commit the landing
-    // effect lands on — where the count jumps from the previous Chat's turns to
-    // this one's — can never read as an arrival.
+    // Only a landed Chat's baseline is worth comparing against, so an un-landed
+    // run banks it under no Chat at all. That way the commit the landing effect
+    // lands on — where the list swaps from the previous Chat's turns to this
+    // one's — can never read as an arrival.
     const landed = landedChatRef.current === chatId;
     arrivalBaselineRef.current = {
       chatId: landed ? chatId : undefined,
-      count: messages.length,
+      lastId: lastIdOf(messages),
     };
     if (!landed || previous.chatId !== chatId) return;
 
@@ -287,7 +355,7 @@ export function useReadingPosition({
     // viewport and anchor the unread divider before the first new Message —
     // never yank a scrolled-up reader down (#189).
     const action = deriveArrivalAction({
-      appended: messages.length > previous.count,
+      appended: hasAppended({ previousLastId: previous.lastId, messages }),
       atBottom: atBottomRef.current,
     });
     if (action === "follow") {
@@ -296,12 +364,17 @@ export function useReadingPosition({
       return;
     }
     // Set-once-then-freeze: the divider anchors before the first Message that
-    // arrived unseen — the count that was on screen — and later arrivals leave
-    // it put, so it keeps marking where the reader actually left off.
+    // arrived unseen — the one just past what was on screen — and later
+    // arrivals leave it put, so it keeps marking where the reader left off.
     if (action === "flag") {
+      const unseen =
+        messages[
+          firstUnseenIndex({ previousLastId: previous.lastId, messages })
+        ];
+      if (!unseen) return;
       setUnreadState((current) =>
-        current.dividerIndex === null
-          ? { dividerIndex: previous.count, consumed: false }
+        current.dividerMessageId === null
+          ? { dividerMessageId: unseen.id, consumed: false }
           : current
       );
     }
@@ -319,11 +392,11 @@ export function useReadingPosition({
 
   const unread = useMemo(
     () => ({
-      dividerIndex: unreadState.dividerIndex,
-      pillVisible: unreadState.dividerIndex !== null && !unreadState.consumed,
+      dividerIndex,
+      pillVisible: dividerIndex !== null && !unreadState.consumed,
       onJump: onJumpUnread,
     }),
-    [unreadState, onJumpUnread]
+    [dividerIndex, unreadState.consumed, onJumpUnread]
   );
 
   return useMemo(

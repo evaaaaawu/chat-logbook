@@ -85,6 +85,11 @@ function messages(count: number): RenderedMessage[] {
   return Array.from({ length: count }, (_, i) => ({ id: `m-${i + 1}` }));
 }
 
+/** A rendered list spelled out message by message, for the filtering cases. */
+function list(...ids: string[]): RenderedMessage[] {
+  return ids.map((id) => ({ id }));
+}
+
 interface Props {
   chatId: string | undefined;
   messages: readonly RenderedMessage[];
@@ -389,6 +394,24 @@ describe("messages arriving while the chat is open", () => {
     expect(surface.jumps).toHaveLength(jumpsBefore);
   });
 
+  it("notices an arrival that leaves the count unchanged", () => {
+    // A turn stops rendering in the same read that brings a new one, so the
+    // list is as long as it was. Counting says nothing happened; the identity
+    // of the last Message says otherwise (#271).
+    const surface = fakeSurface(atBottom);
+    const mounted = mount({ chatId: "c1", messages: messages(3) }, { surface });
+    act(() => surface.runFrames());
+    surface.setViewport(scrolledUp);
+    act(() => mounted.result.current.onScroll());
+
+    act(() =>
+      mounted.rerender({ chatId: "c1", messages: list("m-1", "m-3", "m-4") })
+    );
+
+    expect(mounted.result.current.unread.dividerIndex).toBe(2);
+    expect(mounted.result.current.unread.pillVisible).toBe(true);
+  });
+
   it("counts against what is on screen, even after the chat emptied", () => {
     // The baseline is written on every run, so a chat that empties and refills
     // compares against the empty column rather than a count from before it
@@ -459,6 +482,30 @@ describe("the unread pill", () => {
     expect(result.current.unread.pillVisible).toBe(false);
     // The divider stays put — it is where the reader left off, not a toast.
     expect(result.current.unread.dividerIndex).toBe(3);
+  });
+
+  it("stays on its own message when an earlier turn stops rendering", () => {
+    // The divider marks m-4. A later read drops m-1, which shifts every
+    // position beneath it — an index would keep pointing one Message too far
+    // down, in front of something already read (#271).
+    const surface = fakeSurface(atBottom);
+    const { result, rerender } = mountWithUnread(surface);
+    expect(result.current.unread.dividerIndex).toBe(3);
+
+    act(() => rerender({ chatId: "c1", messages: list("m-2", "m-3", "m-4") }));
+
+    expect(result.current.unread.dividerIndex).toBe(2);
+    expect(result.current.unread.pillVisible).toBe(true);
+  });
+
+  it("shows no divider at all once its message is gone", () => {
+    const surface = fakeSurface(atBottom);
+    const { result, rerender } = mountWithUnread(surface);
+
+    act(() => rerender({ chatId: "c1", messages: list("m-1", "m-2", "m-3") }));
+
+    expect(result.current.unread.dividerIndex).toBeNull();
+    expect(result.current.unread.pillVisible).toBe(false);
   });
 
   it("consumes itself when the reader scrolls back to the bottom", () => {
