@@ -63,7 +63,11 @@ function makeScrollable(
   };
 }
 
-describe("Conversation live arrival", () => {
+// The rules behind the Unread divider and the pills are tested at their own
+// seam, against a fake ScrollSurface (useReadingPosition.test.tsx). What is
+// left here is the wiring: that the pane draws what the module hands back, and
+// hands the reader's click back to it (#270).
+describe("Conversation live arrival, as the pane draws it", () => {
   const three = [assistant("one"), assistant("two"), assistant("three")];
   const four = [...three, assistant("four")];
 
@@ -116,50 +120,6 @@ describe("Conversation live arrival", () => {
     expect(
       screen.getByRole("separator", { name: "New messages" })
     ).not.toBeNull();
-  });
-
-  it("follows the latest with no divider or pill when arriving at the bottom", async () => {
-    const { rerender } = render(
-      <ConversationView chat={chat} messages={three} />
-    );
-    await screen.findByTestId("conversation-panel");
-
-    // Pinned at the bottom (the pane opens there), a live message appends.
-    act(() => rerender(<ConversationView chat={chat} messages={four} />));
-
-    expect(screen.queryByRole("button", { name: "New messages" })).toBeNull();
-    expect(
-      screen.queryByRole("separator", { name: "New messages" })
-    ).toBeNull();
-  });
-
-  it("clears the divider and pill when the chat changes", async () => {
-    const { rerender } = render(
-      <ConversationView chat={chat} messages={three} />
-    );
-
-    const panel = await screen.findByTestId("conversation-panel");
-    const scroller = makeScrollable(panel, {
-      scrollHeight: 1000,
-      clientHeight: 300,
-    });
-    act(() => scroller.scrollTo(0));
-    await screen.findByRole("button", { name: "Jump to bottom" });
-    act(() => rerender(<ConversationView chat={chat} messages={four} />));
-    expect(screen.getByRole("button", { name: "New messages" })).not.toBeNull();
-
-    // Open a different chat: the unread state belongs to the old one.
-    const other: Chat = { ...chat, id: "c2", title: "Another chat" };
-    act(() =>
-      rerender(
-        <ConversationView chat={other} messages={[assistant("fresh")]} />
-      )
-    );
-
-    expect(screen.queryByRole("button", { name: "New messages" })).toBeNull();
-    expect(
-      screen.queryByRole("separator", { name: "New messages" })
-    ).toBeNull();
   });
 });
 
