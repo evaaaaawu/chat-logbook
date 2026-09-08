@@ -93,9 +93,14 @@ function readArrival({
   // brought them back in another order. Neither is an arrival.
   if (!last || seen.has(last.id)) return { appended: false };
   // A single read can bring several Messages, and the divider marks the start
-  // of the batch rather than its end.
-  const firstUnseen = messages.find((message) => !seen.has(message.id)) ?? last;
-  return { appended: true, firstUnseen };
+  // of the batch rather than its end. The batch is the run of unseen Messages
+  // at the end of the column, found from the end: scanning from the front would
+  // pick up a turn that stopped rendering earlier in the visit and has come
+  // back mid-list, and plant the divider in front of content already read —
+  // the drift this module exists to prevent (#271).
+  let start = messages.length - 1;
+  while (start > 0 && !seen.has(messages[start - 1].id)) start -= 1;
+  return { appended: true, firstUnseen: messages[start] };
 }
 
 /**

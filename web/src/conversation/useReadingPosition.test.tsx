@@ -357,6 +357,37 @@ describe("messages arriving while the chat is open", () => {
     expect(surface.jumps).toHaveLength(jumpsBefore);
   });
 
+  it("marks the batch at the end, not a turn that came back mid-list", () => {
+    // "m-x" stopped rendering earlier in the visit and is back, sitting above
+    // Messages the reader has already read. The batch that actually arrived is
+    // the run at the end of the column, so the divider belongs at "m-4".
+    const surface = fakeSurface(atBottom);
+    const { result, rerender } = mountScrolledUp(surface);
+
+    act(() =>
+      rerender({
+        chatId: "c1",
+        messages: list("m-1", "m-x", "m-2", "m-3", "m-4"),
+      })
+    );
+
+    expect(result.current.unread.dividerIndex).toBe(4);
+  });
+
+  it("jumps to where the divider's message sits now, not where it sat", () => {
+    // The jump reads the resolved index, so a shift under the divider has to
+    // move the jump with it.
+    const surface = fakeSurface(atBottom);
+    const { result, rerender } = mountScrolledUp(surface);
+    act(() => rerender({ chatId: "c1", messages: messages(4) }));
+    expect(result.current.unread.dividerIndex).toBe(3);
+
+    act(() => rerender({ chatId: "c1", messages: list("m-2", "m-3", "m-4") }));
+    act(() => result.current.unread.onJump());
+
+    expect(surface.lastJump).toEqual({ index: 2, align: "start" });
+  });
+
   it("freezes the divider, so later arrivals do not move it", () => {
     const surface = fakeSurface(atBottom);
     const { result, rerender } = mountScrolledUp(surface);
