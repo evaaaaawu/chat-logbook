@@ -1109,6 +1109,106 @@ describe("Keyboard shortcuts: delete and undo", () => {
   });
 });
 
+describe("Global shortcuts: the guards and the binding", () => {
+  it("selects every matching chat on Cmd/Ctrl+A", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const list = screen.getByTestId("chat-list");
+    await within(list).findByText("Fix database migration");
+
+    await user.keyboard("{Meta>}a{/Meta}");
+
+    // The same escalation the batch bar's `Select all N` link reaches (#164),
+    // entered from the keyboard instead.
+    const banner = await screen.findByTestId("select-all-banner");
+    expect(banner).toHaveTextContent("All 4 chats are selected");
+    expect(await screen.findByText("4 selected")).toBeInTheDocument();
+  });
+
+  it("leaves a keystroke in a title input to the input", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Build a login page"));
+    await user.keyboard("{F2}");
+
+    const list = screen.getByTestId("chat-list");
+    const input = within(list).getByRole("textbox", { name: /chat title/i });
+
+    fireEvent.keyDown(input, { key: "Backspace" });
+    fireEvent.keyDown(input, { key: "a", metaKey: true });
+
+    // Backspace edits the title, it does not trash the Open Chat; Cmd+A selects
+    // the text, it does not escalate the Selection.
+    expect(input).toBeInTheDocument();
+    expect(screen.queryByTestId("select-all-banner")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("toast")).not.toBeInTheDocument();
+  });
+
+  it("leaves a keystroke inside an open dialog to the dialog", async () => {
+    const user = userEvent.setup();
+    seedTags([
+      { id: "tag-bug", name: "bug", color: "red" },
+      { id: "tag-idea", name: "idea", color: "violet" },
+    ]);
+    seedChatTags({ "chat-1": ["tag-bug"] });
+
+    render(<App />);
+    const list = screen.getByTestId("chat-list");
+    await within(list).findByText("Build a login page");
+    await user.click(within(list).getByText("Build a login page"));
+
+    const row = within(list)
+      .getByText("Build a login page")
+      .closest('[data-testid="chat-row"]') as HTMLElement;
+    fireEvent.contextMenu(row);
+    await user.click(
+      screen.getByRole("menuitem", { name: /Add\/Remove Tag/i })
+    );
+
+    const dialog = await screen.findByTestId("tag-picker-dialog");
+    // Focus a non-input element inside the dialog — the case a window-level
+    // listener would otherwise pick up, since the dialog is portaled to <body>
+    // and its stopPropagation never reaches window.
+    await user.click(within(dialog).getByText("idea"));
+    fireEvent.keyDown(document.activeElement ?? dialog, { key: "Backspace" });
+
+    // The Open Chat survives: the Backspace belonged to the picker.
+    expect(within(list).getByText("Build a login page")).toBeInTheDocument();
+    expect(screen.getByTestId("tag-picker-dialog")).toBeInTheDocument();
+  });
+
+  it("binds the window keydown listener once, not once per render", async () => {
+    // The app binds several window keydown listeners (cursor navigation, the
+    // conversation's scroll jumps). App's own carries a name, so counting is
+    // about this listener rather than about whatever else is subscribed.
+    const isGlobalShortcuts = ([type, handler]: unknown[]) =>
+      type === "keydown" &&
+      typeof handler === "function" &&
+      handler.name === "globalShortcutListener";
+    const addSpy = vi.spyOn(window, "addEventListener");
+    const removeSpy = vi.spyOn(window, "removeEventListener");
+    render(<App />);
+
+    const list = screen.getByTestId("chat-list");
+    await within(list).findByText("Fix database migration");
+
+    // Marking a row re-renders App: the Selection changed, and so did most of
+    // what the handler reads. The marked row's lighter fill proves it rendered.
+    const row = within(list)
+      .getByText("Build a login page")
+      .closest("button") as HTMLElement;
+    fireEvent.click(row, { metaKey: true });
+    await waitFor(() => expect(row.className).toContain("bg-primary/10"));
+
+    expect(addSpy.mock.calls.filter(isGlobalShortcuts)).toHaveLength(1);
+    expect(removeSpy.mock.calls.filter(isGlobalShortcuts)).toHaveLength(0);
+    addSpy.mockRestore();
+    removeSpy.mockRestore();
+  });
+});
+
 describe("Enter Trash mode", () => {
   it("clicking Trash link replaces the session list with deleted sessions", async () => {
     const user = userEvent.setup();
