@@ -85,6 +85,11 @@ function messages(count: number): RenderedMessage[] {
   return Array.from({ length: count }, (_, i) => ({ id: `m-${i + 1}` }));
 }
 
+/** A rendered list spelled out message by message, for the filtering cases. */
+function list(...ids: string[]): RenderedMessage[] {
+  return ids.map((id) => ({ id }));
+}
+
 interface Props {
   chatId: string | undefined;
   messages: readonly RenderedMessage[];
@@ -352,6 +357,37 @@ describe("messages arriving while the chat is open", () => {
     expect(surface.jumps).toHaveLength(jumpsBefore);
   });
 
+  it("marks the batch at the end, not a turn that came back mid-list", () => {
+    // "m-x" stopped rendering earlier in the visit and is back, sitting above
+    // Messages the reader has already read. The batch that actually arrived is
+    // the run at the end of the column, so the divider belongs at "m-4".
+    const surface = fakeSurface(atBottom);
+    const { result, rerender } = mountScrolledUp(surface);
+
+    act(() =>
+      rerender({
+        chatId: "c1",
+        messages: list("m-1", "m-x", "m-2", "m-3", "m-4"),
+      })
+    );
+
+    expect(result.current.unread.dividerIndex).toBe(4);
+  });
+
+  it("jumps to where the divider's message sits now, not where it sat", () => {
+    // The jump reads the resolved index, so a shift under the divider has to
+    // move the jump with it.
+    const surface = fakeSurface(atBottom);
+    const { result, rerender } = mountScrolledUp(surface);
+    act(() => rerender({ chatId: "c1", messages: messages(4) }));
+    expect(result.current.unread.dividerIndex).toBe(3);
+
+    act(() => rerender({ chatId: "c1", messages: list("m-2", "m-3", "m-4") }));
+    act(() => result.current.unread.onJump());
+
+    expect(surface.lastJump).toEqual({ index: 2, align: "start" });
+  });
+
   it("freezes the divider, so later arrivals do not move it", () => {
     const surface = fakeSurface(atBottom);
     const { result, rerender } = mountScrolledUp(surface);
@@ -386,6 +422,59 @@ describe("messages arriving while the chat is open", () => {
     act(() => rerender({ chatId: "c1", messages: messages(2) }));
 
     expect(result.current.unread.dividerIndex).toBeNull();
+    expect(surface.jumps).toHaveLength(jumpsBefore);
+  });
+
+  it("notices an arrival that leaves the count unchanged", () => {
+    // A turn stops rendering in the same read that brings a new one, so the
+    // list is as long as it was. Counting says nothing happened; the identity
+    // of the last Message says otherwise (#271).
+    const surface = fakeSurface(atBottom);
+    const mounted = mount({ chatId: "c1", messages: messages(3) }, { surface });
+    act(() => surface.runFrames());
+    surface.setViewport(scrolledUp);
+    act(() => mounted.result.current.onScroll());
+
+    act(() =>
+      mounted.rerender({ chatId: "c1", messages: list("m-1", "m-3", "m-4") })
+    );
+
+    expect(mounted.result.current.unread.dividerIndex).toBe(2);
+    expect(mounted.result.current.unread.pillVisible).toBe(true);
+  });
+
+  it("notices an arrival that replaces the message it lands behind", () => {
+    // The turn that stops rendering is the last one, so there is no Message
+    // still on screen to compare the new tail against — only the reader's own
+    // history of what they have been shown (#271).
+    const surface = fakeSurface(atBottom);
+    const mounted = mount({ chatId: "c1", messages: messages(3) }, { surface });
+    act(() => surface.runFrames());
+    surface.setViewport(scrolledUp);
+    act(() => mounted.result.current.onScroll());
+
+    act(() =>
+      mounted.rerender({ chatId: "c1", messages: list("m-1", "m-2", "m-4") })
+    );
+
+    expect(mounted.result.current.unread.dividerIndex).toBe(2);
+  });
+
+  it("does not read a re-ordered list as an arrival", () => {
+    // Same Messages, another order. Nothing here is new to the reader, so
+    // planting a divider would put it in front of something already read.
+    const surface = fakeSurface(atBottom);
+    const mounted = mount({ chatId: "c1", messages: messages(3) }, { surface });
+    act(() => surface.runFrames());
+    surface.setViewport(scrolledUp);
+    act(() => mounted.result.current.onScroll());
+    const jumpsBefore = surface.jumps.length;
+
+    act(() =>
+      mounted.rerender({ chatId: "c1", messages: list("m-3", "m-1", "m-2") })
+    );
+
+    expect(mounted.result.current.unread.dividerIndex).toBeNull();
     expect(surface.jumps).toHaveLength(jumpsBefore);
   });
 
@@ -459,6 +548,46 @@ describe("the unread pill", () => {
     expect(result.current.unread.pillVisible).toBe(false);
     // The divider stays put — it is where the reader left off, not a toast.
     expect(result.current.unread.dividerIndex).toBe(3);
+  });
+
+  it("stays on its own message when an earlier turn stops rendering", () => {
+    // The divider marks m-4. A later read drops m-1, which shifts every
+    // position beneath it — an index would keep pointing one Message too far
+    // down, in front of something already read (#271).
+    const surface = fakeSurface(atBottom);
+    const { result, rerender } = mountWithUnread(surface);
+    expect(result.current.unread.dividerIndex).toBe(3);
+
+    act(() => rerender({ chatId: "c1", messages: list("m-2", "m-3", "m-4") }));
+
+    expect(result.current.unread.dividerIndex).toBe(2);
+    expect(result.current.unread.pillVisible).toBe(true);
+  });
+
+  it("shows no divider at all once its message is gone", () => {
+    const surface = fakeSurface(atBottom);
+    const { result, rerender } = mountWithUnread(surface);
+
+    act(() => rerender({ chatId: "c1", messages: list("m-1", "m-2", "m-3") }));
+
+    expect(result.current.unread.dividerIndex).toBeNull();
+    expect(result.current.unread.pillVisible).toBe(false);
+  });
+
+  it("marks the next arrival once the old divider's message is gone", () => {
+    // The freeze holds a Message, not a slot. With that Message gone there is
+    // nothing left to keep, and keeping it would silence every later arrival
+    // for the rest of the visit.
+    const surface = fakeSurface(atBottom);
+    const { result, rerender } = mountWithUnread(surface);
+
+    act(() => rerender({ chatId: "c1", messages: list("m-1", "m-2", "m-3") }));
+    act(() =>
+      rerender({ chatId: "c1", messages: list("m-1", "m-2", "m-3", "m-5") })
+    );
+
+    expect(result.current.unread.dividerIndex).toBe(3);
+    expect(result.current.unread.pillVisible).toBe(true);
   });
 
   it("consumes itself when the reader scrolls back to the bottom", () => {

@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { pickAnchor, resolveAnchorIndex } from "./scrollAnchor";
+import {
+  pickAnchor,
+  resolveAnchorIndex,
+  resolveMessageIndex,
+} from "./scrollAnchor";
 
 // Three messages laid out top to bottom at these vertical starts.
 const entries = [
@@ -40,5 +44,17 @@ describe("resolveAnchorIndex", () => {
 
   it("returns null when there is no anchor", () => {
     expect(resolveAnchorIndex(null, messages)).toBeNull();
+  });
+});
+
+describe("resolveMessageIndex", () => {
+  const messages = [{ id: "m-1" }, { id: "m-2" }, { id: "m-3" }];
+
+  it("finds where a message currently sits", () => {
+    expect(resolveMessageIndex("m-3", messages)).toBe(2);
+  });
+
+  it("returns null for a message that is not rendered", () => {
+    expect(resolveMessageIndex("m-gone", messages)).toBeNull();
   });
 });

@@ -41,6 +41,20 @@ export function pickAnchor({
 }
 
 /**
+ * Where a Message currently sits in the rendered list. Every position this pane
+ * remembers is stored as a Message and resolved through here, so "the Message
+ * is not there" has one answer — null — instead of a different fallback at each
+ * call site (ADR-0026).
+ */
+export function resolveMessageIndex(
+  messageId: string,
+  messages: readonly { id: string }[]
+): number | null {
+  const index = messages.findIndex((m) => m.id === messageId);
+  return index === -1 ? null : index;
+}
+
+/**
  * Find the list position of a stored anchor's Message, so restore can scroll to
  * it by index — the one primitive that re-measures estimated heights until the
  * row truly lands at the top.
@@ -54,6 +68,5 @@ export function resolveAnchorIndex(
   messages: readonly { id: string }[]
 ): number | null {
   if (!anchor) return null;
-  const index = messages.findIndex((m) => m.id === anchor.messageId);
-  return index === -1 ? null : index;
+  return resolveMessageIndex(anchor.messageId, messages);
 }

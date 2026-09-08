@@ -8,6 +8,15 @@ That array is the wrong thing to index into. It is `allMessages` filtered by `ha
 
 This is the same reasoning that already governs Message anchoring elsewhere: `MessageResponse.id` is served as a Message's stable handle precisely so the pane can address a Message without a positional index (ADR-0023, #192), which is what lets Spotlight scroll to an exact Message.
 
+## Amendment: the freeze lasts as long as the Message renders (#271)
+
+"Set once and then frozen" above is unqualified, and implementing it showed it needs one. A divider anchored to a Message that later stops rendering resolves to nothing, and holding that anchor for the rest of the visit would leave the pane unable to mark any later arrival — the same silent failure this decision exists to end. **The freeze therefore lasts as long as the anchored Message still renders**: once it is gone, the next arrival may anchor a new divider.
+
+Two consequences worth naming, because neither follows from the sentence above:
+
+- A pill the reader already dismissed can return. Re-anchoring writes a fresh mark, so `consumed` starts false again. That is the intended reading — the new mark is a new batch, not the old one resurfacing — but it means "consumed" is a property of a mark, not of the visit.
+- The batch a divider marks is the run of unseen Messages **at the end of the column**, found from the end. A Message that stopped rendering earlier in the visit and comes back mid-list is not the start of a batch, and scanning from the front would put the divider in front of content already read.
+
 ## Considered options
 
 - **Store the array index and freeze it.** What the divider did before this decision. It is correct at the moment it is written and silently wrong afterwards: one earlier turn changing renderability shifts every index beneath it, and the divider ends up in front of a Message the reader has already read. There is no error and no test failure — the marker just moves. The same class of bug reaches the arrival check, where an append is detected by comparing filtered counts, so one Message appearing while another stops rendering reads as "nothing arrived".
