@@ -3,7 +3,11 @@ import {
   getScrollPillTarget,
   type ScrollPillTarget,
 } from "@/conversation/scrollPillVisibility";
-import { pickAnchor, resolveAnchorIndex } from "@/conversation/scrollAnchor";
+import {
+  pickAnchor,
+  resolveAnchorIndex,
+  resolveMessageIndex,
+} from "@/conversation/scrollAnchor";
 import type { ScrollSurface } from "@/conversation/scrollSurface";
 import type { ReadingStateController } from "@/conversation/useReadingState";
 
@@ -64,72 +68,34 @@ export interface ReadingPositionInput {
 }
 
 /**
- * Whether Messages were appended since the last run, judged by which Message is
- * last rather than by how many there are. The rendered list drops turns that
- * draw nothing, so a Message arriving while an earlier one stops rendering
- * leaves the count where it was, and counting concludes that nothing came
- * (#271).
- */
-function hasAppended({
-  previousLastId,
-  messages,
-}: {
-  previousLastId: string | undefined;
-  messages: readonly RenderedMessage[];
-}): boolean {
-  const lastId = lastIdOf(messages);
-  if (lastId === undefined) return false;
-  if (lastId === previousLastId) return false;
-  // A column that had nothing on it and now has something: all of it is new.
-  if (previousLastId === undefined) return true;
-  // The end of the list changed. That is an append only if the Message that
-  // used to be last is still here — otherwise the Chat lost turns off the end,
-  // which is a re-read shrinking, not an arrival.
-  return messages.some((message) => message.id === previousLastId);
-}
-
-function lastIdOf(messages: readonly RenderedMessage[]): string | undefined {
-  return messages[messages.length - 1]?.id;
-}
-
-/**
- * Where the first Message the reader has not seen sits: just past the Message
- * that was last when they were last caught up. Falls to the top of the list
- * when that Message is gone, or when the column was empty.
- */
-function firstUnseenIndex({
-  previousLastId,
-  messages,
-}: {
-  previousLastId: string | undefined;
-  messages: readonly RenderedMessage[];
-}): number {
-  const seen =
-    previousLastId === undefined
-      ? -1
-      : messages.findIndex((message) => message.id === previousLastId);
-  return seen + 1;
-}
-
-/**
- * What the live stream appending Messages should do to the open Chat (#189).
+ * What arrived since the last run: nothing, or the first Message the reader has
+ * not been shown yet.
  *
- * - `follow`: pinned to the bottom, so track the newest Message (live monitor).
- * - `flag`: scrolled up, so leave the viewport put and mark the arrivals
- *   instead of yanking the reader down.
- * - `none`: nothing was appended, so nothing moves.
+ * Judged by which Messages are on screen, never by how many. The rendered list
+ * drops turns that draw nothing, so its length moves on its own — one Message
+ * arriving as an earlier one stops rendering leaves the count exactly where it
+ * was, and counting concludes that nothing came (#271).
  */
-type ArrivalAction = "follow" | "flag" | "none";
+type Arrival =
+  | { appended: false }
+  | { appended: true; firstUnseen: RenderedMessage };
 
-function deriveArrivalAction({
-  appended,
-  atBottom,
+function readArrival({
+  seen,
+  messages,
 }: {
-  appended: boolean;
-  atBottom: boolean;
-}): ArrivalAction {
-  if (!appended) return "none";
-  return atBottom ? "follow" : "flag";
+  seen: ReadonlySet<string>;
+  messages: readonly RenderedMessage[];
+}): Arrival {
+  const last = messages[messages.length - 1];
+  // Nothing new at the end of the column: it is empty, or its last Message is
+  // one the reader has already been shown — a re-read that lost turns, or that
+  // brought them back in another order. Neither is an arrival.
+  if (!last || seen.has(last.id)) return { appended: false };
+  // A single read can bring several Messages, and the divider marks the start
+  // of the batch rather than its end.
+  const firstUnseen = messages.find((message) => !seen.has(message.id)) ?? last;
+  return { appended: true, firstUnseen };
 }
 
 /**
@@ -184,8 +150,9 @@ export function useReadingPosition({
   // The unread mark, held as one value because its two halves only ever change
   // together: where the divider sits (the first Message that arrived while the
   // reader was scrolled up, #189 — null means caught up, and it is set once per
-  // Chat then frozen), and whether the reader has already acted on the batch. Acting hides the "new messages" pill without touching
-  // the divider, which stays until the Chat changes (the LINE pattern).
+  // Chat then frozen), and whether the reader has already acted on the batch.
+  // Acting hides the "new messages" pill without touching the divider, which
+  // stays until the Chat changes (the LINE pattern).
   const [unreadState, setUnreadState] = useState<UnreadState>(CAUGHT_UP);
   // The unread mark belongs to the Chat that is open, so it clears as the Chat
   // changes. Done here rather than in the landing effect below — React's own
@@ -257,13 +224,13 @@ export function useReadingPosition({
   // and a divider whose Message is gone comes back as no divider rather than as
   // some arbitrary position (ADR-0026).
   const dividerMessageId = unreadState.dividerMessageId;
-  const dividerIndex = useMemo(() => {
-    if (dividerMessageId === null) return null;
-    const index = messages.findIndex(
-      (message) => message.id === dividerMessageId
-    );
-    return index === -1 ? null : index;
-  }, [dividerMessageId, messages]);
+  const dividerIndex = useMemo(
+    () =>
+      dividerMessageId === null
+        ? null
+        : resolveMessageIndex(dividerMessageId, messages),
+    [dividerMessageId, messages]
+  );
   const onJumpUnread = useCallback(() => {
     if (dividerIndex === null) return;
     surface.scrollToIndex(dividerIndex, { align: "start" });
@@ -330,14 +297,14 @@ export function useReadingPosition({
   }, [chatId, loading, messages, reading, surface, measurePill, scheduleFrame]);
 
   // Live arrival. This effect keys on the Messages, and keeps its own baseline
-  // — the Message that was last, written on every run, never skipped, so a Chat
-  // that empties and refills re-enters with a baseline that matches what is on
-  // screen. Sharing one baseline with the landing effect above is what made
+  // — the Messages the reader has been shown, written on every run, never
+  // skipped, so a Chat that empties and refills re-enters with a baseline that
+  // matches what is on screen. Sharing one baseline with the landing effect above is what made
   // that go wrong before (#270).
   const arrivalBaselineRef = useRef<{
     chatId: string | undefined;
-    lastId: string | undefined;
-  }>({ chatId: undefined, lastId: undefined });
+    seen: ReadonlySet<string>;
+  }>({ chatId: undefined, seen: new Set() });
   useEffect(() => {
     const previous = arrivalBaselineRef.current;
     // Only a landed Chat's baseline is worth comparing against, so an un-landed
@@ -345,39 +312,38 @@ export function useReadingPosition({
     // lands on — where the list swaps from the previous Chat's turns to this
     // one's — can never read as an arrival.
     const landed = landedChatRef.current === chatId;
+    // What is on screen now, which serves twice: as the next run's baseline, and
+    // as the check below for whether the divider still marks something.
+    const onScreen = new Set(messages.map((message) => message.id));
     arrivalBaselineRef.current = {
       chatId: landed ? chatId : undefined,
-      lastId: lastIdOf(messages),
+      seen: onScreen,
     };
     if (!landed || previous.chatId !== chatId) return;
 
+    const arrival = readArrival({ seen: previous.seen, messages });
+    if (!arrival.appended) return;
+
     // Follow the latest only when pinned at the bottom; otherwise hold the
-    // viewport and anchor the unread divider before the first new Message —
-    // never yank a scrolled-up reader down (#189).
-    const action = deriveArrivalAction({
-      appended: hasAppended({ previousLastId: previous.lastId, messages }),
-      atBottom: atBottomRef.current,
-    });
-    if (action === "follow") {
+    // viewport and mark the arrivals instead — never yank a scrolled-up reader
+    // down (#189).
+    if (atBottomRef.current) {
       surface.scrollToIndex(messages.length - 1, { align: "end" });
       scheduleFrame(measurePill);
       return;
     }
-    // Set-once-then-freeze: the divider anchors before the first Message that
-    // arrived unseen — the one just past what was on screen — and later
-    // arrivals leave it put, so it keeps marking where the reader left off.
-    if (action === "flag") {
-      const unseen =
-        messages[
-          firstUnseenIndex({ previousLastId: previous.lastId, messages })
-        ];
-      if (!unseen) return;
-      setUnreadState((current) =>
-        current.dividerMessageId === null
-          ? { dividerMessageId: unseen.id, consumed: false }
-          : current
-      );
-    }
+    // Set-once-then-freeze: the divider anchors to the first Message that
+    // arrived unseen, and later arrivals leave it put, so it keeps marking
+    // where the reader actually left off. The freeze lasts as long as the
+    // Message it names still renders — once that Message is gone the divider
+    // shows nothing, and holding on to it would silence every arrival for the
+    // rest of the visit.
+    setUnreadState((current) =>
+      current.dividerMessageId !== null &&
+      onScreen.has(current.dividerMessageId)
+        ? current
+        : { dividerMessageId: arrival.firstUnseen.id, consumed: false }
+    );
   }, [chatId, messages, surface, measurePill, scheduleFrame]);
 
   // Keep the pill correct as content height changes (messages expanding or

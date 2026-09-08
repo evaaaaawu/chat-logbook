@@ -412,6 +412,41 @@ describe("messages arriving while the chat is open", () => {
     expect(mounted.result.current.unread.pillVisible).toBe(true);
   });
 
+  it("notices an arrival that replaces the message it lands behind", () => {
+    // The turn that stops rendering is the last one, so there is no Message
+    // still on screen to compare the new tail against — only the reader's own
+    // history of what they have been shown (#271).
+    const surface = fakeSurface(atBottom);
+    const mounted = mount({ chatId: "c1", messages: messages(3) }, { surface });
+    act(() => surface.runFrames());
+    surface.setViewport(scrolledUp);
+    act(() => mounted.result.current.onScroll());
+
+    act(() =>
+      mounted.rerender({ chatId: "c1", messages: list("m-1", "m-2", "m-4") })
+    );
+
+    expect(mounted.result.current.unread.dividerIndex).toBe(2);
+  });
+
+  it("does not read a re-ordered list as an arrival", () => {
+    // Same Messages, another order. Nothing here is new to the reader, so
+    // planting a divider would put it in front of something already read.
+    const surface = fakeSurface(atBottom);
+    const mounted = mount({ chatId: "c1", messages: messages(3) }, { surface });
+    act(() => surface.runFrames());
+    surface.setViewport(scrolledUp);
+    act(() => mounted.result.current.onScroll());
+    const jumpsBefore = surface.jumps.length;
+
+    act(() =>
+      mounted.rerender({ chatId: "c1", messages: list("m-3", "m-1", "m-2") })
+    );
+
+    expect(mounted.result.current.unread.dividerIndex).toBeNull();
+    expect(surface.jumps).toHaveLength(jumpsBefore);
+  });
+
   it("counts against what is on screen, even after the chat emptied", () => {
     // The baseline is written on every run, so a chat that empties and refills
     // compares against the empty column rather than a count from before it
@@ -506,6 +541,22 @@ describe("the unread pill", () => {
 
     expect(result.current.unread.dividerIndex).toBeNull();
     expect(result.current.unread.pillVisible).toBe(false);
+  });
+
+  it("marks the next arrival once the old divider's message is gone", () => {
+    // The freeze holds a Message, not a slot. With that Message gone there is
+    // nothing left to keep, and keeping it would silence every later arrival
+    // for the rest of the visit.
+    const surface = fakeSurface(atBottom);
+    const { result, rerender } = mountWithUnread(surface);
+
+    act(() => rerender({ chatId: "c1", messages: list("m-1", "m-2", "m-3") }));
+    act(() =>
+      rerender({ chatId: "c1", messages: list("m-1", "m-2", "m-3", "m-5") })
+    );
+
+    expect(result.current.unread.dividerIndex).toBe(3);
+    expect(result.current.unread.pillVisible).toBe(true);
   });
 
   it("consumes itself when the reader scrolls back to the bottom", () => {
