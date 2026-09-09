@@ -140,13 +140,13 @@ function sharesRun(
 function firstRow(segments: Segment[], messageId: string): string | null {
   const first = segments[0];
   if (!first || first.kind !== "run") return null;
-  return rowKey(messageId, first.blockIndices[0]!);
+  return rowKey(messageId, first.blockIndices[0]);
 }
 
 function lastRow(segments: Segment[], messageId: string): string | null {
   const last = segments[segments.length - 1];
   if (!last || last.kind !== "run") return null;
-  return rowKey(messageId, last.blockIndices[last.blockIndices.length - 1]!);
+  return rowKey(messageId, last.blockIndices[last.blockIndices.length - 1]);
 }
 
 function firstRowOf(
@@ -157,7 +157,7 @@ function firstRowOf(
   for (let i = 0; i < message.content.length; i += 1) {
     const key = rowKey(message.id, i);
     if (runIndexByRow.has(key)) return key;
-    if (message.content[i]!.type !== "tool_result") return null;
+    if (message.content[i].type !== "tool_result") return null;
   }
   return null;
 }
@@ -170,7 +170,7 @@ function lastRowOf(
   for (let i = message.content.length - 1; i >= 0; i -= 1) {
     const key = rowKey(message.id, i);
     if (runIndexByRow.has(key)) return key;
-    if (message.content[i]!.type !== "tool_result") return null;
+    if (message.content[i].type !== "tool_result") return null;
   }
   return null;
 }

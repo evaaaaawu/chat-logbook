@@ -243,7 +243,7 @@ function renderContent(
   return layout.segments.map((segment) => {
     if (segment.kind === "block") {
       return renderContentBlock(
-        content[segment.blockIndex]!,
+        content[segment.blockIndex],
         segment.blockIndex,
         context
       );
@@ -252,7 +252,7 @@ function renderContent(
       // The Run's own container: its rows sit a few pixels apart, where prose
       // around them keeps its breathing room. The contrast is the point (#236).
       <div
-        key={`run-${entryKey(segment.entries[0]!)}`}
+        key={`run-${entryKey(segment.entries[0])}`}
         data-testid="run"
         className="flex flex-col gap-0.5"
       >
@@ -277,7 +277,7 @@ function renderRunEntry(
 ) {
   if (entry.kind === "unit") {
     return renderContentBlock(
-      content[entry.blockIndex]!,
+      content[entry.blockIndex],
       entry.blockIndex,
       context
     );
@@ -287,7 +287,7 @@ function renderRunEntry(
   const units =
     isExpanded &&
     entry.blockIndices.map((blockIndex) =>
-      renderContentBlock(content[blockIndex]!, blockIndex, context)
+      renderContentBlock(content[blockIndex], blockIndex, context)
     );
 
   return (

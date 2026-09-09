@@ -1,5 +1,5 @@
 import { Terminal } from "lucide-react";
-import type { ContentBlock } from "@/types";
+import type { ContentBlock, PatchHunk } from "@/types";
 import { CollapsibleRow } from "@/conversation/CollapsibleRow";
 import { CommandView } from "@/conversation/CommandView";
 import { DiffView } from "@/conversation/DiffView";
@@ -29,17 +29,34 @@ function formatResultContent(content: unknown): string {
  * The result is passed in rather than read from the call's own turn: an Agent
  * commonly records it in the next turn (#193).
  */
-export function CollapsibleToolCall({
-  block,
-  result,
-  isExpanded,
-  onToggle,
-}: CollapsibleToolCallProps) {
+/**
+ * What expanding a unit shows.
+ *
+ * A tool result carries `file_path`, `patch` and `content` as independent
+ * optionals, so a boolean like `isDiff` cannot tell the renderer that the
+ * fields that branch needs are actually there. Reading them once into a
+ * variant lets each branch take what it needs as a required field.
+ */
+type ExpandedBody =
+  | { kind: "diff"; filePath: string; patch: PatchHunk[] }
+  | { kind: "excerpt"; filePath: string; content: string }
+  | { kind: "command"; command: string }
+  | { kind: "raw" };
+
+function planExpandedBody(
+  block: ToolUseBlock,
+  result: ToolResultBlock | undefined
+): ExpandedBody {
   // A file-editing result carries the patch and the path it applied to (#235).
   // The diff is the whole point of expanding such a unit, so it stands in for
   // both raw blocks — the call's own old/new strings would only repeat it.
+  const filePath = result?.file_path;
   const patch = result?.patch;
-  const isDiff = Boolean(result?.file_path && patch && patch.length > 0);
+  if (filePath && patch && patch.length > 0) {
+    return { kind: "diff", filePath, patch };
+  }
+
+  const action = block.action;
 
   // A read's whole value is the file it returned, so it gets the same treatment
   // as an edit: the path, the file's own line numbers, and its code coloured.
@@ -47,20 +64,32 @@ export function CollapsibleToolCall({
   // A read that named no path fetched something else (a URL reads as a phrase),
   // and a non-text result (an image the tool returned) has no lines to number;
   // both keep the raw rendering.
-  const action = block.action;
   const readPath =
     action?.kind === "read" && action.object?.type === "path"
       ? action.object.value
       : undefined;
-  const isExcerpt = Boolean(
-    !isDiff && readPath && typeof result?.content === "string"
-  );
+  if (readPath && typeof result?.content === "string") {
+    return { kind: "excerpt", filePath: readPath, content: result.content };
+  }
 
   // An execute is worth expanding for the command it ran and what that command
   // said back, so the command renders as shell and the call's input is not also
   // dumped as JSON above it (#252). The command is the Action's detail, since
   // the row itself is labelled with what the call said it was for (#263).
-  const command = action?.kind === "execute" ? action.detail : undefined;
+  if (action?.kind === "execute" && action.detail !== undefined) {
+    return { kind: "command", command: action.detail };
+  }
+
+  return { kind: "raw" };
+}
+
+export function CollapsibleToolCall({
+  block,
+  result,
+  isExpanded,
+  onToggle,
+}: CollapsibleToolCallProps) {
+  const body = planExpandedBody(block, result);
 
   const { verb, object, diffStat } = generateToolSummary(block, result);
 
@@ -73,16 +102,13 @@ export function CollapsibleToolCall({
       isExpanded={isExpanded}
       onToggle={onToggle}
     >
-      {isDiff ? (
-        <DiffView filePath={result!.file_path!} patch={patch!} />
-      ) : isExcerpt ? (
-        <FileExcerptView
-          filePath={readPath!}
-          content={result!.content as string}
-        />
-      ) : command !== undefined ? (
+      {body.kind === "diff" ? (
+        <DiffView filePath={body.filePath} patch={body.patch} />
+      ) : body.kind === "excerpt" ? (
+        <FileExcerptView filePath={body.filePath} content={body.content} />
+      ) : body.kind === "command" ? (
         <CommandView
-          command={command}
+          command={body.command}
           output={result ? formatResultContent(result.content) : undefined}
         />
       ) : (

@@ -73,19 +73,20 @@ export function startWatcher(opts: WatcherOptions): IngestionWatcher {
     const paths = Array.from(watchPathSet);
     if (paths.length === 0) return;
 
-    watcher = chokidar.watch(paths, {
+    const started = chokidar.watch(paths, {
       ignoreInitial: true,
       awaitWriteFinish: { stabilityThreshold: 50, pollInterval: 25 },
       ...opts.chokidarOptions,
     });
+    watcher = started;
 
-    watcher.on("change", (p) => scheduleIngest(p));
-    watcher.on("add", (p) => scheduleIngest(p));
-    watcher.on("unlink", (p) => recordUnlink(p));
-    watcher.on("error", (err) => onError(err));
+    started.on("change", (p) => scheduleIngest(p));
+    started.on("add", (p) => scheduleIngest(p));
+    started.on("unlink", (p) => recordUnlink(p));
+    started.on("error", (err) => onError(err));
 
     await new Promise<void>((resolve) => {
-      watcher!.once("ready", () => resolve());
+      started.once("ready", () => resolve());
     });
   })();
 
