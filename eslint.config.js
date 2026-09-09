@@ -143,4 +143,37 @@ export default defineConfig([
       "@typescript-eslint/no-unsafe-return": "off",
     },
   },
+
+  // Files still carrying casts at a boundary, exempt from
+  // `no-unsafe-type-assertion` until #278 parses each one.
+  //
+  // This list only shrinks. Adding a file to it is not the way to make a new
+  // cast pass — the rule holds everywhere else from today, and #278 names the
+  // batch each file belongs to. Delete the block when the list empties.
+  {
+    files: [
+      "api/src/archive/repository.ts",
+      "api/src/chat-reader.ts",
+      "api/src/index.ts",
+      "api/src/list-counts.ts",
+      "api/src/list-pagination.ts",
+      "api/src/metadata/repository.ts",
+      "api/src/metadata/tags.ts",
+      "api/src/plugins/claude-code/actions.ts",
+      "api/src/plugins/claude-code/plugin.ts",
+      "api/src/plugins/visualize-widget.ts",
+      "web/src/App.tsx",
+      "web/src/chat/sort/sortPreference.ts",
+      "web/src/chat/useChatCounts.ts",
+      "web/src/chat/useCursorNavigation.ts",
+      "web/src/chat/useFilteredTotal.ts",
+      "web/src/chat/usePaginatedChats.ts",
+      "web/src/conversation/readingState.ts",
+      "web/src/tags/TagStrip.tsx",
+      "web/src/tags/palette.ts",
+      "web/src/tags/tagModePreference.ts",
+      "web/src/tags/useTags.ts",
+    ],
+    rules: { "@typescript-eslint/no-unsafe-type-assertion": "off" },
+  },
 ]);

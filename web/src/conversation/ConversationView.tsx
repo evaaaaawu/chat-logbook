@@ -481,6 +481,7 @@ export function ConversationView({
   // compiler intentionally skips memoizing this component. This is expected and
   // safe here: the virtualizer values are consumed locally and not passed into
   // other memoized components/hooks.
+  // eslint-disable-next-line react-hooks/incompatible-library -- see above
   const virtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => scrollContainerRef.current,
