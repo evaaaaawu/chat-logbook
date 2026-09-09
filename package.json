@@ -20,6 +20,7 @@
     "dev": "pnpm -r run dev",
     "build": "pnpm --filter web run build && pnpm --filter @chat-logbook/api run build",
     "prepublishOnly": "pnpm build",
+    "lint": "eslint .",
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",
     "prepare": "husky"
@@ -37,10 +38,16 @@
     "update-notifier": "^7.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@secretlint/secretlint-rule-preset-recommend": "^13.0.2",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.4.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "prettier": "^3.8.1",
-    "secretlint": "^13.0.2"
+    "secretlint": "^13.0.2",
+    "typescript-eslint": "^8.57.2"
   }
 }

@@ -1421,10 +1421,8 @@ function countArchiveQueries(
   let count = 0;
   for (const m of methods) {
     originals[m] = seam[m];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (seam as any)[m] = (...args: unknown[]) => {
       count += 1;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return (originals[m] as any).call(seam, ...args);
     };
   }
@@ -1432,7 +1430,6 @@ function countArchiveQueries(
     fn();
   } finally {
     for (const m of methods) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (seam as unknown as Record<string, unknown>)[m] = originals[
         m
       ] as ArchiveReadSeam[typeof m];
