@@ -99,6 +99,41 @@ describe("useCursorNavigation", () => {
     expect(onOpen).toHaveBeenCalledWith("c");
   });
 
+  it("does not re-bind the keydown listener when the chats are unchanged", () => {
+    const { rerender } = renderHook(
+      ({ chats }) =>
+        useCursorNavigation({ chats, openId: "a", onOpen: vi.fn() }),
+      { initialProps: { chats } }
+    );
+    const add = vi.spyOn(window, "addEventListener");
+    const remove = vi.spyOn(window, "removeEventListener");
+
+    // Same rows, new array: the identity churn an upstream re-render (a
+    // Selection change) hands the hook.
+    rerender({ chats: [...chats] });
+
+    const keydownCalls = (spy: typeof add | typeof remove) =>
+      spy.mock.calls.filter(([type]) => type === "keydown").length;
+    expect(keydownCalls(add)).toBe(0);
+    expect(keydownCalls(remove)).toBe(0);
+
+    add.mockRestore();
+    remove.mockRestore();
+  });
+
+  it("walks the latest chats after they change", () => {
+    const { result, rerender } = renderHook(
+      ({ chats }) =>
+        useCursorNavigation({ chats, openId: "a", onOpen: vi.fn() }),
+      { initialProps: { chats } }
+    );
+
+    rerender({ chats: [chat("a"), chat("x"), chat("b")] });
+    pressArrow("ArrowDown");
+
+    expect(result.current.cursorId).toBe("x");
+  });
+
   it("re-anchors the Cursor to the Open Chat when it changes by mouse click", () => {
     const { result, rerender } = renderHook(
       ({ openId }) => useCursorNavigation({ chats, openId, onOpen: vi.fn() }),

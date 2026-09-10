@@ -48,8 +48,11 @@ export function useCursorNavigation({
     setCursorIndex(chats.findIndex((chat) => chat.id === openId));
   }
 
-  // Mirror the latest cursorIndex and onOpen into refs so the keydown handler
+  // Mirror the latest props and cursorIndex into refs so the keydown handler
   // reads current values without re-subscribing the window listener each render.
+  // `chats` in particular changes identity on renders where the list itself has
+  // not (a Selection change). The writes happen in effects, not render, because
+  // React can discard a render and must not leave a ref pointing at its values.
   const cursorIndexRef = useRef(cursorIndex);
   useEffect(() => {
     cursorIndexRef.current = cursorIndex;
@@ -58,6 +61,14 @@ export function useCursorNavigation({
   useEffect(() => {
     onOpenRef.current = onOpen;
   }, [onOpen]);
+  const chatsRef = useRef(chats);
+  useEffect(() => {
+    chatsRef.current = chats;
+  }, [chats]);
+  const openIdRef = useRef(openId);
+  useEffect(() => {
+    openIdRef.current = openId;
+  }, [openId]);
   const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -86,6 +97,8 @@ export function useCursorNavigation({
 
       e.preventDefault();
       const delta = e.key === "ArrowDown" ? 1 : -1;
+      const chats = chatsRef.current;
+      const openId = openIdRef.current;
       const current = cursorIndexRef.current;
       const start =
         current >= 0 ? current : chats.findIndex((chat) => chat.id === openId);
@@ -108,7 +121,7 @@ export function useCursorNavigation({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [chats, openId, debounceMs]);
+  }, [debounceMs]);
 
   useEffect(
     () => () => {
