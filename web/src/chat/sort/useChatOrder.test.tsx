@@ -129,6 +129,38 @@ describe("useChatOrder", () => {
     expect(ids(result.current.orderedChats)).toEqual(["b", "d", "c", "a"]);
   });
 
+  it("keeps orderedChats referentially stable across a re-render with the same inputs", () => {
+    const chats = [...activeChats(), ...deletedChats()];
+    const { result, rerender } = renderHook(
+      ({ chats, signal }) => useChatOrder("main", chats, signal),
+      { initialProps: { chats, signal: "0:0" } }
+    );
+    const first = result.current.orderedChats;
+
+    // A render driven by unrelated state (e.g. a Selection change in App)
+    // passes the same chats and signal; consumers keyed on the array must not
+    // see a new identity.
+    rerender({ chats, signal: "0:0" });
+
+    expect(result.current.orderedChats).toBe(first);
+  });
+
+  it("keeps orderedChats stable once a slotted newcomer has settled into the anchor", () => {
+    const { result, rerender } = renderHook(
+      ({ chats, signal }) => useChatOrder("main", chats, signal),
+      { initialProps: { chats: activeChats(), signal: "0:0" } }
+    );
+
+    const withNew = [...activeChats(), chat("d", { updatedAt: 250 })];
+    rerender({ chats: withNew, signal: "0:0" });
+    const settled = result.current.orderedChats;
+    expect(ids(settled)).toEqual(["b", "d", "c", "a"]);
+
+    rerender({ chats: withNew, signal: "0:0" });
+
+    expect(result.current.orderedChats).toBe(settled);
+  });
+
   it("re-sorts when the user changes the sort field via sortControlProps", () => {
     const { result } = renderHook(() =>
       useChatOrder("main", activeChats(), "0:0")

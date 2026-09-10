@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { Chat } from "@/types";
 import type { SortField } from "@/chat/sort/sortChats";
 import type { SortControlProps } from "@/chat/sort/SortControl";
@@ -65,8 +66,11 @@ export function useChatOrder(
   // internal one is left idle (its setters are never wired up).
   const ownPref = useSortPreference(config);
   const pref = externalPref ?? ownPref;
+  // Memoized so useFrozenSort sees the same array on renders where `chats` is
+  // unchanged, letting it return a stable `orderedChats`.
+  const viewChats = useMemo(() => chats.filter(includes), [chats, includes]);
   const orderedChats = useFrozenSort(
-    chats.filter(includes),
+    viewChats,
     pref.field,
     pref.direction,
     flushSignal

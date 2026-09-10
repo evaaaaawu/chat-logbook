@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Chat } from "@/types";
 import { applyHeldOrder } from "@/chat/sort/freezeSortOrder";
 import {
@@ -32,7 +32,14 @@ export function useFrozenSort(
   direction: SortDirection,
   resortKey: string
 ): Chat[] {
-  const fresh = sortChats(chats, field, direction);
+  // Both the fresh sort and the held order are memoized so the returned array
+  // keeps its identity on renders where nothing it depends on changed (e.g. a
+  // Selection-only render in App). The React Compiler is not enabled at build
+  // time, so this memoization is manual.
+  const fresh = useMemo(
+    () => sortChats(chats, field, direction),
+    [chats, field, direction]
+  );
   const key = `${field}:${direction}:${resortKey}`;
 
   // Store the anchored order in state and re-anchor when the key changes. This
@@ -44,6 +51,17 @@ export function useFrozenSort(
     ids: fresh.map((c) => c.id),
   }));
 
+  // Hold existing rows, slot newcomers by the fresh sort. This also covers the
+  // initial load, where the first render anchors an empty window before the
+  // fetch resolves and the first page then grows it. Keyed on `anchor.ids`
+  // because the anchor is replaced during render (below): a new anchor must
+  // recompute the held order. Computed before the key check because hooks
+  // cannot follow an early return.
+  const held = useMemo(
+    () => applyHeldOrder(fresh, anchor.ids),
+    [fresh, anchor.ids]
+  );
+
   // A key change is an explicit re-sort: drop the held window and re-anchor to
   // the fresh order.
   if (anchor.key !== key) {
@@ -51,10 +69,6 @@ export function useFrozenSort(
     return fresh;
   }
 
-  // Same key: hold existing rows, slot newcomers by the fresh sort. This also
-  // covers the initial load, where the first render anchors an empty window
-  // before the fetch resolves and the first page then grows it.
-  const held = applyHeldOrder(fresh, anchor.ids);
   const heldIds = held.map((c) => c.id);
 
   // Grow (or shrink) the anchor to match the held window so slotted newcomers —
