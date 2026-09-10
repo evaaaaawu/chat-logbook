@@ -23,6 +23,10 @@ export interface Fold {
 // would only add a click (#199).
 const FOLD_THRESHOLD = 3;
 
+function isToolUse(block: ContentBlock | undefined): block is ToolUseBlock {
+  return block?.type === "tool_use";
+}
+
 /**
  * Every Fold in the Chat, in reading order.
  *
@@ -40,9 +44,7 @@ export function planFolds(messages: Message[]): Fold[] {
       if (stretch.length < FOLD_THRESHOLD) continue;
       folds.push({
         rows: stretch,
-        summary: foldSummary(
-          stretch.map((row) => blockAt(row) as ToolUseBlock)
-        ),
+        summary: foldSummary(stretch.map(blockAt).filter(isToolUse)),
       });
     }
   }
@@ -95,7 +97,7 @@ export function planLayout(messages: Message[]): MessageLayout[] {
 
   const runLayouts = planRunLayout(messages);
   return messages.map((message, index) => {
-    const runLayout = runLayouts[index]!;
+    const runLayout = runLayouts[index];
     return {
       runContinuesBefore: runLayout.runContinuesBefore,
       runContinuesAfter: runLayout.runContinuesAfter,
@@ -124,7 +126,7 @@ function foldEntries(
       entries.push({ kind: "unit", blockIndex });
       continue;
     }
-    const anchor = rowKeyOf(fold.rows[0]!);
+    const anchor = rowKeyOf(fold.rows[0]);
     const foldId = `fold:${anchor}`;
     const last = entries[entries.length - 1];
     if (last?.kind === "fold" && last.foldId === foldId) {

@@ -45,6 +45,22 @@ interface AppOptions {
   webDistDir?: string;
 }
 
+/**
+ * A JSON request body, read one field at a time.
+ *
+ * Every field comes back `unknown`, which is what an unparsed body actually
+ * offers — each caller narrows the one it needs. A cast to a shape the body
+ * has not been checked against would claim more than that (coding-style:
+ * validation lives at the edges).
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function field(body: unknown, key: string): unknown {
+  return isRecord(body) ? body[key] : undefined;
+}
+
 export function createApp({
   archive,
   metadata,
@@ -273,25 +289,17 @@ export function createApp({
     } catch {
       return null;
     }
-    const chatIds = (body as { chatIds?: unknown })?.chatIds;
+    const chatIds = field(body, "chatIds");
     if (Array.isArray(chatIds)) return toInternalIds(chatIds);
 
-    const filter = (body as { filter?: unknown })?.filter;
-    if (filter && typeof filter === "object" && countsQuery) {
-      const f = filter as {
-        projects?: unknown;
-        tags?: unknown;
-        tagMode?: unknown;
-        includeTrashed?: unknown;
-      };
+    const filter = field(body, "filter");
+    if (isRecord(filter) && countsQuery) {
       return countsQuery.queryFilteredIds({
-        projects: toStringArray(f.projects),
-        tags: toStringArray(f.tags),
-        tagMode: f.tagMode === "any" ? "any" : "all",
-        includeTrashed: f.includeTrashed === true,
-        excludeIds: toInternalIds(
-          (body as { excludeIds?: unknown })?.excludeIds
-        ),
+        projects: toStringArray(filter.projects),
+        tags: toStringArray(filter.tags),
+        tagMode: filter.tagMode === "any" ? "any" : "all",
+        includeTrashed: filter.includeTrashed === true,
+        excludeIds: toInternalIds(field(body, "excludeIds")),
       });
     }
     return null;
@@ -326,14 +334,14 @@ export function createApp({
     if (internalIds === null) {
       return c.json({ error: "Invalid chatIds" }, 400);
     }
-    const body = (await c.req.json()) as { add?: unknown; remove?: unknown };
+    const body: unknown = await c.req.json();
     const toIds = (v: unknown): string[] =>
       Array.isArray(v)
         ? v.filter((x): x is string => typeof x === "string")
         : [];
     tags.assignTagsBatch(internalIds, {
-      add: toIds(body.add),
-      remove: toIds(body.remove),
+      add: toIds(field(body, "add")),
+      remove: toIds(field(body, "remove")),
     });
     return c.json({ count: internalIds.length });
   });
@@ -349,7 +357,7 @@ export function createApp({
     } catch {
       return c.json({ error: "Invalid chatIds" }, 400);
     }
-    const chatIds = (body as { chatIds?: unknown })?.chatIds;
+    const chatIds = field(body, "chatIds");
     if (!Array.isArray(chatIds)) {
       return c.json({ error: "Invalid chatIds" }, 400);
     }
@@ -397,14 +405,10 @@ export function createApp({
     } catch {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
-    if (
-      !body ||
-      typeof body !== "object" ||
-      typeof (body as { title?: unknown }).title !== "string"
-    ) {
+    const raw = field(body, "title");
+    if (typeof raw !== "string") {
       return c.json({ error: "Invalid title" }, 400);
     }
-    const raw = (body as { title: string }).title;
     if (raw.length > 200) {
       return c.json({ error: "Title too long" }, 400);
     }

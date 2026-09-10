@@ -1,3 +1,4 @@
 {
-  "*": ["secretlint --maskSecrets", "prettier --ignore-unknown --write"]
+  "*": ["secretlint --maskSecrets", "prettier --ignore-unknown --write"],
+  "*.{ts,tsx}": ["eslint --fix"]
 }

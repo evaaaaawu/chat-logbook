@@ -9,8 +9,18 @@ function blockToMarkdown(block: ContentBlock): string | null {
       return block.text;
     case "command":
       return block.args ? `${block.name} ${block.args}` : block.name;
-    default:
+    // Named rather than left to a `default`, so a new block type has to decide
+    // here whether it belongs in what a reader copies.
+    case "thinking":
+    case "tool_use":
+    case "tool_result":
+    case "image":
+    case "system":
       return null;
+    default: {
+      const _exhaustive: never = block;
+      return _exhaustive;
+    }
   }
 }
 

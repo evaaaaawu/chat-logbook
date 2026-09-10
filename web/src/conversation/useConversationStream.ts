@@ -39,7 +39,7 @@ const defaultConnect: ConversationStreamConnector = ({
   }
   const source = new EventSource(STREAM_URL);
   source.addEventListener("changed", (event) => {
-    onChanged(parseChatIds((event as MessageEvent).data));
+    onChanged(parseChatIds(event.data));
   });
   source.addEventListener("error", () => onError());
   return { close: () => source.close() };
@@ -48,16 +48,21 @@ const defaultConnect: ConversationStreamConnector = ({
 // The data frame is `{ chatIds: string[] }`. Parse defensively: a malformed or
 // empty frame yields no ids, so a bad payload simply never matches the open chat
 // rather than throwing on the stream thread.
+function hasChatIdArray(value: unknown): value is { chatIds: unknown[] } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "chatIds" in value &&
+    Array.isArray(value.chatIds)
+  );
+}
+
 function parseChatIds(data: unknown): string[] {
   if (typeof data !== "string") return [];
   try {
     const parsed: unknown = JSON.parse(data);
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      Array.isArray((parsed as { chatIds?: unknown }).chatIds)
-    ) {
-      return (parsed as { chatIds: unknown[] }).chatIds.filter(
+    if (hasChatIdArray(parsed)) {
+      return parsed.chatIds.filter(
         (id): id is string => typeof id === "string"
       );
     }
