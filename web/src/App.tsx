@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   usePaginatedChats,
   type ListDirection,
@@ -495,79 +495,102 @@ function App() {
     });
   };
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const isEditable =
-        target?.tagName === "INPUT" ||
-        target?.tagName === "TEXTAREA" ||
-        target?.isContentEditable === true;
-      if (isEditable) return;
-      // Keystrokes inside an open popover or modal dialog (find-or-create,
-      // recolor, metadata, the tag picker…) belong to that surface, not the
-      // global chat shortcuts. Without this, Enter/Backspace while focus sits on
-      // a non-input element there (e.g. a color swatch or a tag row) would start
-      // a title rename or trash the chat. The dialog is portaled to <body>, so
-      // its React `stopPropagation` can't reach this window-level listener —
-      // matching on the slot is what keeps the keystroke contained.
-      if (
-        target instanceof Element &&
-        target.closest(
-          '[data-slot="popover-content"], [data-slot="dialog-content"]'
-        )
+  // Every global shortcut passes through this one handler. It reads the view
+  // mode, the Open Chat, the toast's action, the Selection and the visible ids
+  // — several of which change identity on every render — so it is mirrored into
+  // a ref and the window listener below subscribes once, for the life of the
+  // app. Same shape useCursorNavigation uses, for the same reason: the chat list
+  // is the hottest render path here, and re-binding a window listener per render
+  // is wasted work that also hides which values the handler actually depends on.
+  const handleShortcut = (e: KeyboardEvent) => {
+    const target = e.target as HTMLElement | null;
+    const isEditable =
+      target?.tagName === "INPUT" ||
+      target?.tagName === "TEXTAREA" ||
+      target?.isContentEditable === true;
+    if (isEditable) return;
+    // Keystrokes inside an open popover or modal dialog (find-or-create,
+    // recolor, metadata, the tag picker…) belong to that surface, not the
+    // global chat shortcuts. Without this, Enter/Backspace while focus sits on
+    // a non-input element there (e.g. a color swatch or a tag row) would start
+    // a title rename or trash the chat. The dialog is portaled to <body>, so
+    // its React `stopPropagation` can't reach this window-level listener —
+    // matching on the slot is what keeps the keystroke contained.
+    if (
+      target instanceof Element &&
+      target.closest(
+        '[data-slot="popover-content"], [data-slot="dialog-content"]'
       )
-        return;
+    )
+      return;
 
-      if (e.key === "Escape" && mode === "trash") {
-        e.preventDefault();
-        switchMode("main");
-        return;
-      }
+    if (e.key === "Escape" && mode === "trash") {
+      e.preventDefault();
+      switchMode("main");
+      return;
+    }
 
-      if (e.key === "Backspace" && selectedId) {
-        e.preventDefault();
-        if (mode === "trash") {
-          handleRestore(selectedId);
-        } else {
-          handleDelete(selectedId);
-        }
-        return;
+    if (e.key === "Backspace" && selectedId) {
+      e.preventDefault();
+      if (mode === "trash") {
+        handleRestore(selectedId);
+      } else {
+        handleDelete(selectedId);
       }
+      return;
+    }
 
-      if (
-        (e.key === "F2" || e.key === "Enter") &&
-        selectedId &&
-        mode === "main"
-      ) {
-        e.preventDefault();
-        setEditingTitleId(selectedId);
-        return;
-      }
+    if (
+      (e.key === "F2" || e.key === "Enter") &&
+      selectedId &&
+      mode === "main"
+    ) {
+      e.preventDefault();
+      setEditingTitleId(selectedId);
+      return;
+    }
 
-      if ((e.metaKey || e.ctrlKey) && e.key === "z" && toast?.onAction) {
-        e.preventDefault();
-        toast.onAction();
-        dismissToast();
-        return;
-      }
+    if ((e.metaKey || e.ctrlKey) && e.key === "z" && toast?.onAction) {
+      e.preventDefault();
+      toast.onAction();
+      dismissToast();
+      return;
+    }
 
-      // Cmd/Ctrl+A selects every Chat matching the current filter (#164) — the
-      // keyboard entry into select-all-matching, alongside the batch bar's
-      // `Select all N` link. Only in the main list, where selection lives.
-      if (
-        (e.metaKey || e.ctrlKey) &&
-        (e.key === "a" || e.key === "A") &&
-        mode === "main" &&
-        visibleIds.length > 0
-      ) {
-        e.preventDefault();
-        selection.selectAllMatching();
-        return;
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    // Cmd/Ctrl+A selects every Chat matching the current filter (#164) — the
+    // keyboard entry into select-all-matching, alongside the batch bar's
+    // `Select all N` link. Only in the main list, where selection lives.
+    if (
+      (e.metaKey || e.ctrlKey) &&
+      (e.key === "a" || e.key === "A") &&
+      mode === "main" &&
+      visibleIds.length > 0
+    ) {
+      e.preventDefault();
+      selection.selectAllMatching();
+      return;
+    }
+  };
+
+  // Mirror the latest handler into a ref after every commit. A window event
+  // always arrives after a commit, so the listener below reads current state
+  // without ever holding a stale Open Chat, view mode or toast action. The
+  // mirror belongs in an effect rather than in render: React can throw a render
+  // away, and a handler written from one that never commits would leave the
+  // listener acting on state the app never showed.
+  const handleShortcutRef = useRef(handleShortcut);
+  useEffect(() => {
+    handleShortcutRef.current = handleShortcut;
   });
+
+  useEffect(() => {
+    // Named so a test can tell this listener apart from the other window
+    // keydown listeners the app binds (cursor navigation, scroll jumps).
+    const globalShortcutListener = (e: KeyboardEvent) =>
+      handleShortcutRef.current(e);
+    window.addEventListener("keydown", globalShortcutListener);
+    return () => window.removeEventListener("keydown", globalShortcutListener);
+  }, []);
 
   return (
     <div className="h-screen bg-background text-foreground">
