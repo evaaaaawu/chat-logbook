@@ -41,6 +41,16 @@ describe("parsePage", () => {
     ).toBeNull();
   });
 
+  it.each(["tags", "deletedAt"])(
+    "rejects a chat the server sent without %s",
+    (field) => {
+      const partial = Object.fromEntries(
+        Object.entries(chat).filter(([key]) => key !== field)
+      );
+      expect(parsePage({ chats: [partial], nextCursor: null })).toBeNull();
+    }
+  );
+
   it("rejects a tag whose color is not a palette token", () => {
     const pink = { ...chat, tags: [{ id: "t", name: "n", color: "pink" }] };
     expect(parsePage({ chats: [pink], nextCursor: null })).toBeNull();
@@ -68,15 +78,13 @@ describe("parseMessages", () => {
     ]);
   });
 
-  it("accepts a message whose content is a plain string", () => {
+  it("drops a message whose content is not a block list", () => {
     const body = { messages: [{ ...base, content: "hello", model: "m" }] };
-    expect(parseMessages(body)).toEqual([
-      { ...base, content: "hello", model: "m" },
-    ]);
+    expect(parseMessages(body)).toEqual([]);
   });
 
   it("drops a message whose role is unknown", () => {
-    const body = { messages: [{ ...base, role: "narrator", content: "x" }] };
+    const body = { messages: [{ ...base, role: "narrator", content: [] }] };
     expect(parseMessages(body)).toEqual([]);
   });
 

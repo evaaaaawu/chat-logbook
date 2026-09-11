@@ -3,15 +3,12 @@ import { and, eq, inArray } from "drizzle-orm";
 import { openStore } from "../storage/openStore.js";
 import * as schema from "./schema.js";
 import { chatTags, tags } from "./schema.js";
+import type { Tag } from "./tag.js";
 import { type ColorToken, isColorToken } from "./tag-colors.js";
 
-const DB_FILE = "metadata.db";
+export type { Tag } from "./tag.js";
 
-export interface Tag {
-  id: string;
-  name: string;
-  color: ColorToken;
-}
+const DB_FILE = "metadata.db";
 
 export interface TagRepository {
   createTag(name: string, color: ColorToken): Tag;

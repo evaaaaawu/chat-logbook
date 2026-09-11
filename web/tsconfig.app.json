@@ -26,8 +26,9 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@contract": ["../api/src/list-contract.ts"]
+      "@contract": ["../api/src/list-contract.ts"],
+      "@wire": ["../api/src/wire-types.ts"]
     }
   },
-  "include": ["src", "../api/src/list-contract.ts"]
+  "include": ["src", "../api/src/list-contract.ts", "../api/src/wire-types.ts"]
 }

@@ -13,7 +13,7 @@ type FakeChat = {
   sourceFilePath: string | null;
   createdAt: number;
   updatedAt: number;
-  deletedAt?: number | null;
+  deletedAt: number | null;
   isDeleted?: boolean;
 };
 
@@ -29,6 +29,7 @@ const initialFakeChats: FakeChat[] = [
     sourceFilePath: "/Users/test/.claude/projects/my-web-app/chat-1.jsonl",
     createdAt: 1700000000000,
     updatedAt: 1700000200000,
+    deletedAt: null,
   },
   {
     id: "chat-2",
@@ -41,6 +42,7 @@ const initialFakeChats: FakeChat[] = [
     sourceFilePath: "/Users/test/.claude/projects/backend-api/chat-2.jsonl",
     createdAt: 1700000100000,
     updatedAt: 1700000300000,
+    deletedAt: null,
   },
   {
     id: "chat-3",
@@ -53,6 +55,7 @@ const initialFakeChats: FakeChat[] = [
     sourceFilePath: "/Users/test/.claude/projects/my-web-app/chat-3.jsonl",
     createdAt: 1700000050000,
     updatedAt: 1700000150000,
+    deletedAt: null,
   },
   {
     id: "chat-missing",
@@ -65,6 +68,7 @@ const initialFakeChats: FakeChat[] = [
     sourceFilePath: null,
     createdAt: 1699999900000,
     updatedAt: 1699999900000,
+    deletedAt: null,
   },
   {
     id: "chat-deleted-1",
@@ -212,7 +216,7 @@ export const fakeMessages: Record<string, Message[]> = {
     {
       id: "chat-1-m1",
       role: "user",
-      content: "Help me build a login page",
+      content: [{ type: "text", text: "Help me build a login page" }],
       timestamp: "2024-01-01T00:00:02Z",
     },
     {
@@ -226,7 +230,12 @@ export const fakeMessages: Record<string, Message[]> = {
     {
       id: "chat-2-m1",
       role: "user",
-      content: "Show me a **bold** example with a [link](https://example.com)",
+      content: [
+        {
+          type: "text",
+          text: "Show me a **bold** example with a [link](https://example.com)",
+        },
+      ],
       timestamp: "2024-01-01T00:00:04Z",
     },
     {
@@ -245,7 +254,7 @@ export const fakeMessages: Record<string, Message[]> = {
     {
       id: "chat-deleted-1-m1",
       role: "user",
-      content: "Quick prototype experiment",
+      content: [{ type: "text", text: "Quick prototype experiment" }],
       timestamp: "2024-01-01T00:00:08Z",
     },
   ],
@@ -253,7 +262,7 @@ export const fakeMessages: Record<string, Message[]> = {
     {
       id: "chat-3-m1",
       role: "user",
-      content: "Refactor the utils module",
+      content: [{ type: "text", text: "Refactor the utils module" }],
       timestamp: "2024-01-01T00:00:06Z",
     },
     {

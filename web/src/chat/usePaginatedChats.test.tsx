@@ -32,6 +32,7 @@ function seedManyActiveChats(n: number): void {
       project: "my-web-app",
       projectPath: "/Users/test/my-web-app",
       sourceFilePath: null,
+      deletedAt: null,
       createdAt: 2_000_000_000_000 - i,
       updatedAt: 2_000_000_000_000 - i * 1000,
     });
@@ -162,6 +163,7 @@ describe("usePaginatedChats", () => {
       project: "my-web-app",
       projectPath: "/Users/test/my-web-app",
       sourceFilePath: null,
+      deletedAt: null,
       createdAt: 1700000500000,
       updatedAt: 1700000500000,
     });
@@ -202,6 +204,7 @@ describe("usePaginatedChats", () => {
       project: "my-web-app",
       projectPath: "/Users/test/my-web-app",
       sourceFilePath: null,
+      deletedAt: null,
       createdAt: 1700000600000,
       updatedAt: 1700000600000,
     });
@@ -501,6 +504,7 @@ describe("usePaginatedChats — bounded window (#132)", () => {
       project: "my-web-app",
       projectPath: "/Users/test/my-web-app",
       sourceFilePath: null,
+      deletedAt: null,
       createdAt: 3_000_000_000_000,
       updatedAt: 3_000_000_000_000,
     });

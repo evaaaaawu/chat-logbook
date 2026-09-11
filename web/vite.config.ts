@@ -11,6 +11,9 @@ export default defineConfig({
       // The keyset list endpoint's wire contract, shared with the API so the
       // page-limit cap has one source of truth (#143).
       "@contract": path.resolve(__dirname, "../api/src/list-contract.ts"),
+      // The API response shapes, so web/src/types.ts derives from the server's
+      // types instead of keeping a parallel copy.
+      "@wire": path.resolve(__dirname, "../api/src/wire-types.ts"),
     },
   },
   server: {

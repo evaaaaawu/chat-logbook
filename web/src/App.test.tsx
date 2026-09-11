@@ -17,6 +17,7 @@ import {
   seedChatTags,
   seedTags,
 } from "./test/handlers";
+import type { Chat } from "@/types";
 
 describe("Chat list", () => {
   it("displays session titles fetched from the API", async () => {
@@ -323,6 +324,8 @@ describe("Chat metadata popover", () => {
               sourceFilePath: null,
               createdAt: 1700000000000,
               updatedAt: 1700000000000,
+              deletedAt: null,
+              tags: [],
             },
           ],
         })
@@ -360,6 +363,8 @@ describe("Chat metadata popover", () => {
               sourceFilePath: null,
               createdAt: 1700000000000,
               updatedAt: 1700000000000,
+              deletedAt: null,
+              tags: [],
             },
           ],
         })
@@ -392,6 +397,8 @@ describe("Chat metadata popover", () => {
               sourceFilePath: null,
               createdAt: 1700000000000,
               updatedAt: 1700000000000,
+              deletedAt: null,
+              tags: [],
             },
           ],
         })
@@ -1453,6 +1460,8 @@ describe("Empty states", () => {
               sourceFilePath: null,
               createdAt: 1700000000000,
               updatedAt: 1700000200000,
+              deletedAt: null,
+              tags: [],
             },
           ],
         })
@@ -1480,9 +1489,12 @@ describe("Empty states", () => {
               agent: "claude-code",
               title: "Only deleted",
               project: "/Users/test/p",
+              projectPath: null,
               sourceFilePath: null,
               createdAt: 1,
               updatedAt: 2,
+              deletedAt: 2,
+              tags: [],
               isDeleted: true,
             },
           ],
@@ -1862,19 +1874,7 @@ describe("Tool call rendering (continued)", () => {
 });
 
 describe("Freeze sort order on background updates", () => {
-  type WireChat = {
-    id: string;
-    sourceId: string;
-    agent: string;
-    title: string;
-    project: string;
-    projectPath: string | null;
-    sourceFilePath: string | null;
-    createdAt: number;
-    updatedAt: number;
-    deletedAt?: number | null;
-    isDeleted?: boolean;
-  };
+  type WireChat = Chat;
 
   // The active (non-deleted) chats in their default Updated-time-desc order:
   // Fix database migration, Build a login page, Refactor utils, Untitled.
@@ -1890,6 +1890,8 @@ describe("Freeze sort order on background updates", () => {
         sourceFilePath: null,
         createdAt: 1700000100000,
         updatedAt: 1700000300000,
+        deletedAt: null,
+        tags: [],
       },
       {
         id: "chat-1",
@@ -1901,6 +1903,8 @@ describe("Freeze sort order on background updates", () => {
         sourceFilePath: null,
         createdAt: 1700000000000,
         updatedAt: 1700000200000,
+        deletedAt: null,
+        tags: [],
       },
       {
         id: "chat-3",
@@ -1912,6 +1916,8 @@ describe("Freeze sort order on background updates", () => {
         sourceFilePath: null,
         createdAt: 1700000050000,
         updatedAt: 1700000150000,
+        deletedAt: null,
+        tags: [],
       },
       {
         id: "chat-missing",
@@ -1923,6 +1929,8 @@ describe("Freeze sort order on background updates", () => {
         sourceFilePath: null,
         createdAt: 1699999900000,
         updatedAt: 1699999900000,
+        deletedAt: null,
+        tags: [],
       },
     ];
   }
@@ -1942,6 +1950,7 @@ describe("Freeze sort order on background updates", () => {
         createdAt: 1699999000000,
         updatedAt: 1699999500000,
         deletedAt: 1700000200000,
+        tags: [],
         isDeleted: true,
       },
       {
@@ -1955,6 +1964,7 @@ describe("Freeze sort order on background updates", () => {
         createdAt: 1699999100000,
         updatedAt: 1699999800000,
         deletedAt: 1700000100000,
+        tags: [],
         isDeleted: true,
       },
     ];
@@ -2092,6 +2102,8 @@ describe("Freeze sort order on background updates", () => {
         sourceFilePath: null,
         createdAt: 1700000250000,
         updatedAt: 1700000250000,
+        deletedAt: null,
+        tags: [],
       });
       serveBackground(withNew);
       await flushBackgroundReconcile();

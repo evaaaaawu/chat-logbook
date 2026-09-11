@@ -40,6 +40,8 @@ async function openChatWith(page: Page, blocks: unknown[]) {
             sourceFilePath: null,
             createdAt: 1700000000000,
             updatedAt: 1700000000000,
+            deletedAt: null,
+            tags: [],
           },
         ],
       },

@@ -14,6 +14,8 @@ const chat: Chat = {
   projectPath: null,
   sourceFilePath: null,
   createdAt: 0,
+  deletedAt: null,
+  tags: [],
   updatedAt: 0,
 };
 
@@ -27,7 +29,7 @@ function assistant(text: string): Message {
   return {
     id: `m-${(nextMessageId += 1)}`,
     role: "assistant",
-    content: text,
+    content: [{ type: "text", text }],
     timestamp: "2024-01-01T00:00:00Z",
   };
 }
@@ -158,7 +160,7 @@ describe("Conversation note-style headers", () => {
           {
             id: "m-ask",
             role: "user",
-            content: "Build a login page",
+            content: [{ type: "text", text: "Build a login page" }],
             timestamp: "2024-01-01T00:00:00Z",
           },
         ]}
@@ -233,7 +235,7 @@ describe("Conversation note-style layout", () => {
           {
             id: "m-ask",
             role: "user",
-            content: "Build a login page",
+            content: [{ type: "text", text: "Build a login page" }],
             timestamp: "2024-01-01T00:00:00Z",
           },
           assistant("Sure, here goes."),
@@ -289,7 +291,7 @@ describe("Conversation message anchors", () => {
           {
             id: "m-assistant",
             role: "assistant",
-            content: "Sure, here goes.",
+            content: [{ type: "text", text: "Sure, here goes." }],
             timestamp: "2024-01-01T00:01:00Z",
           },
         ]}
@@ -1354,7 +1356,7 @@ describe("Row expansion", () => {
           {
             id: "m-new",
             role: "assistant",
-            content: "Starting over.",
+            content: [{ type: "text", text: "Starting over." }],
             timestamp: "2024-01-01T00:00:00Z",
           },
           tool("m-a", "/a.ts"),

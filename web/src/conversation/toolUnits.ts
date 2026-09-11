@@ -15,7 +15,6 @@ export function collectToolResults(
 ): Map<string, ToolResultBlock> {
   const results = new Map<string, ToolResultBlock>();
   for (const message of messages) {
-    if (typeof message.content === "string") continue;
     for (const block of message.content) {
       if (block.type === "tool_result") results.set(block.tool_use_id, block);
     }

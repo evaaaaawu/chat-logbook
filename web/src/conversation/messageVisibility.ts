@@ -38,7 +38,6 @@ function rendersSomething(block: ContentBlock): boolean {
  * turn occupying a row in the virtualized list.
  */
 export function hasRenderableContent(message: Message): boolean {
-  if (typeof message.content === "string") return hasText(message.content);
   return message.content.some(rendersSomething);
 }
 
@@ -55,7 +54,6 @@ export function hasRenderableContent(message: Message): boolean {
  * nest under the preceding header instead of repeating it (#192).
  */
 export function hasAuthorHeader(message: Message): boolean {
-  if (typeof message.content === "string") return hasText(message.content);
   return message.content.some(
     (block) =>
       (block.type === "text" && hasText(block.text)) ||

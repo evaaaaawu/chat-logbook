@@ -12,6 +12,8 @@ function chat(id: string): Chat {
     project: "p",
     projectPath: null,
     sourceFilePath: null,
+    deletedAt: null,
+    tags: [],
     createdAt: 0,
     updatedAt: 0,
   };

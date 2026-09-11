@@ -8,7 +8,7 @@ function generateMessages(count: number) {
     role: i % 2 === 0 ? "user" : "assistant",
     content:
       i % 2 === 0
-        ? `User message ${i + 1}`
+        ? [{ type: "text", text: `User message ${i + 1}` }]
         : [{ type: "text", text: `Assistant response ${i + 1}` }],
     timestamp: new Date(1700000000000 + i * 1000).toISOString(),
   }));
@@ -54,6 +54,8 @@ test.describe("Virtual scrolling", () => {
               sourceFilePath: null,
               createdAt: 1700000000000,
               updatedAt: 1700000000000 + MESSAGE_COUNT * 1000,
+              deletedAt: null,
+              tags: [],
             },
           ],
         },

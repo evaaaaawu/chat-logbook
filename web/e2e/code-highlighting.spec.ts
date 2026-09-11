@@ -56,6 +56,8 @@ async function openChatWith(
             sourceFilePath: null,
             createdAt: 1700000000000,
             updatedAt: 1700000000000,
+            deletedAt: null,
+            tags: [],
           },
         ],
       },

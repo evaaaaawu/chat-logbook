@@ -71,9 +71,9 @@ export function isChat(value: unknown): value is Chat {
     isStringOrNull(value.sourceFilePath) &&
     isNumber(value.createdAt) &&
     isNumber(value.updatedAt) &&
-    optional(value.deletedAt, (d) => d === null || isNumber(d)) &&
+    (value.deletedAt === null || isNumber(value.deletedAt)) &&
     optional(value.isDeleted, isBoolean) &&
-    optional(value.tags, (tags) => isArrayOf(tags, isTag))
+    isArrayOf(value.tags, isTag)
   );
 }
 
@@ -169,16 +169,11 @@ function parseMessage(value: unknown): Message | null {
   const { id, role, timestamp, content, model, effort } = value;
   if (!isString(id) || !isString(timestamp)) return null;
   if (role !== "user" && role !== "assistant") return null;
-  const parsedContent = isString(content)
-    ? content
-    : Array.isArray(content)
-      ? content.filter(isContentBlock)
-      : null;
-  if (parsedContent === null) return null;
+  if (!Array.isArray(content)) return null;
   return {
     id,
     role,
-    content: parsedContent,
+    content: content.filter(isContentBlock),
     timestamp,
     ...(isString(model) ? { model } : {}),
     ...(isString(effort) ? { effort } : {}),
