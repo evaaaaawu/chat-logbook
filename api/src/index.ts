@@ -24,10 +24,23 @@ import { reconcileTitleSortKeys } from "./metadata/reconcile-title-sort-keys.js"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgPath = path.join(__dirname, "../../package.json");
-const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
-  name: string;
-  version: string;
-};
+const pkg: unknown = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+if (!hasNameAndVersion(pkg)) {
+  throw new Error(`${pkgPath} has no string name and version`);
+}
+
+function hasNameAndVersion(
+  value: unknown
+): value is { name: string; version: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "name" in value &&
+    typeof value.name === "string" &&
+    "version" in value &&
+    typeof value.version === "string"
+  );
+}
 
 const action = parseCliArgs(process.argv.slice(2), {
   PORT: process.env.PORT,

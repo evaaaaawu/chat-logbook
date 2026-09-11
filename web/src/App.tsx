@@ -503,7 +503,7 @@ function App() {
   // is the hottest render path here, and re-binding a window listener per render
   // is wasted work that also hides which values the handler actually depends on.
   const handleShortcut = (e: KeyboardEvent) => {
-    const target = e.target as HTMLElement | null;
+    const target = e.target instanceof HTMLElement ? e.target : null;
     const isEditable =
       target?.tagName === "INPUT" ||
       target?.tagName === "TEXTAREA" ||
