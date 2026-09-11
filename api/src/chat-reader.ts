@@ -14,7 +14,7 @@ import {
 } from "./list-pagination.js";
 import type { ChatCountsQuery, ListCounts } from "./list-counts.js";
 import type { TagMode } from "./list-filter.js";
-import type { Action, PatchHunk, StoredBlock } from "./plugins/types.js";
+import type { PatchHunk, StoredBlock } from "./plugins/types.js";
 
 /**
  * The Chat read face. At read time it composes Archive + Metadata into the
@@ -44,17 +44,14 @@ export interface ChatResponse {
   tags: Tag[];
 }
 
+/**
+ * A block as the messages API serves it: exactly as the Archive holds it
+ * (ADR-0023), except a tool result, whose fields are remapped to the wire's
+ * snake_case. Derived from `StoredBlock` so a new block kind reaches the API
+ * type without a second edit here.
+ */
 export type ApiContentBlock =
-  | { type: "text"; text: string }
-  | { type: "thinking"; thinking: string }
-  | {
-      type: "tool_use";
-      id: string;
-      name: string;
-      input: unknown;
-      /** What the call did (ADR-0025). Absent on rows normalized before it existed. */
-      action?: Action;
-    }
+  | Exclude<StoredBlock, { type: "tool_result" }>
   | {
       type: "tool_result";
       tool_use_id: string;
@@ -67,16 +64,7 @@ export type ApiContentBlock =
        */
       file_path?: string;
       patch?: PatchHunk[];
-    }
-  // A slash-command invocation, served as-is from Normalized (ADR-0023). No
-  // field remap: the frontend renders it as a chip.
-  | { type: "command"; name: string; args: string }
-  // Harness noise, served as-is from Normalized (ADR-0023). No field remap: the
-  // frontend renders a collapsed system row and needs no per-agent knowledge.
-  | { type: "system"; kind: string; summary: string; detail: string }
-  // An inline image, served as-is from Normalized (ADR-0023): metadata only,
-  // the bytes come from the image endpoint.
-  | { type: "image"; mediaType: string; ref: string };
+    };
 
 export interface MessageResponse {
   /**
