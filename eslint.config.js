@@ -110,6 +110,33 @@ export default defineConfig([
     rules: typeAwareConventionRules,
   },
 
+  // The contract the web bundle imports from the API (`@contract`, `@wire`) and
+  // every file it reaches. Anything else they imported would land in the
+  // browser bundle or its type check, so only sibling files are allowed.
+  {
+    files: [
+      "api/src/list-contract.ts",
+      "api/src/wire-types.ts",
+      "api/src/plugins/blocks.ts",
+      "api/src/metadata/tag.ts",
+      "api/src/metadata/tag-colors.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              regex: "^(?!\\.)",
+              message:
+                "The web bundle imports this file. Import only relative, dependency-free files.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Writing to stdout is what these files are for. The rule exists to catch
   // debug residue, so it is scoped away from the CLI rather than weakened.
   {
