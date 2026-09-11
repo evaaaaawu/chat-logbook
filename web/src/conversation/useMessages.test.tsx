@@ -12,7 +12,7 @@ function message(role: Message["role"], text: string): Message {
   return {
     id: `m-${(nextMessageId += 1)}`,
     role,
-    content: text,
+    content: [{ type: "text", text }],
     timestamp: "2024-01-01T00:00:00Z",
   };
 }
@@ -49,7 +49,9 @@ describe("useMessages live updates", () => {
     act(() => fake.emitChanged(["clog_abc"]));
 
     await waitFor(() => expect(result.current.messages).toHaveLength(2));
-    expect(result.current.messages[1].content).toBe("second");
+    expect(result.current.messages[1].content).toEqual([
+      { type: "text", text: "second" },
+    ]);
   });
 
   it("does not re-fetch when the event names other chats only", async () => {

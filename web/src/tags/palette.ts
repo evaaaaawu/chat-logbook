@@ -2,6 +2,11 @@
 // Solarized accent set. The token is what we store; this map is the single
 // place that resolves token → hex for every Tag surface (chips, dots, swatches,
 // the future Spotlight picker). Re-theming is a remap here, not a data change.
+import type { ColorToken } from "@wire";
+
+export type { ColorToken } from "@wire";
+
+// The token set is the server's; `TAG_COLOR_HEX` below must name every one.
 export const TAG_COLOR_TOKENS = [
   "yellow",
   "orange",
@@ -11,9 +16,7 @@ export const TAG_COLOR_TOKENS = [
   "blue",
   "cyan",
   "green",
-] as const;
-
-export type ColorToken = (typeof TAG_COLOR_TOKENS)[number];
+] as const satisfies readonly ColorToken[];
 
 export const TAG_COLOR_HEX: Record<ColorToken, string> = {
   yellow: "#b58900",

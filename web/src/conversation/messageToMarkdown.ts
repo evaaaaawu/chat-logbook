@@ -30,7 +30,6 @@ function blockToMarkdown(block: ContentBlock): string | null {
  * separation the reader saw on screen.
  */
 export function messageToMarkdown(message: Message): string {
-  if (typeof message.content === "string") return message.content;
   return message.content
     .map(blockToMarkdown)
     .filter((part) => part !== null)

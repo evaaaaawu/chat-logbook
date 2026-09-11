@@ -37,10 +37,6 @@ export function groupRuns(messages: Message[]): Run[] {
   };
 
   for (const message of messages) {
-    if (typeof message.content === "string") {
-      close();
-      continue;
-    }
     message.content.forEach((block, blockIndex) => {
       if (isSkimRow(block)) {
         current.push({ messageId: message.id, blockIndex });
@@ -153,7 +149,7 @@ function firstRowOf(
   message: Message | undefined,
   runIndexByRow: Map<string, number>
 ): string | null {
-  if (!message || typeof message.content === "string") return null;
+  if (!message) return null;
   for (let i = 0; i < message.content.length; i += 1) {
     const key = rowKey(message.id, i);
     if (runIndexByRow.has(key)) return key;
@@ -166,7 +162,7 @@ function lastRowOf(
   message: Message | undefined,
   runIndexByRow: Map<string, number>
 ): string | null {
-  if (!message || typeof message.content === "string") return null;
+  if (!message) return null;
   for (let i = message.content.length - 1; i >= 0; i -= 1) {
     const key = rowKey(message.id, i);
     if (runIndexByRow.has(key)) return key;

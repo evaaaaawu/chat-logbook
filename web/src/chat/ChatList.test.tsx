@@ -39,6 +39,8 @@ function makeChat(index: number): Chat {
     project: "/home/user/my-web-app",
     projectPath: "/home/user/my-web-app",
     sourceFilePath: null,
+    deletedAt: null,
+    tags: [],
     createdAt: 1_700_000_000_000 + index,
     updatedAt: 1_700_000_000_000 + index,
   };

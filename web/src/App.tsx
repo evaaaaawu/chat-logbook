@@ -359,7 +359,7 @@ function App() {
     () =>
       visibleChats
         .filter((c) => selection.excludeIds.has(c.id))
-        .map((c) => (c.tags ?? []).map((t) => t.id)),
+        .map((c) => c.tags.map((t) => t.id)),
     [visibleChats, selection.excludeIds]
   );
 

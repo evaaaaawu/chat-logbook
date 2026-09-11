@@ -2,17 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { ContentBlock, Message } from "@/types";
 import { messageToMarkdown } from "@/conversation/messageToMarkdown";
 
-function message(content: string | ContentBlock[]): Message {
+function message(content: ContentBlock[]): Message {
   return { id: "m1", role: "assistant", content, timestamp: "2026-07-21" };
 }
 
 describe("messageToMarkdown", () => {
-  it("returns the text of a message whose content is a plain string", () => {
-    expect(messageToMarkdown(message("hello **there**"))).toBe(
-      "hello **there**"
-    );
-  });
-
   it("joins several text blocks with a blank line", () => {
     // A blank line is markdown's paragraph break, so pasted text keeps the
     // separation the reader saw on screen rather than running together.

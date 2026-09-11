@@ -20,6 +20,8 @@ function allChats() {
     sourceFilePath: null,
     createdAt: 1700000000000 + (TOTAL - i),
     updatedAt: 1700000000000 + (TOTAL - i) * 1000,
+    deletedAt: null,
+    tags: [],
   }));
 }
 

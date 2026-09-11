@@ -1,130 +1,16 @@
-import type { ColorToken } from "@/tags/palette";
-
-export interface Tag {
-  id: string;
-  name: string;
-  color: ColorToken;
-}
-
-export interface Chat {
-  /** Public wire-form chat id (`clog_…`) — the canonical handle used for routing. */
-  id: string;
-  /** The originating Agent's source id, surfaced for display only. */
-  sourceId: string;
-  agent: string;
-  title: string;
-  project: string;
-  projectPath: string | null;
-  sourceFilePath: string | null;
-  createdAt: number;
-  updatedAt: number;
-  /** Soft-delete time in ms; null while the chat is active. */
-  deletedAt?: number | null;
-  isDeleted?: boolean;
-  /** Tags assigned to this chat (batched server-side; see ADR-0016). */
-  tags?: Tag[];
-}
-
-/** One hunk of a unified diff, served as the Agent recorded it (ADR-0023). */
-export interface PatchHunk {
-  oldStart: number;
-  oldLines: number;
-  newStart: number;
-  newLines: number;
-  /** The hunk's lines, each still carrying its `+`, `-` or space prefix. */
-  lines: string[];
-}
-
 /**
- * What a Tool unit did, said in a way no Agent owns (ADR-0025). The Plugin
- * decides it at normalize time, so nothing here keys on a tool's name.
+ * The API's response shapes under the names the web app uses. Each one is
+ * derived from the server's own type (`@wire`, api/src/wire-types.ts) rather
+ * than declared here, so the two sides cannot drift: a field the server adds or
+ * changes shows up in this app's type check. `api/parse.ts` proves a body
+ * matches these types before any hook sees it (ADR-0027).
  */
-export type ActionKind =
-  | "edit"
-  | "write"
-  | "read"
-  | "search"
-  | "execute"
-  | "delegate"
-  | "other";
+import type { ApiContentBlock, ChatResponse, MessageResponse } from "@wire";
 
-/**
- * What an Action applied to. A path may drop leading directories to fit, since
- * its filename is the identifying part; a phrase may not, and truncates from
- * the end like ordinary prose.
- */
-export type ActionObject =
-  | { type: "path"; value: string }
-  | { type: "phrase"; value: string };
+export type { Action, ActionKind, ActionObject, PatchHunk, Tag } from "@wire";
 
-export interface Action {
-  kind: ActionKind;
-  object?: ActionObject;
-  /**
-   * The verbatim input the expanded view renders, present when the object is a
-   * label rather than the input itself (#263) — a shell command's description
-   * reads better on the row than the command, so the command rides here.
-   */
-  detail?: string;
-}
+export type Chat = ChatResponse;
 
-export type ContentBlock =
-  | { type: "text"; text: string }
-  | { type: "thinking"; thinking: string }
-  | {
-      type: "tool_use";
-      id: string;
-      name: string;
-      input: unknown;
-      /**
-       * Optional only because rows normalized before Actions existed are still
-       * in flight until re-normalize catches up; such a row reads as `other`
-       * rather than falling back to its tool name.
-       */
-      action?: Action;
-    }
-  | {
-      type: "tool_result";
-      tool_use_id: string;
-      content: unknown;
-      /** Set when the tool reported a failure. Absent on success. */
-      is_error?: boolean;
-      /**
-       * The file a file-editing tool applied to, and the diff hunks it produced
-       * (ADR-0023). Carried together or not at all — every other tool has
-       * neither. The line numbers are the Agent's own, which is why the diff
-       * comes from here rather than from the call's old/new strings.
-       */
-      file_path?: string;
-      patch?: PatchHunk[];
-    }
-  // A slash-command invocation the plugin translated from the Agent's private
-  // markup (ADR-0023). Renders as a chip; the frontend never parses markup.
-  | { type: "command"; name: string; args: string }
-  // Harness noise the plugin classified at normalize time (ADR-0023). Renders as
-  // a collapsed system row; `detail` is empty when the summary is the whole of it.
-  | { type: "system"; kind: string; summary: string; detail: string }
-  // An inline image the plugin recorded at normalize time (ADR-0023). Metadata
-  // only: `ref` addresses the bytes, which the image endpoint serves lazily so
-  // this payload stays light no matter how many screenshots a chat holds.
-  | { type: "image"; mediaType: string; ref: string };
+export type ContentBlock = ApiContentBlock;
 
-export interface Message {
-  /** The Normalized `message_id`, unique within a Chat — the Message's stable handle. */
-  id: string;
-  role: "user" | "assistant";
-  content: string | ContentBlock[];
-  timestamp: string;
-  /**
-   * The model id the Agent recorded on this message, served raw by the API.
-   * Per message, not per chat: a chat that switches models mid-way shows the
-   * switch. Absent when the Agent recorded none.
-   */
-  model?: string;
-  /**
-   * The reasoning effort the Agent recorded for this message, served raw by the
-   * API in the Agent's own wording — capitalized at render, never mapped to a
-   * different label. Absent when the Agent recorded none.
-   */
-  effort?: string;
-}
+export type Message = MessageResponse;

@@ -237,9 +237,6 @@ function renderContent(
   layout: MessageLayout,
   context: RenderContext
 ) {
-  if (typeof content === "string") {
-    return <MarkdownText>{content}</MarkdownText>;
-  }
   return layout.segments.map((segment) => {
     if (segment.kind === "block") {
       return renderContentBlock(
@@ -539,7 +536,7 @@ export function ConversationView({
       {chat && tagControls && (
         <TagStrip
           chatId={chat.id}
-          assigned={chat.tags ?? []}
+          assigned={chat.tags}
           allTags={tagControls.allTags}
           onAssign={tagControls.onAssignTag}
           onRemove={tagControls.onRemoveTag}

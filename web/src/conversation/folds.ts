@@ -249,7 +249,7 @@ function blockLookup(
   for (const message of messages) byId.set(message.id, message);
   return (row) => {
     const content = byId.get(row.messageId)?.content;
-    if (!content || typeof content === "string") return undefined;
+    if (!content) return undefined;
     return content[row.blockIndex];
   };
 }
