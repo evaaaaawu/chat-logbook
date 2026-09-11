@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Tag } from "@/types";
+import { fetchJson } from "@/api/fetchJson";
+import { parseTag, parseTags, parseTagsByChat } from "@/api/parse";
 import type { ColorToken } from "@/tags/palette";
 import type { BatchTarget } from "@/chat/batchTarget";
 
@@ -30,10 +32,9 @@ export interface UseTagsResult {
   fetchTagsByChat: (chatIds: string[]) => Promise<Record<string, Tag[]>>;
 }
 
-async function fetchTags(): Promise<Tag[]> {
-  const res = await fetch("/api/tags");
-  const data = (await res.json()) as { tags: Tag[] };
-  return data.tags;
+// null when the catalog could not be read; callers keep the last-known value.
+function fetchTags(): Promise<Tag[] | null> {
+  return fetchJson("/api/tags", parseTags);
 }
 
 export function useTags({ onAssignmentChange }: UseTagsOptions): UseTagsResult {
@@ -41,7 +42,8 @@ export function useTags({ onAssignmentChange }: UseTagsOptions): UseTagsResult {
 
   const refresh = useCallback(async () => {
     try {
-      setTags(await fetchTags());
+      const next = await fetchTags();
+      if (next) setTags(next);
     } catch {
       // Ignore transient failures; the catalog stays at its last-known value.
     }
@@ -51,7 +53,7 @@ export function useTags({ onAssignmentChange }: UseTagsOptions): UseTagsResult {
     let cancelled = false;
     fetchTags()
       .then((next) => {
-        if (!cancelled) setTags(next);
+        if (!cancelled && next) setTags(next);
       })
       .catch(() => {});
     return () => {
@@ -61,13 +63,12 @@ export function useTags({ onAssignmentChange }: UseTagsOptions): UseTagsResult {
 
   const createTag = useCallback(
     async (name: string, color: ColorToken) => {
-      const res = await fetch("/api/tags", {
+      const tag = await fetchJson("/api/tags", parseTag, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name, color }),
       });
-      if (!res.ok) return null;
-      const { tag } = (await res.json()) as { tag: Tag };
+      if (!tag) return null;
       await refresh();
       return tag;
     },
@@ -150,16 +151,16 @@ export function useTags({ onAssignmentChange }: UseTagsOptions): UseTagsResult {
 
   const fetchTagsByChat = useCallback(
     async (chatIds: string[]): Promise<Record<string, Tag[]>> => {
-      const res = await fetch("/api/chats/batch/tags-by-chat", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ chatIds }),
-      });
-      if (!res.ok) return {};
-      const { byChat } = (await res.json()) as {
-        byChat: Record<string, Tag[]>;
-      };
-      return byChat;
+      const byChat = await fetchJson(
+        "/api/chats/batch/tags-by-chat",
+        parseTagsByChat,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ chatIds }),
+        }
+      );
+      return byChat ?? {};
     },
     []
   );

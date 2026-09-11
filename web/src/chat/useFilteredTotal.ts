@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { fetchJson } from "@/api/fetchJson";
+import { parseTotal } from "@/api/parse";
 import type { TagMode } from "@/tags/tagModePreference";
 
 // The filtered List count ("Chats N" when a filter is active; #131 Phase B).
@@ -60,10 +62,8 @@ export function useFilteredTotal(
     let cancelled = false;
     const refresh = async () => {
       try {
-        const res = await fetch(url);
-        if (!res.ok) return;
-        const data = (await res.json()) as { total?: number };
-        if (!cancelled) setFetched({ url, total: data.total ?? 0 });
+        const total = await fetchJson(url, parseTotal);
+        if (total !== null && !cancelled) setFetched({ url, total });
       } catch {
         // Ignore transient failures; the next interval tick retries.
       }

@@ -3,6 +3,8 @@ import {
   useConversationStream,
   type ConversationStreamConnector,
 } from "@/conversation/useConversationStream";
+import { readJson } from "@/api/fetchJson";
+import { parseErrorMessage, parseMessages } from "@/api/parse";
 import type { Message } from "@/types";
 
 interface MessagesState {
@@ -41,17 +43,18 @@ export function useMessages(
     let cancelled = false;
 
     fetch(`/api/chats/${chatId}?includeTrashed=true`)
-      .then((res) => {
+      .then(async (res) => {
         if (!res.ok) {
-          return res.json().then((body: { error?: string }) => {
-            throw new Error(body.error ?? `Request failed (${res.status})`);
-          });
+          const error = await readJson(res, parseErrorMessage);
+          throw new Error(error ?? `Request failed (${res.status})`);
         }
-        return res.json();
+        const messages = await readJson(res, parseMessages);
+        if (!messages) throw new Error("The chat could not be read");
+        return messages;
       })
-      .then((data: { messages: Message[] }) => {
+      .then((messages) => {
         if (!cancelled) {
-          setState({ chatId, messages: data.messages, error: null });
+          setState({ chatId, messages, error: null });
         }
       })
       .catch((err: unknown) => {

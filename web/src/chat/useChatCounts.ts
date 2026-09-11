@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fetchJson } from "@/api/fetchJson";
+import { parseChatCounts } from "@/api/parse";
 import type { ProjectCount } from "@/chat/projects/projectFacets";
 
 // The filter panel's static, per-view counts (#131 Phase A). Server-derived so
@@ -67,16 +69,9 @@ export function useChatCounts(mode: "main" | "trash"): UseChatCountsResult {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch(countsUrl(mode));
-      if (!res.ok) return;
-      const data = (await res.json()) as Partial<ChatCounts>;
-      if (currentMode.current !== mode) return;
-      setCounts({
-        total: data.total ?? 0,
-        projects: data.projects ?? [],
-        tags: data.tags ?? [],
-        untagged: data.untagged ?? 0,
-      });
+      const next = await fetchJson(countsUrl(mode), parseChatCounts);
+      if (!next || currentMode.current !== mode) return;
+      setCounts(next);
     } catch {
       // Ignore transient failures; the next interval tick retries.
     }
