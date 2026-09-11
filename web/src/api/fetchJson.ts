@@ -1,7 +1,9 @@
 /**
- * The one place the web app reads an API response body (ADR-0027). A body is
- * `unknown` until a parser from `./parse` has checked it, so a hook receives a
- * typed model or `null` — never a shape the server was only assumed to send.
+ * The seam every API response body passes through (ADR-0027). `readJson` is the
+ * only caller of `res.json()`; `fetchJson` wraps it for the common case of a
+ * read that needs nothing from a failed response. A body is `unknown` until a
+ * parser from `./parse` has checked it, so a hook receives a typed model or
+ * `null` — never a shape the server was only assumed to send.
  */
 export type Parse<T> = (body: unknown) => T | null;
 

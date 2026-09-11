@@ -32,8 +32,10 @@ export interface InsertRawMessageResult {
 
 /**
  * The normalized fields the Archive persists for one message. Mirrors a
- * plugin's normalized output without coupling the store to the plugin layer:
- * `role` and `blocks` take their types from the `messages` columns.
+ * plugin's normalized output without importing `NormalizedMessage`: `role` and
+ * `blocks` take their types from the `messages` columns. The one piece shared
+ * with the plugin layer is the block vocabulary behind that column type, which
+ * ADR-0023 makes a contract across every layer.
  * `ts` arrives as an ISO string and is parsed here so the last-write-wins
  * comparison stays inside the repository.
  */

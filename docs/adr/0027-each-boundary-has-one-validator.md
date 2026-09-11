@@ -5,7 +5,7 @@ Data enters chat-logbook at six kinds of boundary: an Agent's Source records, HT
 **The validator follows who wrote the data.**
 
 - **Agent Source records: a schema library (zod).** Claude Code's JSONL is written by a vendor, nested several levels deep, full of optional fields, and changes without notice. Here the schema is the only place the format is written down, and hand-written guards for a shape this deep drift from it quietly. Each Plugin parses its records with `safeParse`. It never uses `parse`, because a changed Source format must never stop ingestion.
-- **Everything else we wrote ourselves: named `isX`/`hasX` guards.** API responses, request bodies, stored preferences, and DOM events all carry shapes this repo defines. They are flat and they change only in a commit that also changes the reader. A guard verifies every field its name claims. It lives beside the type it proves, and it adds no dependency to the web bundle. The web app reads every API response through one seam, `fetchJson(url, guard)`, so a hook receives a typed model or nothing.
+- **Everything else we wrote ourselves: named `isX`/`hasX` guards.** API responses, request bodies, stored preferences, and DOM events all carry shapes this repo defines. They are flat and they change only in a commit that also changes the reader. A guard verifies every field its name claims. It lives beside the type it proves, and it adds no dependency to the web bundle. The web app reads every API response body through one seam: `readJson(res, parse)`, or `fetchJson(url, parse)`, which wraps it when the caller needs nothing from a failed response. Either way a hook receives a typed model or nothing. The API reads request bodies field by field through `isRecord`, and never casts one to its expected shape.
 - **SQLite rows: no validator.** Our own migrations write these tables, the same process reads them, and the list pipeline reads them on every page at 100k Chats. The row type is declared where the query is written: `prepare<Params, Row>()` for raw SQL, and `$type<>()` on a Drizzle column whose JSON or text holds a narrower shape. The claim still goes unchecked at runtime. But it now sits beside the SQL that produces it, so one reading checks both, and a mismatch is a migration bug the store's tests catch — not user data.
 
 ## How an Agent record degrades
@@ -32,4 +32,4 @@ None of this changes the Normalized output, so it needs no `NORMALIZE_VERSION` b
 - `zod` is a dependency of `api` only. The web app does not import it.
 - A new Plugin parses its Source with zod schemas and follows the degrade rules above.
 - A new raw SQL read declares its row type on `prepare`. A cast on its result fails `no-unsafe-type-assertion`.
-- A new `fetch` in the web app goes through `fetchJson` with a guard.
+- A new API read in the web app goes through `fetchJson` or `readJson` with a parser.

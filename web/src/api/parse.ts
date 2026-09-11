@@ -1,10 +1,11 @@
 /**
  * Parsers for every API response the web app reads, used through `fetchJson`
- * (ADR-0027). The server and the web app ship together, so a body of the wrong
- * shape is a bug rather than a format change: a list or count that fails its
- * check is rejected whole, and the hook keeps its last-known value. Messages are
- * the one exception — a block the app does not recognize is dropped and the rest
- * of the Chat still opens.
+ * and `readJson` (ADR-0027). The server and the web app ship together, so a
+ * body of the wrong shape is a bug rather than a format change: a list that
+ * fails its check is rejected whole, and the hook keeps its last-known value.
+ * Counts and totals read a missing or mistyped number as zero, as they always
+ * have. Messages drop only a block the app does not recognize, so the rest of
+ * the Chat still opens.
  */
 import type { ProjectCount } from "@/chat/projects/projectFacets";
 import type { ChatCounts, TagCount } from "@/chat/useChatCounts";
