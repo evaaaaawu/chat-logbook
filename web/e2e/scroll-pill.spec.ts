@@ -8,6 +8,7 @@ const LAST_MESSAGE = `Assistant response ${MESSAGE_COUNT}`;
 
 function generateMessages(count: number) {
   return Array.from({ length: count }, (_, i) => ({
+    id: `msg-${i + 1}`,
     role: i % 2 === 0 ? "user" : "assistant",
     content:
       i % 2 === 0
@@ -44,6 +45,7 @@ async function openLargeChat(page: import("@playwright/test").Page) {
             agent: "claude-code",
             title: "Large conversation",
             project: "/test/project",
+            projectPath: null,
             sourceFilePath: null,
             createdAt: 1700000000000,
             updatedAt: 1700000000000 + MESSAGE_COUNT * 1000,

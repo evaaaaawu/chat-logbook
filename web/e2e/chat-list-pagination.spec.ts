@@ -16,6 +16,7 @@ function allChats() {
     agent: "claude-code",
     title: `Chat ${i}`,
     project: "/test/project",
+    projectPath: null,
     sourceFilePath: null,
     createdAt: 1700000000000 + (TOTAL - i),
     updatedAt: 1700000000000 + (TOTAL - i) * 1000,
