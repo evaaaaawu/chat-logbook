@@ -143,19 +143,4 @@ export default defineConfig([
       "@typescript-eslint/no-unsafe-return": "off",
     },
   },
-
-  // Files still carrying casts at a boundary, exempt from
-  // `no-unsafe-type-assertion` until #278 parses each one.
-  //
-  // This list only shrinks. Adding a file to it is not the way to make a new
-  // cast pass — the rule holds everywhere else from today, and #278 names the
-  // batch each file belongs to. Delete the block when the list empties.
-  {
-    files: [
-      "api/src/plugins/claude-code/actions.ts",
-      "api/src/plugins/claude-code/plugin.ts",
-      "api/src/plugins/visualize-widget.ts",
-    ],
-    rules: { "@typescript-eslint/no-unsafe-type-assertion": "off" },
-  },
 ]);
