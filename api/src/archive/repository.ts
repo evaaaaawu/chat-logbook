@@ -149,8 +149,11 @@ export function createArchiveRepository({
   });
 
   const drizzleMigrations = sqlite
-    .prepare("SELECT id, created_at FROM __drizzle_migrations ORDER BY id ASC")
-    .all() as DrizzleMigrationRow[];
+    .prepare<
+      [],
+      DrizzleMigrationRow
+    >("SELECT id, created_at FROM __drizzle_migrations ORDER BY id ASC")
+    .all();
   for (const m of drizzleMigrations) {
     db.insert(schemaVersion)
       .values({ version: m.id, appliedAt: new Date(m.created_at) })
