@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
+import { z } from "zod";
 import type {
   AgentPlugin,
   NormalizedMessage,
@@ -12,6 +13,84 @@ import type {
 } from "../types.js";
 import { svgWidgetCode, themeWidgetSvg } from "../visualize-widget.js";
 import { toolAction } from "./actions.js";
+
+// Source record schemas (ADR-0027). Each names only the fields this plugin
+// reads: loose objects let a field Claude Code adds later pass through unread,
+// and an optional field of an unexpected type reads as absent rather than
+// failing the whole record.
+const optionalString = z.string().optional().catch(undefined);
+const optionalFlag = z.boolean().optional().catch(undefined);
+
+const MessageRecord = z.looseObject({
+  type: z.enum(["user", "assistant"]),
+  isMeta: optionalFlag,
+  isSidechain: optionalFlag,
+  uuid: optionalString,
+  timestamp: optionalString,
+  cwd: optionalString,
+  effort: optionalString,
+  toolUseResult: z.unknown(),
+  message: z.looseObject({
+    role: z.unknown(),
+    content: z.union([z.string(), z.array(z.unknown())]),
+    model: optionalString,
+  }),
+});
+
+const CwdLine = z.looseObject({ cwd: z.string().min(1) });
+
+// Claude Code only writes inline base64 today. A source shape we don't
+// recognize is dropped rather than served as a broken image.
+const Base64Source = z.looseObject({
+  type: z.literal("base64"),
+  media_type: z.string().min(1),
+});
+
+// One content block. A block whose type is not listed here, or whose fields do
+// not match, is dropped and the rest of the Message survives.
+const SourceBlock = z.discriminatedUnion("type", [
+  z.looseObject({ type: z.literal("text"), text: z.string() }),
+  z.looseObject({ type: z.literal("thinking"), thinking: z.string() }),
+  z.looseObject({
+    type: z.literal("tool_use"),
+    id: z.string(),
+    name: z.string(),
+    input: z.unknown(),
+  }),
+  z.looseObject({
+    type: z.literal("tool_result"),
+    tool_use_id: z.string(),
+    content: z.unknown(),
+    is_error: optionalFlag,
+  }),
+  z.looseObject({ type: z.literal("image"), source: Base64Source }),
+]);
+
+// Loose so a hunk is stored exactly as the Agent wrote it (ADR-0023).
+const SourcePatchHunk = z.looseObject({
+  oldStart: z.number(),
+  oldLines: z.number(),
+  newStart: z.number(),
+  newLines: z.number(),
+  lines: z.array(z.string()),
+});
+
+const EditResult = z.looseObject({
+  filePath: z.string().min(1),
+  structuredPatch: z.array(z.unknown()),
+  type: optionalString,
+  content: optionalString,
+});
+
+// What `resolveImage` reads back out of a stored Raw payload: the bytes, which
+// normalize never needs.
+const StoredRecordContent = z.looseObject({
+  message: z.looseObject({ content: z.array(z.unknown()) }),
+});
+const ImageWithBytes = z.looseObject({
+  type: z.literal("image"),
+  source: Base64Source.extend({ data: z.string() }),
+});
 
 export class ClaudeCodePlugin implements AgentPlugin {
   readonly id = "claude-code";
@@ -51,46 +130,48 @@ export class ClaudeCodePlugin implements AgentPlugin {
     for await (const line of rl) {
       lineNo += 1;
       if (!line) continue;
+      // A line that is not JSON is almost always the last one, still being
+      // written. Skipping it lets the next Scan read it whole, rather than
+      // failing the rest of the file (ADR-0027).
+      let payload: unknown;
+      try {
+        payload = JSON.parse(line);
+      } catch {
+        continue;
+      }
       yield {
         sourceId: ref.sourceId,
         sourcePath: ref.sourcePath,
         sourceLocator: `L${lineNo}`,
-        payload: JSON.parse(line),
+        payload,
       };
     }
   }
 
   normalize(raw: RawRecord): NormalizedMessage | null {
-    const payload = raw.payload as Record<string, unknown> | null;
-    if (!payload || typeof payload !== "object") return null;
+    // Any other record type, or a shape this plugin does not know yet,
+    // normalizes to nothing. Its Raw row is kept, so a later parser fix picks
+    // it up through re-normalize (ADR-0027).
+    const parsed = MessageRecord.safeParse(raw.payload);
+    if (!parsed.success) return null;
+    const payload = parsed.data;
 
-    if (payload.type !== "user" && payload.type !== "assistant") return null;
     if (payload.isMeta === true) return null;
     if (payload.isSidechain === true) return null;
 
-    const message = payload.message as
-      | { role: string; content: unknown; model?: unknown }
-      | undefined;
-    if (!message) return null;
-
+    const { message } = payload;
     const role = message.role === "assistant" ? "assistant" : "user";
-    const messageId = String(payload.uuid ?? "");
-    const ts = String(payload.timestamp ?? "");
+    const messageId = payload.uuid ?? "";
+    const ts = payload.timestamp ?? "";
     // Claude Code records the model on each assistant message; reader turns
     // carry none. Spread so the field is absent rather than undefined (ADR-0023).
-    const model =
-      typeof message.model === "string" && message.model !== ""
-        ? { model: message.model }
-        : {};
+    const model = message.model ? { model: message.model } : {};
     // Effort sits on the record, not inside `message` — Claude Code writes it
     // beside the model rather than in the API payload it echoes back.
-    const effort =
-      typeof payload.effort === "string" && payload.effort !== ""
-        ? { effort: payload.effort }
-        : {};
+    const effort = payload.effort ? { effort: payload.effort } : {};
 
     // The directory the turn ran in, used to resolve relative file mentions.
-    const cwd = typeof payload.cwd === "string" ? payload.cwd : undefined;
+    const cwd = payload.cwd;
 
     if (typeof message.content === "string") {
       const command = parseCommandMarkup(message.content);
@@ -162,19 +243,11 @@ export class ClaudeCodePlugin implements AgentPlugin {
     const address = parseImageRef(ref);
     if (!address) return null;
 
-    const record = loadPayload(address.messageId) as Record<
-      string,
-      unknown
-    > | null;
-    if (!record || typeof record !== "object") return null;
-
-    const message = record.message as { content?: unknown } | undefined;
-    if (!message || !Array.isArray(message.content)) return null;
-
-    const block = message.content[address.index] as
-      | Record<string, unknown>
-      | undefined;
-    if (!block) return null;
+    const record = StoredRecordContent.safeParse(
+      loadPayload(address.messageId)
+    );
+    if (!record.success) return null;
+    const block = record.data.message.content[address.index];
 
     // A visualize drawing: the "bytes" are the widget's own source, themed on
     // the way out so its class-based colors resolve outside the harness.
@@ -187,14 +260,9 @@ export class ClaudeCodePlugin implements AgentPlugin {
       };
     }
 
-    if (block.type !== "image") return null;
-
-    const source = block.source as Record<string, unknown> | undefined;
-    if (!source || source.type !== "base64") return null;
-    const mediaType = String(source.media_type ?? "");
-    const data = source.data;
-    if (!mediaType || typeof data !== "string") return null;
-
+    const image = ImageWithBytes.safeParse(block);
+    if (!image.success) return null;
+    const { media_type: mediaType, data } = image.data.source;
     return { mediaType, bytes: Buffer.from(data, "base64") };
   }
 }
@@ -211,15 +279,14 @@ async function readCwdFromJsonl(
     try {
       for await (const line of rl) {
         if (!line) continue;
-        let obj: { cwd?: unknown };
+        let parsed: unknown;
         try {
-          obj = JSON.parse(line) as { cwd?: unknown };
+          parsed = JSON.parse(line);
         } catch {
           continue; // Ignore malformed lines.
         }
-        if (typeof obj.cwd === "string" && obj.cwd.length > 0) {
-          return obj.cwd;
-        }
+        const cwdLine = CwdLine.safeParse(parsed);
+        if (cwdLine.success) return cwdLine.data.cwd;
       }
     } finally {
       rl.close();
@@ -436,12 +503,14 @@ function normalizeBlock(
 function editedFile(
   toolUseResult: unknown
 ): { filePath: string; patch: PatchHunk[] } | Record<string, never> {
-  if (!toolUseResult || typeof toolUseResult !== "object") return {};
-  const r = toolUseResult as Record<string, unknown>;
-  if (typeof r.filePath !== "string" || !r.filePath) return {};
-  if (!Array.isArray(r.structuredPatch)) return {};
+  const result = EditResult.safeParse(toolUseResult);
+  if (!result.success) return {};
+  const r = result.data;
 
-  const patch = r.structuredPatch.filter(isPatchHunk);
+  const patch = r.structuredPatch.flatMap((hunk) => {
+    const parsed = SourcePatchHunk.safeParse(hunk);
+    return parsed.success ? [parsed.data] : [];
+  });
   if (patch.length > 0) return { filePath: r.filePath, patch };
 
   const created = createdFilePatch(r);
@@ -451,28 +520,13 @@ function editedFile(
 
 // One all-add hunk built from a created file's content, numbered from line 1.
 // `@@ -0,0 +1,N @@` in unified-diff terms — the header a new file always gets.
-function createdFilePatch(r: Record<string, unknown>): PatchHunk[] | null {
-  if (r.type !== "create" || typeof r.content !== "string" || !r.content) {
-    return null;
-  }
+function createdFilePatch(r: z.infer<typeof EditResult>): PatchHunk[] | null {
+  if (r.type !== "create" || !r.content) return null;
   const content = r.content.endsWith("\n") ? r.content.slice(0, -1) : r.content;
   const lines = content.split("\n").map((line) => `+${line}`);
   return [
     { oldStart: 0, oldLines: 0, newStart: 1, newLines: lines.length, lines },
   ];
-}
-
-function isPatchHunk(hunk: unknown): hunk is PatchHunk {
-  if (!hunk || typeof hunk !== "object") return false;
-  const h = hunk as Record<string, unknown>;
-  return (
-    typeof h.oldStart === "number" &&
-    typeof h.oldLines === "number" &&
-    typeof h.newStart === "number" &&
-    typeof h.newLines === "number" &&
-    Array.isArray(h.lines) &&
-    h.lines.every((line) => typeof line === "string")
-  );
 }
 
 function normalizeOneBlock(
@@ -481,43 +535,41 @@ function normalizeOneBlock(
   index: number,
   toolUseResult?: unknown
 ): NormalizedBlock | null {
-  if (!raw || typeof raw !== "object") return null;
-  const b = raw as Record<string, unknown>;
+  const parsed = SourceBlock.safeParse(raw);
+  if (!parsed.success) return null;
+  const b = parsed.data;
   switch (b.type) {
-    case "image": {
-      const source = b.source as Record<string, unknown> | undefined;
-      // Claude Code only writes inline base64 today. A source shape we don't
-      // recognize is dropped rather than served as a broken image.
-      if (!source || source.type !== "base64") return null;
-      const mediaType = String(source.media_type ?? "");
-      if (!mediaType) return null;
-      return { type: "image", mediaType, ref: imageRef(messageId, index) };
-    }
+    case "image":
+      return {
+        type: "image",
+        mediaType: b.source.media_type,
+        ref: imageRef(messageId, index),
+      };
     case "text":
-      return { type: "text", text: String(b.text ?? "") };
+      return { type: "text", text: b.text };
     case "thinking":
-      return { type: "thinking", thinking: String(b.thinking ?? "") };
-    case "tool_use": {
-      const name = String(b.name ?? "");
+      return { type: "thinking", thinking: b.thinking };
+    case "tool_use":
       return {
         type: "tool_use",
-        id: String(b.id ?? ""),
-        name,
+        id: b.id,
+        name: b.name,
         input: b.input,
-        action: toolAction(name, b.input),
+        action: toolAction(b.name, b.input),
       };
-    }
     case "tool_result":
       return {
         type: "tool_result",
-        toolUseId: String(b.tool_use_id ?? ""),
+        toolUseId: b.tool_use_id,
         content: b.content,
         // Only carried when the tool actually failed: a `false` on every
         // successful result would grow the stored block for nothing.
         ...(b.is_error === true ? { isError: true } : {}),
         ...editedFile(toolUseResult),
       };
-    default:
-      return null;
+    default: {
+      const _exhaustive: never = b;
+      return _exhaustive;
+    }
   }
 }

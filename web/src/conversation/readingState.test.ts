@@ -61,4 +61,20 @@ describe("readingState", () => {
 
     expect(loadReadingState("chat-old")).toEqual(anchoredAt("m-old-again"));
   });
+
+  it("drops a stored entry whose shape is wrong and keeps the rest", () => {
+    localStorage.setItem(
+      "chat-logbook.reading-state",
+      JSON.stringify({
+        version: 1,
+        chats: [
+          { chatId: "chat-bad", anchor: "top", openRows: 3 },
+          { chatId: "chat-good", ...anchoredAt("m-7") },
+        ],
+      })
+    );
+
+    expect(loadReadingState("chat-bad")).toBeNull();
+    expect(loadReadingState("chat-good")).toEqual(anchoredAt("m-7"));
+  });
 });

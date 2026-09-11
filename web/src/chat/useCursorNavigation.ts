@@ -81,7 +81,7 @@ export function useCursorNavigation({
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       // Typing in a title field owns its own arrows; never hijack them.
-      const target = e.target as HTMLElement | null;
+      const target = e.target instanceof HTMLElement ? e.target : null;
       const isEditable =
         target?.tagName === "INPUT" ||
         target?.tagName === "TEXTAREA" ||

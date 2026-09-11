@@ -1,3 +1,4 @@
+import { isRecord } from "@/shared/isRecord";
 import type { SortDirection } from "./sortChats";
 
 export interface SortConfig<F extends string> {
@@ -75,22 +76,18 @@ export function loadSortPreference<F extends string>(
     return fallback;
   }
 
-  if (typeof parsed !== "object" || parsed === null) return fallback;
-  const record = parsed as Record<string, unknown>;
-  if (record.version !== STORAGE_VERSION) return fallback;
+  if (!isRecord(parsed) || parsed.version !== STORAGE_VERSION) return fallback;
 
-  const fields = Object.keys(config.typeDefaults) as F[];
-  const field =
-    typeof record.field === "string" && fields.includes(record.field as F)
-      ? (record.field as F)
-      : config.defaultField;
+  const isField = (value: unknown): value is F =>
+    typeof value === "string" && Object.hasOwn(config.typeDefaults, value);
+  const field = isField(parsed.field) ? parsed.field : config.defaultField;
 
   // Start from type defaults, then overlay any valid stored per-field memory.
   const directions = { ...config.typeDefaults };
-  const stored = record.directions;
-  if (typeof stored === "object" && stored !== null) {
-    for (const key of fields) {
-      const value = (stored as Record<string, unknown>)[key];
+  const stored = parsed.directions;
+  if (isRecord(stored)) {
+    for (const key of Object.keys(config.typeDefaults).filter(isField)) {
+      const value = stored[key];
       if (value === "asc" || value === "desc") directions[key] = value;
     }
   }

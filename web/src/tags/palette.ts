@@ -60,14 +60,26 @@ function contrast(a: number, b: number): number {
 // has the higher contrast against the tag's background. Light tokens (yellow,
 // cyan, green) land on dark text; the rest on white — all eight stay legible.
 const DARK_TEXT_LUMINANCE = relativeLuminance(DARK_TEXT);
-export const TAG_TEXT_HEX: Record<ColorToken, string> = Object.fromEntries(
-  TAG_COLOR_TOKENS.map((token) => {
-    const bg = relativeLuminance(TAG_COLOR_HEX[token]);
-    const onWhite = contrast(bg, 1);
-    const onDark = contrast(bg, DARK_TEXT_LUMINANCE);
-    return [token, onWhite >= onDark ? LIGHT_TEXT : DARK_TEXT];
-  })
-) as Record<ColorToken, string>;
+
+function textOn(token: ColorToken): string {
+  const bg = relativeLuminance(TAG_COLOR_HEX[token]);
+  const onWhite = contrast(bg, 1);
+  const onDark = contrast(bg, DARK_TEXT_LUMINANCE);
+  return onWhite >= onDark ? LIGHT_TEXT : DARK_TEXT;
+}
+
+// Spelled out token by token rather than built with `Object.fromEntries`, so the
+// compiler checks that every token has an entry.
+export const TAG_TEXT_HEX: Record<ColorToken, string> = {
+  yellow: textOn("yellow"),
+  orange: textOn("orange"),
+  red: textOn("red"),
+  magenta: textOn("magenta"),
+  violet: textOn("violet"),
+  blue: textOn("blue"),
+  cyan: textOn("cyan"),
+  green: textOn("green"),
+};
 
 // The default color picked when a Tag is created inline, before the user
 // overrides it. Derived from the Tag name so repeated creates of the same name

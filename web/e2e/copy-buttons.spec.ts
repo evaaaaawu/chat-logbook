@@ -27,6 +27,7 @@ async function openChatWithCode(page: import("@playwright/test").Page) {
             agent: "claude-code",
             title: "Copyable conversation",
             project: "/test/project",
+            projectPath: null,
             sourceFilePath: null,
             createdAt: 1700000000000,
             updatedAt: 1700000000000,
@@ -40,6 +41,7 @@ async function openChatWithCode(page: import("@playwright/test").Page) {
       json: {
         messages: [
           {
+            id: "m-1",
             role: "assistant",
             content: [
               {

@@ -504,14 +504,8 @@ export function createApp({
     } catch {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
-    const name =
-      body && typeof body === "object"
-        ? (body as { name?: unknown }).name
-        : undefined;
-    const color =
-      body && typeof body === "object"
-        ? (body as { color?: unknown }).color
-        : undefined;
+    const name = field(body, "name");
+    const color = field(body, "color");
     if (typeof name !== "string" || name.trim().length === 0) {
       return c.json({ error: "Invalid name" }, 400);
     }
@@ -533,14 +527,8 @@ export function createApp({
     } catch {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
-    const name =
-      body && typeof body === "object"
-        ? (body as { name?: unknown }).name
-        : undefined;
-    const color =
-      body && typeof body === "object"
-        ? (body as { color?: unknown }).color
-        : undefined;
+    const name = field(body, "name");
+    const color = field(body, "color");
     if (name !== undefined) {
       if (typeof name !== "string" || name.trim().length === 0) {
         return c.json({ error: "Invalid name" }, 400);
@@ -573,10 +561,7 @@ export function createApp({
     } catch {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
-    const tagId =
-      body && typeof body === "object"
-        ? (body as { tagId?: unknown }).tagId
-        : undefined;
+    const tagId = field(body, "tagId");
     if (typeof tagId !== "string" || !tags.getTag(tagId)) {
       return c.json({ error: "Tag not found" }, 404);
     }

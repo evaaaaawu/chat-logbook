@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fetchJson } from "@/api/fetchJson";
+import { parseTagCounts } from "@/api/parse";
 import {
   usePaginatedChats,
   type ListDirection,
@@ -340,14 +342,11 @@ function App() {
     if (selectedTags.size > 0) params.set("tags", [...selectedTags].join(","));
     if (tagMode.mode === "any") params.set("tagMode", "any");
     try {
-      const res = await fetch(
-        `/api/chats/filtered-tag-counts?${params.toString()}`
+      const tags = await fetchJson(
+        `/api/chats/filtered-tag-counts?${params.toString()}`,
+        parseTagCounts
       );
-      if (!res.ok) return [];
-      const { tags } = (await res.json()) as {
-        tags: Array<{ tagId: string; count: number }>;
-      };
-      return tags;
+      return tags ?? [];
     } catch {
       return [];
     }
@@ -503,7 +502,7 @@ function App() {
   // is the hottest render path here, and re-binding a window listener per render
   // is wasted work that also hides which values the handler actually depends on.
   const handleShortcut = (e: KeyboardEvent) => {
-    const target = e.target as HTMLElement | null;
+    const target = e.target instanceof HTMLElement ? e.target : null;
     const isEditable =
       target?.tagName === "INPUT" ||
       target?.tagName === "TEXTAREA" ||

@@ -288,7 +288,10 @@ function rekeyLegacyRows(
   lookupInternalId: LookupInternalId,
   ensureChat: EnsureChat | undefined
 ): void {
-  const current = sqlite.pragma("user_version", { simple: true }) as number;
+  // SQLite always reports user_version as an integer; the fallback only narrows
+  // the driver's `unknown`.
+  const userVersion = sqlite.pragma("user_version", { simple: true });
+  const current = typeof userVersion === "number" ? userVersion : 0;
   if (current >= REKEY_USER_VERSION) return;
 
   const rows = db.select({ id: chatsMeta.id }).from(chatsMeta).all();

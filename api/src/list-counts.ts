@@ -112,6 +112,15 @@ export function createChatCountsQuery({
     archive.prepare("ATTACH DATABASE ? AS meta").run(metadataPath);
   }
 
+  // A `count(*) AS n` statement yields exactly one row, so the fallback only
+  // satisfies `get`'s `| undefined` and never runs.
+  function count(sql: string, params: (string | number)[] = []): number {
+    return (
+      archive.prepare<(string | number)[], { n: number }>(sql).get(...params)
+        ?.n ?? 0
+    );
+  }
+
   function queryCounts({
     includeTrashed = false,
   }: {
@@ -123,40 +132,36 @@ export function createChatCountsQuery({
     // so main is everything and Trash is empty.
     const viewClause = viewPredicate(includeTrashed, hasMetadata);
 
-    const total = (
-      archive
-        .prepare(`SELECT count(*) AS n FROM chats c ${viewClause}`)
-        .get() as { n: number }
-    ).n;
+    const total = count(`SELECT count(*) AS n FROM chats c ${viewClause}`);
 
     // Per-Project facet counts. coalesce folds NULL and '' into one
     // `(No project)` bucket, matching the Project filter's own bucketing
     // (ADR-0017). `lastActiveAt` carries each group's recency so the facet
     // panel can order most-recently-active first without loading the chats.
     const projects = archive
-      .prepare(
+      .prepare<[], ProjectCount>(
         `SELECT coalesce(c.project, '') AS project,
                 count(*) AS count,
                 max(c.updated_at) AS lastActiveAt
          FROM chats c ${viewClause}
          GROUP BY coalesce(c.project, '')`
       )
-      .all() as ProjectCount[];
+      .all();
 
     // Per-Tag facet counts. Joins the `ATTACH`ed `meta.chat_tags` to the
     // in-view chats so a trashed chat (main view) or an active chat (Trash
     // view) drops out. With no Metadata store there are no tags, so the join is
     // skipped entirely rather than referencing a missing table.
     const tags: TagCount[] = hasMetadata
-      ? (archive
-          .prepare(
+      ? archive
+          .prepare<[], TagCount>(
             `SELECT ct.tag_id AS tagId, count(*) AS count
              FROM meta.chat_tags ct
              JOIN chats c ON c.id = ct.chat_id
              ${viewClause}
              GROUP BY ct.tag_id`
           )
-          .all() as TagCount[])
+          .all()
       : [];
 
     // Untagged group: in-view chats holding zero Tags. With no Metadata store
@@ -164,15 +169,11 @@ export function createChatCountsQuery({
     // total. With metadata the view clause is always present, so the predicate
     // ANDs onto it.
     const untagged = hasMetadata
-      ? (
-          archive
-            .prepare(
-              `SELECT count(*) AS n
-               FROM chats c ${viewClause}
-               AND c.id NOT IN (SELECT chat_id FROM meta.chat_tags)`
-            )
-            .get() as { n: number }
-        ).n
+      ? count(
+          `SELECT count(*) AS n
+           FROM chats c ${viewClause}
+           AND c.id NOT IN (SELECT chat_id FROM meta.chat_tags)`
+        )
       : total;
 
     return { total, projects, tags, untagged };
@@ -228,11 +229,7 @@ export function createChatCountsQuery({
     if (built === null) return 0;
     const where =
       built.clauses.length > 0 ? `WHERE ${built.clauses.join(" AND ")}` : "";
-    return (
-      archive
-        .prepare(`SELECT count(*) AS n FROM chats c ${where}`)
-        .get(...built.params) as { n: number }
-    ).n;
+    return count(`SELECT count(*) AS n FROM chats c ${where}`, built.params);
   }
 
   function queryFilteredIds({
@@ -258,11 +255,12 @@ export function createChatCountsQuery({
     }
 
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-    return (
-      archive
-        .prepare(`SELECT c.id AS id FROM chats c ${where}`)
-        .all(...params) as { id: string }[]
-    ).map((r) => r.id);
+    return archive
+      .prepare<(string | number)[], { id: string }>(
+        `SELECT c.id AS id FROM chats c ${where}`
+      )
+      .all(...params)
+      .map((r) => r.id);
   }
 
   function queryFilteredTagCounts(opts: {
@@ -280,14 +278,14 @@ export function createChatCountsQuery({
     // Join the filter-matched chats to their tags and group — the same shape as
     // the view-wide facet, but scoped to the filter instead of the whole view.
     return archive
-      .prepare(
+      .prepare<(string | number)[], TagCount>(
         `SELECT ct.tag_id AS tagId, count(*) AS count
          FROM meta.chat_tags ct
          JOIN chats c ON c.id = ct.chat_id
          ${where}
          GROUP BY ct.tag_id`
       )
-      .all(...built.params) as TagCount[];
+      .all(...built.params);
   }
 
   return {

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MAX_PAGE_LIMIT } from "@contract";
 import type { Chat } from "@/types";
+import { fetchJson } from "@/api/fetchJson";
+import { parsePage } from "@/api/parse";
 import { useChatMutations, type ChatListSource } from "@/chat/useChatMutations";
 import { useListStream, type ListStreamConnector } from "@/chat/useListStream";
 import type { TagMode } from "@/tags/tagModePreference";
@@ -137,16 +139,22 @@ function pageUrl(
   return cursor ? `${base}&cursor=${encodeURIComponent(cursor)}` : base;
 }
 
+// The inverse of the selection key built in the hook below — always our own
+// `JSON.stringify` of a string array, so the filter drops nothing in practice.
+function decodeSelectionKey(key: string): string[] {
+  const parsed: unknown = JSON.parse(key);
+  return Array.isArray(parsed)
+    ? parsed.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
 // Fetch one page, returning null on any failure (non-OK status, network error,
-// or a body without a `chats` array) so callers never feed `undefined` into the
-// window. A rejected request (e.g. limit over the cap) is a no-op, not a crash.
+// or a body that does not parse as a page) so callers never feed `undefined`
+// into the window. A rejected request (e.g. limit over the cap) is a no-op, not
+// a crash.
 async function fetchPage(url: string): Promise<PageResponse | null> {
   try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const data = (await res.json()) as Partial<PageResponse>;
-    if (!Array.isArray(data.chats)) return null;
-    return { chats: data.chats, nextCursor: data.nextCursor ?? null };
+    return await fetchJson(url, parsePage);
   } catch {
     return null;
   }
@@ -178,8 +186,8 @@ export function usePaginatedChats(
   const tagsKey = JSON.stringify([...tags].sort());
   const filter = useMemo<ActiveFilter>(
     () => ({
-      projects: JSON.parse(projectsKey) as string[],
-      tags: JSON.parse(tagsKey) as string[],
+      projects: decodeSelectionKey(projectsKey),
+      tags: decodeSelectionKey(tagsKey),
       tagMode,
     }),
     [projectsKey, tagsKey, tagMode]
@@ -360,9 +368,10 @@ export function usePaginatedChats(
         const updated = prev.map((p) => ({
           ...p,
           chats: drop
-            ? p.chats
-                .filter((c) => incomingById.has(c.id))
-                .map((c) => incomingById.get(c.id) as Chat)
+            ? p.chats.flatMap((c) => {
+                const incoming = incomingById.get(c.id);
+                return incoming ? [incoming] : [];
+              })
             : p.chats.map((c) => incomingById.get(c.id) ?? c),
         }));
         // Brand-new chats now ranking into the window slot onto the head page, in
@@ -423,9 +432,10 @@ export function usePaginatedChats(
       const byId = new Map(next.map((c) => [c.id, c]));
       return prev.map((p) => ({
         ...p,
-        chats: p.chats
-          .filter((c) => byId.has(c.id))
-          .map((c) => byId.get(c.id) as Chat),
+        chats: p.chats.flatMap((c) => {
+          const next = byId.get(c.id);
+          return next ? [next] : [];
+        }),
       }));
     });
   }, []);

@@ -1,3 +1,5 @@
+import { isRecord } from "@/shared/isRecord";
+
 /**
  * Where the reader left a Chat: the scroll position, as a message anchor, and
  * which skim-layer rows they had opened. Persisted per chat so reopening lands
@@ -51,14 +53,37 @@ function readPayload(): StoredPayload {
   } catch {
     return { version: STORAGE_VERSION, chats: [] };
   }
-  if (typeof parsed !== "object" || parsed === null) {
+  if (
+    !isRecord(parsed) ||
+    parsed.version !== STORAGE_VERSION ||
+    !Array.isArray(parsed.chats)
+  ) {
     return { version: STORAGE_VERSION, chats: [] };
   }
-  const record = parsed as Record<string, unknown>;
-  if (record.version !== STORAGE_VERSION || !Array.isArray(record.chats)) {
-    return { version: STORAGE_VERSION, chats: [] };
-  }
-  return { version: STORAGE_VERSION, chats: record.chats as StoredEntry[] };
+  // An entry of the wrong shape is dropped on its own: that chat lands at the
+  // bottom, as a first visit would, and every other chat keeps its place.
+  return {
+    version: STORAGE_VERSION,
+    chats: parsed.chats.filter(isStoredEntry),
+  };
+}
+
+function isScrollAnchor(value: unknown): value is ScrollAnchor {
+  return (
+    isRecord(value) &&
+    typeof value.messageId === "string" &&
+    typeof value.offset === "number"
+  );
+}
+
+function isStoredEntry(value: unknown): value is StoredEntry {
+  return (
+    isRecord(value) &&
+    typeof value.chatId === "string" &&
+    (value.anchor === null || isScrollAnchor(value.anchor)) &&
+    Array.isArray(value.openRows) &&
+    value.openRows.every((row) => typeof row === "string")
+  );
 }
 
 export function loadReadingState(chatId: string): ReadingState | null {

@@ -5,6 +5,8 @@
  * survives reloads. Mirrors the versioned localStorage shape of the sort
  * preference so a future format change can be detected and ignored.
  */
+import { isRecord } from "@/shared/isRecord";
+
 export type TagMode = "all" | "any";
 
 const STORAGE_VERSION = 1;
@@ -25,8 +27,6 @@ export function loadTagMode(storageKey: string): TagMode {
     return "all";
   }
 
-  if (typeof parsed !== "object" || parsed === null) return "all";
-  const record = parsed as Record<string, unknown>;
-  if (record.version !== STORAGE_VERSION) return "all";
-  return record.mode === "any" ? "any" : "all";
+  if (!isRecord(parsed) || parsed.version !== STORAGE_VERSION) return "all";
+  return parsed.mode === "any" ? "any" : "all";
 }

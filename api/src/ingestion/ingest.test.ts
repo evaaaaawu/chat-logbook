@@ -215,6 +215,60 @@ describe("runIngestion", () => {
     archive.close();
   });
 
+  it("still opens a chat after its source format changes and a line is cut short", async () => {
+    const projectDir = path.join(
+      env.homeDir,
+      ".claude",
+      "projects",
+      "project-future"
+    );
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, "session-future.jsonl"),
+      [
+        JSON.stringify({
+          type: "user",
+          uuid: "f-1",
+          timestamp: "2024-01-01T00:00:01Z",
+          message: { role: "user", content: "before the change" },
+        }),
+        // A record from a newer Agent version: a field and a block kind this
+        // plugin has never seen.
+        JSON.stringify({
+          type: "assistant",
+          uuid: "f-2",
+          timestamp: "2024-01-01T00:00:02Z",
+          recordVersion: 9,
+          message: {
+            role: "assistant",
+            content: [
+              { type: "hologram", beam: 1 },
+              { type: "text", text: "after the change" },
+            ],
+          },
+        }),
+        // The Agent is still writing this line.
+        '{"type": "assistant", "uuid": "f-3", "mess',
+      ].join("\n")
+    );
+    const archive = createArchiveRepository({ dataDir: env.dataDir });
+    const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });
+
+    await runIngestion({
+      plugins: [new ClaudeCodePlugin()],
+      archive,
+      checkpoint,
+      env: { homeDir: env.homeDir },
+    });
+
+    const texts = archive.read
+      .listMessagesByChat("claude-code", "session-future")
+      .map((m) => m.text);
+    expect(texts).toEqual(["before the change", "after the change"]);
+
+    archive.close();
+  });
+
   it("mtime fast path: skips files whose mtime and size are unchanged since last scan", async () => {
     const archive = createArchiveRepository({ dataDir: env.dataDir });
     const checkpoint = createCheckpointRepository({ dataDir: env.dataDir });

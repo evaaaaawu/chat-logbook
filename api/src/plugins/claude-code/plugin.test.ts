@@ -158,6 +158,28 @@ describe("ClaudeCodePlugin.extractRaw", () => {
     expect((records[0].payload as { uuid: string }).uuid).toBe("msg-b1");
     expect(records[1].sourceLocator).toBe("L2");
   });
+
+  it("skips a line that is not valid JSON rather than stopping the file", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chat-logbook-raw-"));
+    const sourcePath = path.join(dir, "session-3.jsonl");
+    // The middle line is what a line the Agent is still writing looks like.
+    fs.writeFileSync(
+      sourcePath,
+      [
+        JSON.stringify({ uuid: "a" }),
+        '{"uuid": "b", "mess',
+        JSON.stringify({ uuid: "c" }),
+      ].join("\n")
+    );
+    try {
+      const records = await collect(
+        plugin.extractRaw({ sourceId: "session-3", sourcePath, watchPaths: [] })
+      );
+      expect(records.map((r) => r.sourceLocator)).toEqual(["L1", "L3"]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("ClaudeCodePlugin.normalize → null cases", () => {
@@ -198,6 +220,75 @@ describe("ClaudeCodePlugin.normalize → null cases", () => {
     ],
   ])("returns null for %s", (_label, payload) => {
     expect(plugin.normalize(rawRecord(payload))).toBeNull();
+  });
+});
+
+// ADR-0027: a Source format change degrades what renders; it never throws, and
+// never costs the rest of the Message.
+describe("ClaudeCodePlugin.normalize → a changed source format", () => {
+  const base = {
+    type: "assistant",
+    uuid: "msg-f1",
+    timestamp: "2024-01-01T00:00:01Z",
+  };
+
+  it("ignores fields it does not know", () => {
+    const normalized = plugin.normalize(
+      rawRecord({
+        ...base,
+        futureField: { nested: [1] },
+        message: {
+          role: "assistant",
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: "hi", citations: [] }],
+        },
+      })
+    );
+
+    expect(normalized?.blocks).toEqual([{ type: "text", text: "hi" }]);
+  });
+
+  it("drops a block whose shape it does not recognize and keeps the rest", () => {
+    const normalized = plugin.normalize(
+      rawRecord({
+        ...base,
+        message: {
+          role: "assistant",
+          content: [
+            { type: "text", text: 42 },
+            { type: "hologram" },
+            { type: "text", text: "kept" },
+          ],
+        },
+      })
+    );
+
+    expect(normalized?.blocks).toEqual([{ type: "text", text: "kept" }]);
+  });
+
+  it.each([
+    ["the payload is not an object", "just a string"],
+    ["the message is not an object", { ...base, message: "hi" }],
+    [
+      "the content is neither text nor a block list",
+      { ...base, message: { role: "assistant", content: 42 } },
+    ],
+  ])("returns null rather than throwing when %s", (_label, payload) => {
+    expect(plugin.normalize(rawRecord(payload))).toBeNull();
+  });
+
+  it("keeps the message when an optional field has an unexpected type", () => {
+    const normalized = plugin.normalize(
+      rawRecord({
+        ...base,
+        effort: 3,
+        message: { role: "assistant", model: { id: "x" }, content: "here" },
+      })
+    );
+
+    expect(normalized).toMatchObject({ messageId: "msg-f1", text: "here" });
+    expect(normalized).not.toHaveProperty("model");
+    expect(normalized).not.toHaveProperty("effort");
   });
 });
 

@@ -50,7 +50,9 @@ export function TagStrip({
         setVisibleCount(assigned.length);
         return;
       }
-      const chipEls = Array.from(measure.children) as HTMLElement[];
+      const chipEls = Array.from(measure.children).filter(
+        (el): el is HTMLElement => el instanceof HTMLElement
+      );
       const available = row.clientWidth - CONTROLS_RESERVE;
       let used = 0;
       let count = 0;

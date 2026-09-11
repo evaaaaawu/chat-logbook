@@ -9,6 +9,7 @@ import { createMetadataRepository } from "./metadata/repository.js";
 import { createTagRepository } from "./metadata/tags.js";
 import { CROCKFORD_ALPHABET, formatChatId } from "./archive/chat-id.js";
 import type { ArchiveReadSeam } from "./archive/read-seam.js";
+import type { StoredBlock } from "./plugins/types.js";
 
 // The public List read is the keyset page path (ADR-0017). These tests seed a
 // handful of chats and assert hydration/filter/visibility, not pagination, so
@@ -72,7 +73,7 @@ function seedMessage(
     role: "user" | "assistant";
     ts: Date;
     text: string;
-    blocks: unknown[];
+    blocks: StoredBlock[];
     agent?: string;
     model?: string;
     effort?: string;
@@ -1326,7 +1327,7 @@ describe("ChatReader.getMessages", () => {
       sourceId: "session-1",
       firstSeenAt: new Date(1700000000000),
     });
-    const systemBlock = {
+    const systemBlock: StoredBlock = {
       type: "system",
       kind: "task-notification",
       summary: 'Agent "Run tests" finished',

@@ -41,6 +41,7 @@ async function openChatWith(
             agent: "claude-code",
             title: "Edit conversation",
             project: "/test/project",
+            projectPath: null,
             sourceFilePath: null,
             createdAt: 1700000000000,
             updatedAt: 1700000000000,
@@ -54,6 +55,7 @@ async function openChatWith(
       json: {
         messages: [
           {
+            id: "m-1",
             role: "assistant",
             content: blocks,
             timestamp: "2023-11-14T22:13:20.000Z",

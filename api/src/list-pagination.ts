@@ -130,22 +130,24 @@ export function encodeCursor(cursor: KeysetCursor): string {
 /** Decode an opaque page token; null when it is malformed. */
 export function decodeCursor(token: string): KeysetCursor | null {
   try {
-    const parsed = JSON.parse(
+    const parsed: unknown = JSON.parse(
       Buffer.from(token, "base64url").toString("utf8")
-    ) as unknown;
-    const sortKey = (parsed as KeysetCursor | null)?.sortKey;
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      (typeof sortKey === "number" || typeof sortKey === "string") &&
-      typeof (parsed as KeysetCursor).id === "string"
-    ) {
-      return parsed as KeysetCursor;
-    }
-    return null;
+    );
+    return isKeysetCursor(parsed) ? parsed : null;
   } catch {
     return null;
   }
+}
+
+function isKeysetCursor(value: unknown): value is KeysetCursor {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "sortKey" in value &&
+    (typeof value.sortKey === "number" || typeof value.sortKey === "string") &&
+    "id" in value &&
+    typeof value.id === "string"
+  );
 }
 
 export function createChatPageQuery({
@@ -252,13 +254,13 @@ export function createChatPageQuery({
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
     // Fetch one extra row to tell whether a next page exists without a count.
     const rows = archive
-      .prepare(
+      .prepare<(string | number)[], KeysetPageItem>(
         `SELECT c.id AS id, ${sortExpr} AS sortKey
          FROM ${from} ${where}
          ORDER BY ${sortExpr} ${order}, ${idCol} ${order}
          LIMIT ?`
       )
-      .all(...params, query.limit + 1) as KeysetPageItem[];
+      .all(...params, query.limit + 1);
 
     const items = rows.slice(0, query.limit);
     const last = items[items.length - 1];
