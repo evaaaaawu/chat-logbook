@@ -119,6 +119,18 @@ export type NormalizedBlock =
   // force the messages API to ship every image up front.
   | { type: "image"; mediaType: string; ref: string };
 
+type NormalizedToolUse = Extract<NormalizedBlock, { type: "tool_use" }>;
+
+/**
+ * A block as the Archive holds it and the read side sees it: the same
+ * vocabulary as `NormalizedBlock`, except that a tool call's `action` may be
+ * missing. Rows normalized before Actions existed lack it until re-normalize
+ * catches up (ADR-0023), so the read side must handle its absence.
+ */
+export type StoredBlock =
+  | Exclude<NormalizedBlock, { type: "tool_use" }>
+  | (Omit<NormalizedToolUse, "action"> & { action?: Action });
+
 export interface NormalizedMessage {
   messageId: string;
   role: "user" | "assistant";

@@ -13,6 +13,7 @@ import { createChatCountsQuery } from "./list-counts.js";
 import { reconcileTitleSortKeys } from "./metadata/reconcile-title-sort-keys.js";
 import { MAX_PAGE_LIMIT } from "./list-contract.js";
 import { ClaudeCodePlugin } from "./plugins/claude-code/plugin.js";
+import type { StoredBlock } from "./plugins/types.js";
 
 interface ChatResponse {
   id: string;
@@ -64,7 +65,7 @@ function seedMessage(
     role: "user" | "assistant";
     ts: Date;
     text: string;
-    blocks: unknown[];
+    blocks: StoredBlock[];
     /**
      * The Raw payload to archive alongside. Defaults to a stub: only the paths
      * that read back through Raw (image serving) need a faithful one.

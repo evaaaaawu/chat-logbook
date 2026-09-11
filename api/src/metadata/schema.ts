@@ -6,6 +6,7 @@ import {
   sqliteTable,
   text,
 } from "drizzle-orm/sqlite-core";
+import type { ColorToken } from "./tag-colors.js";
 
 export const chatsMeta = sqliteTable(
   "chats_meta",
@@ -63,7 +64,9 @@ export const chatSortKeys = sqliteTable(
 export const tags = sqliteTable("tags", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  color: text("color").notNull(),
+  // Typed as the token set, not validated on read: every write goes through
+  // `assertColor` in the Tag repository (ADR-0027).
+  color: text("color").$type<ColorToken>().notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });

@@ -152,8 +152,6 @@ export default defineConfig([
   // batch each file belongs to. Delete the block when the list empties.
   {
     files: [
-      "api/src/chat-reader.ts",
-      "api/src/metadata/tags.ts",
       "api/src/plugins/claude-code/actions.ts",
       "api/src/plugins/claude-code/plugin.ts",
       "api/src/plugins/visualize-widget.ts",

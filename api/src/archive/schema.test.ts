@@ -239,7 +239,7 @@ describe("messages table", () => {
       agent: "claude-code",
       sourceId: "src-1",
       messageId: "m-1",
-      role: "user",
+      role: "user" as const,
       ts: new Date(),
       text: "x",
       blocks: [],

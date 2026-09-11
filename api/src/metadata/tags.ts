@@ -55,8 +55,8 @@ export function createTagRepository({
     schema,
   });
 
-  function toTag(row: { id: string; name: string; color: string }): Tag {
-    return { id: row.id, name: row.name, color: row.color as ColorToken };
+  function toTag(row: { id: string; name: string; color: ColorToken }): Tag {
+    return { id: row.id, name: row.name, color: row.color };
   }
 
   function assertColor(color: ColorToken): void {

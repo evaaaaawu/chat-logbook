@@ -14,7 +14,7 @@ import {
 } from "./list-pagination.js";
 import type { ChatCountsQuery, ListCounts } from "./list-counts.js";
 import type { TagMode } from "./list-filter.js";
-import type { PatchHunk } from "./plugins/types.js";
+import type { Action, PatchHunk, StoredBlock } from "./plugins/types.js";
 
 /**
  * The Chat read face. At read time it composes Archive + Metadata into the
@@ -47,7 +47,14 @@ export interface ChatResponse {
 export type ApiContentBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; thinking: string }
-  | { type: "tool_use"; id: string; name: string; input: unknown }
+  | {
+      type: "tool_use";
+      id: string;
+      name: string;
+      input: unknown;
+      /** What the call did (ADR-0025). Absent on rows normalized before it existed. */
+      action?: Action;
+    }
   | {
       type: "tool_result";
       tool_use_id: string;
@@ -66,7 +73,10 @@ export type ApiContentBlock =
   | { type: "command"; name: string; args: string }
   // Harness noise, served as-is from Normalized (ADR-0023). No field remap: the
   // frontend renders a collapsed system row and needs no per-agent knowledge.
-  | { type: "system"; kind: string; summary: string; detail: string };
+  | { type: "system"; kind: string; summary: string; detail: string }
+  // An inline image, served as-is from Normalized (ADR-0023): metadata only,
+  // the bytes come from the image endpoint.
+  | { type: "image"; mediaType: string; ref: string };
 
 export interface MessageResponse {
   /**
@@ -92,24 +102,32 @@ export interface MessageResponse {
   effort?: string;
 }
 
-interface StoredBlock {
-  type: string;
-  [key: string]: unknown;
-}
-
+// Only a tool result is remapped to the wire's snake_case; every other kind is
+// served as the Archive holds it (ADR-0023).
 function toApiBlock(block: StoredBlock): ApiContentBlock {
-  if (block.type === "tool_result") {
-    return {
-      type: "tool_result",
-      tool_use_id: String(block.toolUseId ?? ""),
-      content: block.content,
-      ...(block.isError === true ? { is_error: true } : {}),
-      ...(typeof block.filePath === "string" && Array.isArray(block.patch)
-        ? { file_path: block.filePath, patch: block.patch as PatchHunk[] }
-        : {}),
-    };
+  switch (block.type) {
+    case "tool_result":
+      return {
+        type: "tool_result",
+        tool_use_id: block.toolUseId,
+        content: block.content,
+        ...(block.isError === true ? { is_error: true } : {}),
+        ...(block.filePath !== undefined && block.patch !== undefined
+          ? { file_path: block.filePath, patch: block.patch }
+          : {}),
+      };
+    case "text":
+    case "thinking":
+    case "tool_use":
+    case "command":
+    case "system":
+    case "image":
+      return block;
+    default: {
+      const _exhaustive: never = block;
+      return _exhaustive;
+    }
   }
-  return block as ApiContentBlock;
 }
 
 export interface ChatReader {
@@ -409,8 +427,8 @@ export function createChatReader({
 
     return rows.map((m) => ({
       id: m.messageId,
-      role: m.role as "user" | "assistant",
-      content: (m.blocks as StoredBlock[]).map(toApiBlock),
+      role: m.role,
+      content: m.blocks.map(toApiBlock),
       timestamp: m.ts.toISOString(),
       ...(m.model === null ? {} : { model: m.model }),
       ...(m.effort === null ? {} : { effort: m.effort }),

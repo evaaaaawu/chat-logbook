@@ -32,16 +32,17 @@ export interface InsertRawMessageResult {
 
 /**
  * The normalized fields the Archive persists for one message. Mirrors a
- * plugin's normalized output without coupling the store to the plugin layer.
+ * plugin's normalized output without coupling the store to the plugin layer:
+ * `role` and `blocks` take their types from the `messages` columns.
  * `ts` arrives as an ISO string and is parsed here so the last-write-wins
  * comparison stays inside the repository.
  */
 export interface NormalizedMessageInput {
   messageId: string;
-  role: string;
+  role: (typeof messages.$inferInsert)["role"];
   ts: string;
   text: string;
-  blocks: unknown;
+  blocks: (typeof messages.$inferInsert)["blocks"];
   /** The model id the Agent recorded, when it recorded one (ADR-0023). */
   model?: string;
   /** The reasoning effort the Agent recorded, when it recorded one (ADR-0023). */

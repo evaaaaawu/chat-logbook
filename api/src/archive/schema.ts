@@ -5,6 +5,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import type { StoredBlock } from "../plugins/types.js";
 
 export const archiveMeta = sqliteTable("archive_meta", {
   id: integer("id").primaryKey(),
@@ -83,10 +84,12 @@ export const messages = sqliteTable(
     agent: text("agent").notNull(),
     sourceId: text("source_id").notNull(),
     messageId: text("message_id").notNull(),
-    role: text("role").notNull(),
+    role: text("role").$type<"user" | "assistant">().notNull(),
     ts: integer("ts", { mode: "timestamp_ms" }).notNull(),
     text: text("text").notNull(),
-    blocks: text("blocks", { mode: "json" }).notNull(),
+    // Typed, not validated: the Plugin wrote these blocks, and the read path
+    // trusts the column rather than parsing every row (ADR-0027).
+    blocks: text("blocks", { mode: "json" }).$type<StoredBlock[]>().notNull(),
     // The model id the Agent recorded on this message (ADR-0023). Nullable:
     // reader turns record none, and neither do rows normalized before #195 —
     // those get backfilled by the next re-normalize pass.
