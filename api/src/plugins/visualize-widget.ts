@@ -7,8 +7,16 @@
  * mean executing archived code, so they stay a collapsed tool row instead.
  */
 
+import { z } from "zod";
+
 /** The tool name every visualize drawing arrives under. */
 export const SHOW_WIDGET_TOOL = "mcp__visualize__show_widget";
+
+const ShowWidgetCall = z.looseObject({
+  type: z.literal("tool_use"),
+  name: z.literal(SHOW_WIDGET_TOOL),
+  input: z.looseObject({ widget_code: z.string() }),
+});
 
 /**
  * The widget's SVG source, or null when this is not an SVG widget call.
@@ -16,13 +24,9 @@ export const SHOW_WIDGET_TOOL = "mcp__visualize__show_widget";
  * and the ref-resolution path can ask the same question.
  */
 export function svgWidgetCode(block: unknown): string | null {
-  if (!block || typeof block !== "object") return null;
-  const b = block as Record<string, unknown>;
-  if (b.type !== "tool_use" || b.name !== SHOW_WIDGET_TOOL) return null;
-
-  const input = b.input as Record<string, unknown> | undefined;
-  const code = input?.widget_code;
-  if (typeof code !== "string") return null;
+  const call = ShowWidgetCall.safeParse(block);
+  if (!call.success) return null;
+  const code = call.data.input.widget_code;
 
   // The same test the harness itself uses to pick its render mode.
   return code.trimStart().startsWith("<svg") ? code : null;

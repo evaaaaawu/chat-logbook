@@ -1,9 +1,15 @@
+import { z } from "zod";
 import { mcpServerName } from "../mcp-tool-name.js";
 import type { Action, ActionKind } from "../types.js";
 
+// A tool's input is whatever the Agent passed the tool, so it stays `unknown`
+// in the Normalized block. Only the one field a label needs is read out of it.
+const ToolInput = z.record(z.string(), z.unknown());
+
 function getString(input: unknown, key: string): string | undefined {
-  if (typeof input !== "object" || input === null) return undefined;
-  const value = (input as Record<string, unknown>)[key];
+  const fields = ToolInput.safeParse(input);
+  if (!fields.success) return undefined;
+  const value = fields.data[key];
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 
